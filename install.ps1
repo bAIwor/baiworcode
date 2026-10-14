@@ -69,27 +69,43 @@ $isLocalRepo = (Test-Path "package.json") -and (Test-Path "bin\baiwor.js")
 if ($isLocalRepo) {
     Write-Host "  Terdeteksi repositori lokal. Menjalankan npm link..." -ForegroundColor Gray
     & npm link --force | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  [!] 'npm link' gagal. Coba jalankan manual: npm link --force" -ForegroundColor Yellow
+        exit 1
+    }
 } else {
     Write-Host "  Memasang paket bAIwor Code..." -ForegroundColor Gray
-    try {
-        & npm install -g baiworcode --loglevel=error
-    } catch {
+
+    # PENTING: di PowerShell, try/catch TIDAK menangkap kegagalan perintah native
+    # (non-zero exit code) — hanya menangkap error cmdlet. Karena itu pengecekan
+    # dilakukan lewat $LASTEXITCODE, bukan try/catch.
+    & npm install -g baiworcode --loglevel=error
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  Paket belum tersedia di registry npm publik. Beralih memasang dari GitHub..." -ForegroundColor Yellow
         & npm install -g git+https://github.com/bAIwor/baiworcode.git --loglevel=error
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  [!] Pemasangan gagal." -ForegroundColor Red
+            Write-Host "      Pastikan koneksi internet stabil dan 'git' sudah terpasang." -ForegroundColor Gray
+            Write-Host "      Alternatif: npm install -g https://github.com/bAIwor/baiworcode/tarball/main" -ForegroundColor Cyan
+            exit 1
+        }
     }
 }
 
 # 3. Verifikasi Pemasangan
 Write-Host "  [3/3] Memverifikasi pemasangan bAIwor CLI..." -ForegroundColor Cyan
 
+# Memakai Get-Command (bukan try/catch) supaya tidak bergantung pada semantik
+# penangkapan error perintah native.
 $installedVer = $null
-try {
-    $installedVer = (& baiwor --version) 2>$null
-} catch {}
-
-if (-not $installedVer) {
-    try {
-        $installedVer = (& baiworcode --version) 2>$null
-    } catch {}
+foreach ($cmdName in @('baiwor', 'baiworcode')) {
+    if (Get-Command $cmdName -ErrorAction SilentlyContinue) {
+        $candidate = (& $cmdName --version) 2>$null
+        if ($candidate) {
+            $installedVer = $candidate
+            break
+        }
+    }
 }
 
 Write-Host ""

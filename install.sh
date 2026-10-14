@@ -47,12 +47,21 @@ echo -e "${CYAN}  [2/3] Memasang bAIwor Code secara global...${NC}"
 
 if [ -f "./package.json" ] && [ -f "./bin/baiwor.js" ]; then
     echo -e "${GRAY}  Terdeteksi repositori lokal. Menjalankan npm link...${NC}"
-    npm link --force >/dev/null 2>&1
+    if ! npm link --force >/dev/null 2>&1; then
+        echo -e "${YELLOW}  ⚠️  'npm link' gagal. Coba jalankan manual: npm link --force${NC}"
+        exit 1
+    fi
 else
     echo -e "${GRAY}  Memasang paket dari npm/GitHub...${NC}"
     if ! npm install -g baiworcode >/dev/null 2>&1; then
         # Fallback ke GitHub jika belum dirilis di registry npm publik
-        npm install -g git+https://github.com/bAIwor/baiworcode.git >/dev/null 2>&1
+        echo -e "${YELLOW}  Paket belum tersedia di registry npm publik. Beralih memasang dari GitHub...${NC}"
+        if ! npm install -g git+https://github.com/bAIwor/baiworcode.git >/dev/null 2>&1; then
+            echo -e "${YELLOW}  ⚠️  Pemasangan gagal.${NC}"
+            echo -e "${GRAY}      Pastikan koneksi internet stabil dan 'git' sudah terpasang.${NC}"
+            echo -e "${CYAN}      Alternatif: npm install -g https://github.com/bAIwor/baiworcode/tarball/main${NC}"
+            exit 1
+        fi
     fi
 fi
 
