@@ -1,10 +1,15 @@
 {
-  "name": "baiwor",
+  "name": "baiworcode",
   "version": "1.0.0",
-  "description": "bAIwor CLI — AI Agent Lokal Punakawan World",
+  "description": "bAIwor Code — Terminal AI Coding Agent (baiwor.my.id)",
   "type": "module",
   "bin": {
+    "baiworcode": "./bin/baiwor.js",
     "baiwor": "./bin/baiwor.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/Baiwor/baiworcode.git"
   },
   "scripts": {
     "start": "node ./bin/baiwor.js"

@@ -145,7 +145,7 @@ async function startInteractive() {
 
   while (true) {
     const input = await askBaiworInput({
-      placeholder: 'Ask bAIwor to do anything...',
+      placeholder: 'Ask bAIwor Code to do anything...',
     });
 
     if (p.isCancel(input) || input === null) {
@@ -212,8 +212,8 @@ async function startInteractive() {
 const program = new Command();
 
 program
-  .name('baiwor')
-  .description('bAIwor CLI v1.0.0 — baiwor.my.id')
+  .name('baiworcode')
+  .description('bAIwor Code v1.0.0 — baiwor.my.id')
   .version('1.0.0')
   .action(async () => {
     await startInteractive();

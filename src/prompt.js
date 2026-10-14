@@ -165,7 +165,7 @@ class SlashTextPrompt extends TextPrompt {
 }
 
 export async function askBaiworInput(opts = {}) {
-  const placeholder = opts.placeholder || 'Ask bAIwor to do anything...';
+  const placeholder = opts.placeholder || 'Ask bAIwor Code to do anything...';
 
   if (process.stdin.isTTY) {
     try {
