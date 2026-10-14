@@ -44,7 +44,7 @@ Setelah itu, perintah `baiworcode` (atau `baiwor`) bisa dipakai di mana saja.
 npx baiworcode
 ```
 
-### Cara 3 — Dari sumber (untuk kontributor)
+### Cara 4 — Dari sumber (untuk kontributor)
 ```bash
 git clone https://github.com/bAIwor/baiworcode.git
 cd baiworcode
