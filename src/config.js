@@ -7,10 +7,17 @@ export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const CONFIG_TMP = path.join(CONFIG_DIR, 'config.json.tmp');
 
 export const DEFAULT_CONFIG = {
-  activeProvider: 'Not configured',
-  activeModel: 'Not configured',
-  activeType: 'none',
-  customProviders: [],
+  activeProvider: 'Agentik',
+  activeModel: 'gemini-3.8-flash-high',
+  activeType: 'custom',
+  customProviders: [
+    {
+      name: 'Agentik',
+      baseUrl: 'https://api.agentik.my.id/v1',
+      apiKey: '',
+      model: 'gemini-3.8-flash-high',
+    },
+  ],
   oauth: {},
 };
 
@@ -56,7 +63,21 @@ export function getConfig() {
   try {
     const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_CONFIG, ...parsed };
+    const config = { ...DEFAULT_CONFIG, ...parsed };
+
+    // Pastikan Agentik selalu tersedia di daftar customProviders secara bawaan
+    if (!Array.isArray(config.customProviders) || config.customProviders.length === 0) {
+      config.customProviders = [...DEFAULT_CONFIG.customProviders];
+    } else {
+      const hasAgentik = config.customProviders.some(
+        (c) => c && c.name && c.name.toLowerCase() === 'agentik'
+      );
+      if (!hasAgentik) {
+        config.customProviders.unshift(DEFAULT_CONFIG.customProviders[0]);
+      }
+    }
+
+    return config;
   } catch (err) {
     // File rusak: JANGAN timpa! Cadangkan dulu
     const timestamp = Date.now();

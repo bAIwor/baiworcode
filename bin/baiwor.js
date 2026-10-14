@@ -400,7 +400,7 @@ program
 
 program
   .command('model')
-  .description('Pilih dan kelola model AI / provider (ala Hermes)')
+  .description('Pilih model Agentik, Google Gemini, atau Custom Endpoint')
   .action(async () => {
     await runModelMenu();
     process.exit(0);
@@ -416,7 +416,7 @@ program
 
 program
   .command('login [provider]')
-  .description('Login ke provider OAuth (Gemini, Copilot, dll)')
+  .description('Login ke Google Gemini OAuth')
   .action(async (provider) => {
     await login(provider);
     process.exit(0);
@@ -424,7 +424,7 @@ program
 
 program
   .command('logout [provider]')
-  .description('Logout dari sesi provider OAuth')
+  .description('Logout dari sesi Google Gemini OAuth')
   .action(async (provider) => {
     await logout(provider);
     process.exit(0);

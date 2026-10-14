@@ -4,11 +4,11 @@ import readline from 'node:readline';
 
 export const COMMANDS = [
   { name: '/help', desc: 'Menampilkan panduan perintah & bantuan' },
-  { name: '/status', desc: 'Status konfigurasi, model aktif & sesi login' },
-  { name: '/model', desc: 'Pilih & kelola model AI / provider (ala Hermes)' },
+  { name: '/status', desc: 'Status konfigurasi & model AI aktif' },
+  { name: '/model', desc: 'Pilih model Agentik, Google Gemini, atau Custom' },
   { name: '/provider', desc: 'Alias untuk perintah /model' },
-  { name: '/login', desc: 'Login ke provider OAuth (Gemini, Copilot, dll)' },
-  { name: '/logout', desc: 'Logout dari sesi provider OAuth' },
+  { name: '/login', desc: 'Login ke Google Gemini OAuth' },
+  { name: '/logout', desc: 'Logout dari sesi Google Gemini OAuth' },
   { name: '/clear', desc: 'Bersihkan layar & reset riwayat percakapan' },
   { name: '/reset', desc: 'Reset konteks percakapan AI tanpa clear layar' },
   { name: '/exit', desc: 'Keluar dari bAIwor Code' },

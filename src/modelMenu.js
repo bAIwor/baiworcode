@@ -53,14 +53,15 @@ export async function runModelMenu() {
     }
 
     // 3. Menu Aksi di bagian bawah
-    selectOptions.push(
-      {
-        value: 'action_add_custom',
-        label: chalk.hex('#38BDF8')('+ Custom endpoint (enter URL manually)'),
-      }
-    );
+    selectOptions.push({
+      value: 'action_add_custom',
+      label: chalk.hex('#38BDF8')('+ Custom endpoint (enter URL manually)'),
+    });
 
-    if (customList.length > 0) {
+    const removableList = customList.filter(
+      (cp) => cp && cp.name && cp.name.toLowerCase() !== 'agentik'
+    );
+    if (removableList.length > 0) {
       selectOptions.push({
         value: 'action_remove_custom',
         label: chalk.redBright('- Remove a saved custom provider'),
@@ -81,7 +82,7 @@ export async function runModelMenu() {
       return;
     }
 
-    // Aksi: 5 OAuth Providers
+    // Aksi: OAuth Provider (Google Gemini)
     if (choice.startsWith('oauth_')) {
       const provId = choice.replace('oauth_', '');
       const provObj = PROVIDERS[provId];
@@ -175,18 +176,22 @@ export async function runModelMenu() {
       }
     }
 
-    // Aksi: Custom Provider yang sudah tersimpan
+    // Aksi: Custom Provider yang sudah tersimpan (termasuk Agentik)
     if (choice.startsWith('custom_')) {
       const cpName = choice.replace('custom_', '');
       const cp = customList.find((x) => x.name === cpName);
       if (!cp) continue;
 
+      const isAgentik = cp.name.toLowerCase() === 'agentik';
+      const typeLabel = isAgentik ? 'Lokal bAIwor' : 'Custom';
+
       const subChoice = await p.select({
-        message: `Kelola Custom Provider: ${chalk.bold(cp.name)}`,
+        message: `Kelola ${chalk.bold(cp.name)} (${typeLabel}):`,
         options: [
           { value: 'activate', label: `Aktifkan ${cp.name} (${cp.model})` },
-          { value: 'switch_model', label: 'Ganti model dari daftar tersimpan' },
+          { value: 'switch_model', label: 'Ganti model aktif' },
           { value: 'refresh_models', label: `Refresh daftar model dari ${cleanUrl(cp.baseUrl)}/models` },
+          { value: 'edit_key', label: `Ubah API Key (${maskSecret(cp.apiKey)})` },
           { value: 'back', label: '← Kembali' },
         ],
       });
@@ -196,6 +201,28 @@ export async function runModelMenu() {
       }
 
       if (subChoice === 'activate') {
+        if (!cp.apiKey || !cp.apiKey.trim()) {
+          console.log(chalk.yellow(`\n  ℹ️  API Key untuk ${cp.name} belum diatur.`));
+          if (isAgentik) {
+            console.log(chalk.gray('     Dapatkan bonus token/credit di https://agentik.my.id\n'));
+          }
+          const inputKey = await p.text({
+            message: `Masukkan API Key ${cp.name}:`,
+            validate(val) {
+              if (!val || !val.trim()) return 'API Key tidak boleh kosong';
+            },
+          });
+          if (p.isCancel(inputKey)) continue;
+          cp.apiKey = inputKey.trim();
+          const updatedCustom = customList.map((item) => {
+            if (item.name === cp.name) {
+              return { ...item, apiKey: inputKey.trim() };
+            }
+            return item;
+          });
+          saveConfig({ customProviders: updatedCustom });
+        }
+
         saveConfig({
           activeProvider: cp.name,
           activeModel: cp.model,
@@ -205,10 +232,47 @@ export async function runModelMenu() {
         return;
       }
 
+      if (subChoice === 'edit_key') {
+        const inputKey = await p.text({
+          message: `Masukkan API Key baru untuk ${cp.name}:`,
+          placeholder: isAgentik ? 'Dapatkan di https://agentik.my.id' : '',
+          validate(val) {
+            if (!val || !val.trim()) return 'API Key tidak boleh kosong';
+          },
+        });
+        if (p.isCancel(inputKey)) continue;
+
+        const updatedCustom = customList.map((item) => {
+          if (item.name === cp.name) {
+            return { ...item, apiKey: inputKey.trim() };
+          }
+          return item;
+        });
+
+        saveConfig({ customProviders: updatedCustom });
+        p.outro(chalk.green(`✓ API Key untuk ${cp.name} berhasil diperbarui!`));
+        return;
+      }
+
       if (subChoice === 'switch_model') {
-        const modelsList = cp.models && cp.models.length > 0 ? cp.models : [cp.model];
+        const defaultAgentikModels = [
+          'gemini-3.8-flash-high',
+          'gemini-3.5-flash',
+          'claude-sonnet-5-5',
+          'claude-sonnet-4-6',
+          'gemini-3.7-flash',
+          'gemini-3.1-flash-lite',
+        ];
+
+        const modelsList =
+          cp.models && cp.models.length > 0
+            ? cp.models
+            : isAgentik
+            ? defaultAgentikModels
+            : [cp.model];
+
         const picked = await p.select({
-          message: 'Pilih model baru:',
+          message: `Pilih model untuk ${cp.name}:`,
           options: [
             ...modelsList.map((m) => ({ value: m, label: m })),
             { value: '__manual__', label: '✎ Ketik nama model lain...' },
@@ -437,10 +501,13 @@ export async function runModelMenu() {
 
     // Aksi: Remove a saved custom provider
     if (choice === 'action_remove_custom') {
+      const removableList = customList.filter(
+        (cp) => cp && cp.name && cp.name.toLowerCase() !== 'agentik'
+      );
       const toRemove = await p.select({
         message: 'Pilih custom provider yang ingin dihapus:',
         options: [
-          ...customList.map((cp) => ({
+          ...removableList.map((cp) => ({
             value: cp.name,
             label: `${cp.name} (${cleanUrl(cp.baseUrl)}) — ${cp.model}`,
           })),
