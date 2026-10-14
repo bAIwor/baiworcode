@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import { resolveActiveCredentials } from '../auth/resolve.js';
 import { conversationSession } from './conversation.js';
 import { streamChatCompletion } from './client.js';
+import { TOOL_DEFINITIONS, executeTool } from '../tools/index.js';
 
 export { conversationSession };
 
@@ -30,6 +31,7 @@ export function resetConversation() {
 
 /**
  * Menangani prompt chat dari pengguna dan mengirimkan ke LLM aktif secara streaming.
+ * Mendukung Agentic Execution Loop dengan pemanggilan tools (Tahap 3B).
  *
  * @param {string} promptText
  */
@@ -54,14 +56,13 @@ export async function handleUserChat(promptText) {
   const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   let frameIdx = 0;
   let spinnerInterval = null;
-  let hasFirstTokenArrived = false;
-  let isReasoningActive = false;
 
-  const startThinkingSpinner = () => {
-    process.stdout.write(`\n  ${chalk.cyan(spinnerFrames[0])} ${chalk.dim('bAIwor sedang berpikir...')}`);
+  const startThinkingSpinner = (msg = 'bAIwor sedang berpikir...') => {
+    stopThinkingSpinner();
+    process.stdout.write(`\n  ${chalk.cyan(spinnerFrames[0])} ${chalk.dim(msg)}`);
     spinnerInterval = setInterval(() => {
       frameIdx = (frameIdx + 1) % spinnerFrames.length;
-      process.stdout.write(`\r  ${chalk.cyan(spinnerFrames[frameIdx])} ${chalk.dim('bAIwor sedang berpikir...')}`);
+      process.stdout.write(`\r  ${chalk.cyan(spinnerFrames[frameIdx])} ${chalk.dim(msg)}`);
     }, 80);
   };
 
@@ -71,8 +72,6 @@ export async function handleUserChat(promptText) {
       spinnerInterval = null;
     }
   };
-
-  startThinkingSpinner();
 
   // 4. Inisialisasi AbortController & pasang listener SIGINT
   const controller = new AbortController();
@@ -87,38 +86,107 @@ export async function handleUserChat(promptText) {
 
   process.on('SIGINT', sigintHandler);
 
+  // 5. Agentic Loop (Maksimal 10 putaran interaksi model-tool)
+  const MAX_AGENT_TURNS = 10;
+  let currentTurn = 0;
+  let hasFirstTurnSucceeded = false;
+
   try {
-    const result = await streamChatCompletion({
-      credentials,
-      messages: conversationSession.getMessages(),
-      signal: controller.signal,
-      onStart: () => {
-        stopThinkingSpinner();
-        hasFirstTokenArrived = true;
-        // Bersihkan baris spinner dan buat baris baru untuk output jawaban
-        process.stdout.write('\r\x1b[K\n');
-      },
-      onReasoning: (chunk) => {
-        if (!isReasoningActive) {
-          isReasoningActive = true;
-          process.stdout.write(chalk.dim.gray('💭 Thinking: '));
-        }
-        process.stdout.write(chalk.dim.gray(chunk));
-      },
-      onDelta: (chunk) => {
-        if (isReasoningActive) {
-          isReasoningActive = false;
-          process.stdout.write('\n\n');
-        }
-        process.stdout.write(chunk);
-      },
-    });
+    while (currentTurn < MAX_AGENT_TURNS) {
+      currentTurn++;
+      let hasFirstTokenArrived = false;
+      let isReasoningActive = false;
 
-    // Simpan respons lengkap asisten ke histori
-    conversationSession.addAssistantMessage(result.content);
-    conversationSession.trim(40);
+      const spinnerText =
+        currentTurn === 1 ? 'bAIwor sedang berpikir...' : 'bAIwor sedang menganalisis hasil tool...';
+      startThinkingSpinner(spinnerText);
 
-    process.stdout.write('\n\n');
+      const result = await streamChatCompletion({
+        credentials,
+        messages: conversationSession.getMessages(),
+        tools: TOOL_DEFINITIONS,
+        signal: controller.signal,
+        onStart: () => {
+          stopThinkingSpinner();
+          hasFirstTokenArrived = true;
+          // Bersihkan baris spinner dan buat baris baru untuk output jawaban
+          process.stdout.write('\r\x1b[K\n');
+        },
+        onReasoning: (chunk) => {
+          if (!isReasoningActive) {
+            isReasoningActive = true;
+            process.stdout.write(chalk.dim.gray('💭 Thinking: '));
+          }
+          process.stdout.write(chalk.dim.gray(chunk));
+        },
+        onDelta: (chunk) => {
+          if (isReasoningActive) {
+            isReasoningActive = false;
+            process.stdout.write('\n\n');
+          }
+          process.stdout.write(chunk);
+        },
+      });
+
+      stopThinkingSpinner();
+      hasFirstTurnSucceeded = true;
+
+      // Cek apakah model meminta pemanggilan tool (Function Calling)
+      if (result.tool_calls && Array.isArray(result.tool_calls) && result.tool_calls.length > 0) {
+        // Simpan pesan asisten beserta tool_calls ke histori
+        conversationSession.addAssistantMessage(result.content || '', result.tool_calls);
+
+        process.stdout.write('\n');
+
+        // Eksekusi setiap tool yang diminta oleh model
+        for (const tc of result.tool_calls) {
+          const fnName = tc.function?.name || 'unknown_tool';
+          const rawArgs = tc.function?.arguments || '{}';
+
+          let parsedArgs = {};
+          try {
+            parsedArgs = JSON.parse(rawArgs);
+          } catch {
+            parsedArgs = { raw: rawArgs };
+          }
+
+          // Format ringkasan argumen untuk ditampilkan di terminal
+          const argEntries = Object.entries(parsedArgs);
+          const argSummary =
+            argEntries.length > 0
+              ? argEntries.map(([k, v]) => `${chalk.dim(k)}: ${chalk.cyan(JSON.stringify(v))}`).join(', ')
+              : chalk.dim('tanpa parameter');
+
+          console.log(
+            `  ${chalk.hex('#F59E0B')('⚡ Tool:')} ${chalk.bold.white(fnName)} ${chalk.gray('(')}${argSummary}${chalk.gray(')')}`
+          );
+
+          // Eksekusi tool handler
+          const toolResult = await executeTool(fnName, rawArgs);
+
+          // Cetak status hasil tool secara ringkas
+          if (toolResult.success) {
+            const firstLine = toolResult.output.split('\n')[0] || 'Selesai';
+            const cleanSummary = firstLine.length > 100 ? firstLine.slice(0, 100) + '…' : firstLine;
+            console.log(`     ${chalk.green('✓')} ${chalk.dim(cleanSummary)}`);
+          } else {
+            console.log(`     ${chalk.red('⚠️ ')} ${chalk.red(toolResult.output)}`);
+          }
+
+          // Simpan hasil eksekusi tool ke memori sesi dengan role: 'tool'
+          conversationSession.addToolResult(tc.id, toolResult.output, fnName);
+        }
+
+        // Lanjut ke giliran berikutnya agar LLM memproses hasil tool
+        continue;
+      }
+
+      // Jika tidak ada tool calls, berarti respons akhir (final answer) sudah selesai
+      conversationSession.addAssistantMessage(result.content || '');
+      conversationSession.trim(50);
+      process.stdout.write('\n\n');
+      break;
+    }
   } catch (err) {
     stopThinkingSpinner();
 
@@ -153,15 +221,16 @@ export async function handleUserChat(promptText) {
       console.log(chalk.gray('     Periksa koneksi internet Anda atau periksa URL endpoint di menu /model.\n'));
     } else {
       console.log(chalk.red.bold('  ⚠️  Gagal memproses pesan:'));
-      console.log(chalk.red(`     ${err.message}\n`));
+      console.log(chalk.red(`     ${err.message}`));
+      if (err.cause) {
+        console.log(chalk.dim(`     Detail   : ${err.cause.message || err.cause}`));
+      }
+      console.log();
     }
 
-    // Rollback pesan user terakhir agar tidak mengotori histori dengan prompt yang gagal
-    if (conversationSession.messages.length > 0) {
-      const last = conversationSession.messages[conversationSession.messages.length - 1];
-      if (last.role === 'user') {
-        conversationSession.messages.pop();
-      }
+    // Rollback pesan user terakhir hanya jika gagal di awal sebelum ada balasan asisten
+    if (!hasFirstTurnSucceeded) {
+      conversationSession.removeLastUserMessage();
     }
   } finally {
     stopThinkingSpinner();

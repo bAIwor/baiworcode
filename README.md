@@ -31,10 +31,17 @@ CLI coding agent pintar dengan estetika modern ala MCode dan arsitektur provider
   - Eksekusi cepat langsung dengan menekan `Enter` atau batalkan dengan `Esc`.
 - **Arsitektur Autentikasi & Provider ala Hermes CLI**:
   - Akses cepat via perintah `baiworcode model` (atau `baiwor model`).
-  - 5 Provider OAuth terintegrasi (GitHub Copilot via Device Flow RFC 8628, Google Gemini, OpenAI, Qwen, MiniMax).
+  - **Google Gemini OAuth** via PKCE (loopback + S256) — login tanpa menyimpan API key di disk.
+  - **Agentik AI** sebagai provider bawaan (endpoint OpenAI-compatible + bonus token dari [agentik.my.id](https://agentik.my.id)).
+  - Dukungan **Custom OpenAI-compatible endpoints** lengkap dengan fetch otomatis `/models`, refresh model, dan ganti model aktif.
   - Perintah `baiworcode login [provider]`, `baiworcode logout [provider]`, dan `baiworcode status`.
-  - Dukungan **Custom OpenAI-compatible endpoints** (seperti AgentikMyID) lengkap dengan fetch otomatis `/models`, refresh model, dan ganti model aktif.
   - Konfigurasi tersimpan otomatis & atomik di `~/.baiwor/config.json` dengan proteksi backup jika terjadi file korup.
+- **Mesin Chat Streaming & Agentic Loop**:
+  - Panggilan `/chat/completions` streaming (SSE) dengan line-buffering agar aman dari potongan TCP.
+  - Dukungan token `reasoning_content` (DeepSeek R1 dsb.) dan pembatalan via `Ctrl+C` (AbortController).
+  - Riwayat percakapan multi-turn dengan pemangkasan otomatis agar tidak melebihi context window.
+  - **Autonomous Tool Execution (Tahap 3B)**: 5 tool bawaan (`read_file`, `write_file`, `edit_file`, `list_directory`, `run_command`) dengan loop hingga 10 putaran interaksi model-tool secara mandiri.
+  - Indikator terminal interaktif bergaya visual modern (`⚡ Tool: ...` dengan hasil `✓`).
 
 ---
 
@@ -65,6 +72,9 @@ npm link --force
 baiworcode
 # (atau 'baiwor')
 
+# Tanya langsung sekali jalan (non-interaktif)
+baiworcode "jelaskan isi src/config.js"
+
 # Cek status sistem & login provider
 baiworcode status
 
@@ -81,12 +91,14 @@ baiworcode model
 - `/status` — Menampilkan status konfigurasi, model aktif & sesi login OAuth
 - `/model` — Kelola model AI & provider (ala Hermes)
 - `/provider` — Alias untuk perintah `/model`
-- `/login` — Login ke provider OAuth (Gemini, Copilot, OpenAI, Qwen, MiniMax)
+- `/login` — Login ke provider OAuth (Google Gemini)
 - `/logout` — Logout dari sesi provider OAuth
-- `/clear` — Membersihkan layar dan menampilkan ulang banner
+- `/clear` — Membersihkan layar & reset riwayat percakapan
+- `/reset` — Reset konteks percakapan AI tanpa membersihkan layar
 - `/exit` — Keluar dari bAIwor Code
 
 ### Perintah Langsung CLI:
+- `baiworcode [prompt...]` — Kirim satu prompt langsung lalu keluar (non-interaktif)
 - `baiworcode status` — Status konfigurasi dan sesi login
 - `baiworcode model` — Buka menu kelola model dan endpoint
 - `baiworcode login [provider]` — Login langsung ke provider OAuth

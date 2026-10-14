@@ -16,19 +16,22 @@ export function buildChatEndpoint(baseUrl) {
 /**
  * Melakukan panggilan streaming chat completion ke endpoint OpenAI-compatible.
  * Menggunakan line-buffering untuk mencegah error JSON.parse pada potongan TCP/SSE chunk.
+ * Mendukung akumulasi tool_calls untuk Agentic Tool Calling (Tahap 3B).
  *
  * @param {Object} options
  * @param {Object} options.credentials - { baseUrl, headers, model }
  * @param {Array} options.messages - Array pesan [{ role, content }]
+ * @param {Array} [options.tools] - Definisi tools berformat OpenAI function calling
  * @param {AbortSignal} [options.signal] - Signal pembatalan AbortController
  * @param {Function} [options.onStart] - Callback saat token pertama tiba
  * @param {Function} [options.onDelta] - Callback setiap token konten tiba
  * @param {Function} [options.onReasoning] - Callback setiap token reasoning/thinking tiba
- * @returns {Promise<{ content: string, reasoning: string, completed: boolean }>}
+ * @returns {Promise<{ content: string, reasoning: string, tool_calls: Array|null, completed: boolean }>}
  */
 export async function streamChatCompletion({
   credentials,
   messages,
+  tools,
   signal,
   onStart,
   onDelta,
@@ -40,6 +43,11 @@ export async function streamChatCompletion({
     messages,
     stream: true,
   };
+
+  if (tools && Array.isArray(tools) && tools.length > 0) {
+    payload.tools = tools;
+    payload.tool_choice = 'auto';
+  }
 
   const response = await fetch(url, {
     method: 'POST',
@@ -83,6 +91,7 @@ export async function streamChatCompletion({
   let hasStarted = false;
   let fullContent = '';
   let fullReasoning = '';
+  const accumulatedToolCalls = [];
 
   try {
     while (true) {
@@ -99,18 +108,24 @@ export async function streamChatCompletion({
         // Lewati baris kosong atau keep-alive SSE comment (: ping)
         if (!line || line.startsWith(':')) continue;
 
-        if (line === 'data: [DONE]') {
-          return { content: fullContent, reasoning: fullReasoning, completed: true };
-        }
-
-        if (line.startsWith('data: ')) {
-          const jsonStr = line.slice(6).trim();
+        // Toleran terhadap 'data: {...}' maupun 'data:{...}' (tanpa spasi).
+        if (line.startsWith('data:')) {
+          const jsonStr = line.slice(5).trim();
+          if (jsonStr === '[DONE]') {
+            const finalToolCalls = accumulatedToolCalls.filter(Boolean);
+            return {
+              content: fullContent,
+              reasoning: fullReasoning,
+              tool_calls: finalToolCalls.length > 0 ? finalToolCalls : null,
+              completed: true,
+            };
+          }
           try {
             const parsed = JSON.parse(jsonStr);
             const choice = parsed.choices?.[0];
             const delta = choice?.delta;
 
-            if (!delta) continue;
+            if (!delta && !choice?.message) continue;
 
             if (!hasStarted) {
               hasStarted = true;
@@ -118,7 +133,7 @@ export async function streamChatCompletion({
             }
 
             // Tangani token reasoning / thinking (DeepSeek R1 dsb.)
-            if (delta.reasoning_content) {
+            if (delta?.reasoning_content) {
               fullReasoning += delta.reasoning_content;
               if (onReasoning) {
                 onReasoning(delta.reasoning_content);
@@ -126,10 +141,39 @@ export async function streamChatCompletion({
             }
 
             // Tangani token konten utama
-            if (delta.content) {
+            if (delta?.content) {
               fullContent += delta.content;
               if (onDelta) {
                 onDelta(delta.content);
+              }
+            }
+
+            // Tangani token tool calls (OpenAI function calling)
+            if (delta?.tool_calls && Array.isArray(delta.tool_calls)) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index ?? 0;
+                if (!accumulatedToolCalls[idx]) {
+                  accumulatedToolCalls[idx] = {
+                    id: tc.id || '',
+                    type: tc.type || 'function',
+                    function: {
+                      name: tc.function?.name || '',
+                      arguments: tc.function?.arguments || '',
+                    },
+                  };
+                } else {
+                  if (tc.id) accumulatedToolCalls[idx].id = tc.id;
+                  if (tc.function?.name) accumulatedToolCalls[idx].function.name += tc.function.name;
+                  if (tc.function?.arguments) accumulatedToolCalls[idx].function.arguments += tc.function.arguments;
+                }
+              }
+            }
+
+            // Fallback jika provider mengirimkan tool_calls langsung di object message
+            if (choice?.message?.tool_calls && Array.isArray(choice.message.tool_calls)) {
+              for (const tc of choice.message.tool_calls) {
+                const idx = tc.index ?? accumulatedToolCalls.length;
+                accumulatedToolCalls[idx] = tc;
               }
             }
           } catch {
@@ -140,8 +184,8 @@ export async function streamChatCompletion({
     }
 
     // Periksa sisa buffer jika masih ada data yang belum terurai
-    if (buffer.trim().startsWith('data: ')) {
-      const jsonStr = buffer.trim().slice(6).trim();
+    if (buffer.trim().startsWith('data:')) {
+      const jsonStr = buffer.trim().slice(5).trim();
       if (jsonStr !== '[DONE]') {
         try {
           const parsed = JSON.parse(jsonStr);
@@ -158,10 +202,18 @@ export async function streamChatCompletion({
       const abortErr = new Error('Streaming dihentikan oleh pengguna.');
       abortErr.name = 'AbortError';
       abortErr.partialContent = fullContent;
+      const finalToolCalls = accumulatedToolCalls.filter(Boolean);
+      abortErr.partialToolCalls = finalToolCalls.length > 0 ? finalToolCalls : null;
       throw abortErr;
     }
     throw err;
   }
 
-  return { content: fullContent, reasoning: fullReasoning, completed: true };
+  const finalToolCalls = accumulatedToolCalls.filter(Boolean);
+  return {
+    content: fullContent,
+    reasoning: fullReasoning,
+    tool_calls: finalToolCalls.length > 0 ? finalToolCalls : null,
+    completed: true,
+  };
 }

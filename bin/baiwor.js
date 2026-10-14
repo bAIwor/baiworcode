@@ -351,7 +351,7 @@ async function startInteractive() {
         resetConversation();
         break;
       case '/clear':
-        conversationSession.reset();
+        conversationSession.clearHistory();
         console.clear();
         showBanner();
         break;

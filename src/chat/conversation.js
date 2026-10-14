@@ -101,6 +101,34 @@ export class Conversation {
   }
 
   /**
+   * Menghapus pesan user terakhir dari riwayat.
+   * Dipakai untuk rollback ketika request gagal, agar prompt yang gagal
+   * tidak mengotori konteks percakapan berikutnya.
+   * Pemindaian berhenti di system prompt sehingga konteks dasar tetap utuh.
+   *
+   * @returns {boolean} true jika ada pesan user yang dihapus.
+   */
+  removeLastUserMessage() {
+    for (let i = this.messages.length - 1; i >= 0; i -= 1) {
+      const role = this.messages[i].role;
+      if (role === 'user') {
+        this.messages.splice(i, 1);
+        return true;
+      }
+      if (role === 'system') break;
+    }
+    return false;
+  }
+
+  /**
+   * Mengosongkan riwayat percakapan (nama publik untuk reset()).
+   * Disiapkan agar pemanggil tidak perlu menyentuh properti internal.
+   */
+  clearHistory() {
+    this.reset();
+  }
+
+  /**
    * Memangkas riwayat jika terlalu panjang agar tidak melebihi context window,
    * dengan tetap mempertahankan system prompt di indeks pertama.
    */
