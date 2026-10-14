@@ -9,6 +9,7 @@ import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
 import { handleUserChat, resetConversation, conversationSession } from '../src/chat/index.js';
+import { renderStatusLine } from '../src/statusLine.js';
 import { resolveActiveCredentials } from '../src/auth/resolve.js';
 
 function stripAnsi(str) {
@@ -188,33 +189,15 @@ function showBanner() {
   console.log(botBar);
   console.log();
 
-  const activeModelDisplay = config.activeModel !== 'Not configured'
-    ? chalk.hex('#F59E0B')(config.activeModel)
-    : chalk.gray('Not configured');
-  const activeProviderDisplay = config.activeProvider !== 'Not configured'
-    ? chalk.cyan(config.activeProvider)
-    : chalk.cyan('baiwor.my.id');
-
-  console.log(chalk.gray('   Start · @ file · / commands'));
-  console.log(chalk.gray('   ─────────────────────────────────────────────────────────────────────────'));
-  console.log(
-    '   ' +
-      chalk.cyan('~') +
-      ' ' +
-      chalk.gray('│') +
-      ' ' +
-      chalk.white('Full access') +
-      ' ' +
-      chalk.gray('│') +
-      ' ' +
-      chalk.magenta('✦') +
-      ' ' +
-      activeModelDisplay +
-      ' ' +
-      chalk.gray('·') +
-      ' ' +
-      activeProviderDisplay
-  );
+  // Baris status tidak digambar di sini saat terminal sungguhan — `SlashTextPrompt`
+  // merender dirinya sendiri, jadi memakainya lagi akan menumpuk dua baris identik.
+  // Pada mode pipe/redirect justru perlu dicetak supaya keluaran berkas masih
+  // mencatat model, provider, dan sisa konteks.
+  if (!process.stdout.isTTY) {
+    console.log(renderStatusLine());
+  } else {
+    console.log(chalk.gray('   Start · @ file · / commands'));
+  }
   console.log();
 }
 
@@ -244,6 +227,17 @@ function showHelp() {
   console.log(`    ${chalk.cyan('baiworcode "jelaskan struktur proyek ini"')}`);
   console.log(`    ${chalk.cyan('baiworcode "perbaiki error di src/index.js"')}`);
   console.log(`    ${chalk.cyan('baiworcode "buatkan test untuk fungsi hitungTotal"')}`);
+  console.log();
+  console.log(gold.bold('  🧭 Cara Membaca Aktivitas bAIwor:'));
+  console.log(`    ${dim('├')} ✓ read_file ${dim('· 0.1s · 42 baris')}`);
+  console.log(`    ${dim('├')} ✓ todo_list ${dim('· 2ms · 3/5 selesai')}`);
+  console.log(`    ${dim('│')}   ✓ Baca struktur proyek`);
+  console.log(`    ${dim('│')}   ○ Tambah unit test`);
+  console.log(`    ${dim('└')} ✗ run_command ${dim('· 1.2s · 1 baris')}`);
+  console.log(`    ${dim('Setiap tool dicatat lengkap dengan durasi dan jumlah baris keluaran.')}`);
+  console.log(`    ${dim('Daftar tugas dari todo_list tampil sebagai checklist di bawah node-nya.')}`);
+  console.log(`    ${dim('Baris "Context X% left" muncul setelah setiap jawaban. Angka itu perkiraan,')}`);
+  console.log(`    ${dim('dan riwayat dipangkas otomatis bila mulai penuh — pakai /clear bila perlu.')}`);
   console.log();
   console.log(chalk.gray('  💡 Ketik langsung pertanyaan atau instruksi coding apa saja untuk chat dengan bAIwor!'));
   console.log();

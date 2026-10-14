@@ -3,6 +3,9 @@ import { resolveActiveCredentials } from '../auth/resolve.js';
 import { conversationSession } from './conversation.js';
 import { streamChatCompletion } from './client.js';
 import { TOOL_DEFINITIONS, executeTool } from '../tools/index.js';
+import { todoStore } from '../tools/todoTool.js';
+import { renderTimeline, renderTodoChecklist, formatTodoProgress } from './timeline.js';
+import { getContextUsage, formatContextIndicator, formatContextWarning } from './context.js';
 
 export { conversationSession };
 
@@ -86,6 +89,27 @@ export async function handleUserChat(promptText) {
     }
   };
 
+  /**
+   * Umpan balik langsung ketika sebuah tool sedang berjalan.
+   * Ditulis pada satu baris yang sama lalu dihapus begitu tool selesai,
+   * jadi tidak pernah meninggalkan jejak di keluaran.
+   * Hanya aktif di TTY — di luar itu `\r` tidak menimpa apa pun sehingga
+   * escape code-nya justru mengotori keluaran.
+   */
+  let liveToolLineActive = false;
+
+  const showLiveTool = (name) => {
+    if (!process.stdout.isTTY) return;
+    process.stdout.write(`\r\x1b[K  ${chalk.hex('#F59E0B')('⠋')} ${chalk.dim(`menjalankan ${name}…`)}`);
+    liveToolLineActive = true;
+  };
+
+  const clearLiveTool = () => {
+    if (!liveToolLineActive) return;
+    process.stdout.write('\r\x1b[K');
+    liveToolLineActive = false;
+  };
+
   // 4. Inisialisasi AbortController & pasang listener SIGINT
   const controller = new AbortController();
   activeAbortController = controller;
@@ -110,6 +134,20 @@ export async function handleUserChat(promptText) {
       currentTurn++;
       let hasFirstTokenArrived = false;
       let isReasoningActive = false;
+
+      // Pastikan riwayat muat dalam context window SEBELUM request dikirim.
+      // Pemangkasan lama berbasis jumlah pesan bisa membiarkan permintaan lolos
+      // ke provider padahal isinya jauh melampaui jendela konteks.
+      const trimResult = conversationSession.trimToTokenBudget(undefined, {
+        model: credentials.model,
+      });
+      if (trimResult.trimmed) {
+        const warn = formatContextWarning(
+          getContextUsage(conversationSession.getMessages(), { model: credentials.model }),
+          { useColor: Boolean(process.stdout.isTTY) }
+        );
+        if (warn) process.stdout.write(`\n  ${warn}\n`);
+      }
 
       const spinnerText =
         currentTurn === 1 ? 'bAIwor sedang berpikir...' : 'bAIwor sedang menganalisis hasil tool...';
@@ -152,6 +190,11 @@ export async function handleUserChat(promptText) {
 
         process.stdout.write('\n');
 
+        // Kumpulkan aktivitas tool satu putaran ini, lalu render sekaligus
+        // sebagai pohon. Menunda render diperlukan supaya node terakhir bisa
+        // memakai cabang penutup `└` — yang tidak diketahui saat tool berjalan.
+        const turnEvents = [];
+
         // Eksekusi setiap tool yang diminta oleh model
         for (const tc of result.tool_calls) {
           const fnName = tc.function?.name || 'unknown_tool';
@@ -164,32 +207,40 @@ export async function handleUserChat(promptText) {
             parsedArgs = { raw: rawArgs };
           }
 
-          // Format ringkasan argumen untuk ditampilkan di terminal
-          const argEntries = Object.entries(parsedArgs);
-          const argSummary =
-            argEntries.length > 0
-              ? argEntries.map(([k, v]) => `${chalk.dim(k)}: ${chalk.cyan(JSON.stringify(v))}`).join(', ')
-              : chalk.dim('tanpa parameter');
+          showLiveTool(fnName);
 
-          console.log(
-            `  ${chalk.hex('#F59E0B')('⚡ Tool:')} ${chalk.bold.white(fnName)} ${chalk.gray('(')}${argSummary}${chalk.gray(')')}`
-          );
-
-          // Eksekusi tool handler
+          // Eksekusi tool handler sambil mengukur durasi
+          const startedAt = Date.now();
           const toolResult = await executeTool(fnName, rawArgs);
+          const durationMs = Date.now() - startedAt;
 
-          // Cetak status hasil tool secara ringkas
-          if (toolResult.success) {
-            const firstLine = toolResult.output.split('\n')[0] || 'Selesai';
-            const cleanSummary = firstLine.length > 100 ? firstLine.slice(0, 100) + '…' : firstLine;
-            console.log(`     ${chalk.green('✓')} ${chalk.dim(cleanSummary)}`);
-          } else {
-            console.log(`     ${chalk.red('⚠️ ')} ${chalk.red(toolResult.output)}`);
-          }
+          // `todo_list` mengembalikan JSON untuk dibaca model, bukan untuk
+          // mata pengguna. Di sini ia diganti checklist sungguhan supaya
+          // progres ini benar-benar terlihat oleh manusia.
+          const todoItems = fnName === 'todo_list' && toolResult.success ? todoStore.read() : [];
+          const todoDetail = renderTodoChecklist(todoItems, {
+            useColor: Boolean(process.stdout.isTTY),
+          });
+
+          turnEvents.push({
+            name: fnName,
+            args: parsedArgs,
+            durationMs,
+            output: toolResult.output,
+            success: toolResult.success,
+            detail: todoDetail || undefined,
+            extraMeta: todoDetail ? formatTodoProgress(todoItems) : undefined,
+          });
 
           // Simpan hasil eksekusi tool ke memori sesi dengan role: 'tool'
           conversationSession.addToolResult(tc.id, toolResult.output, fnName);
         }
+
+        // Hapus baris "menjalankan ..." sebelum menggambar pohon final.
+        clearLiveTool();
+
+        const block = renderTimeline(turnEvents, { useColor: Boolean(process.stdout.isTTY) });
+        if (block) process.stdout.write(`${block}\n\n`);
 
         // Lanjut ke giliran berikutnya agar LLM memproses hasil tool
         continue;
@@ -197,8 +248,16 @@ export async function handleUserChat(promptText) {
 
       // Jika tidak ada tool calls, berarti respons akhir (final answer) sudah selesai
       conversationSession.addAssistantMessage(result.content || '');
-      conversationSession.trim(50);
       process.stdout.write('\n\n');
+
+      // Tampilkan sisa konteks sebagai penanda giliran berikutnya.
+      const usage = getContextUsage(conversationSession.getMessages(), {
+        model: credentials.model,
+      });
+      process.stdout.write(
+        `  ${formatContextIndicator(usage, { useColor: Boolean(process.stdout.isTTY) })}\n\n`
+      );
+
       completedNaturally = true;
       break;
     }
@@ -210,10 +269,10 @@ export async function handleUserChat(promptText) {
       conversationSession.addAssistantMessage(
         '[Sistem] Batas putaran tool tercapai sebelum jawaban akhir diberikan.'
       );
-      conversationSession.trim(50);
     }
   } catch (err) {
     stopThinkingSpinner();
+    clearLiveTool();
 
     if (err.name === 'AbortError') {
       clearSpinnerLine();
@@ -259,6 +318,7 @@ export async function handleUserChat(promptText) {
     }
   } finally {
     stopThinkingSpinner();
+    clearLiveTool();
     isStreamingActive = false;
     activeAbortController = null;
     process.removeListener('SIGINT', sigintHandler);

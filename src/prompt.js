@@ -1,6 +1,7 @@
 import { TextPrompt, isCancel } from '@clack/core';
 import chalk from 'chalk';
 import readline from 'node:readline';
+import { renderStatusLine, frameRules } from './statusLine.js';
 
 export const COMMANDS = [
   { name: '/help', desc: 'Menampilkan panduan perintah & bantuan' },
@@ -14,7 +15,69 @@ export const COMMANDS = [
   { name: '/exit', desc: 'Keluar dari bAIwor Code' },
 ];
 
-class SlashTextPrompt extends TextPrompt {
+/**
+ * Menyusun seluruh frame area input: garis atas, baris input, dropdown
+ * perintah bila terbuka, garis bawah, lalu baris status.
+ *
+ * Dipisah dari kelas prompt karena fungsi ini murni — tidak menyentuh terminal —
+ * sehingga layout-nya bisa diuji tanpa menjalankan TTY sungguhan.
+ *
+ * @param {{value?:string, state?:string, placeholder?:string, displayInput?:string, dropdownOpen?:boolean, selectedIndex?:number}} options
+ * @returns {string}
+ */
+export function buildPromptFrame({
+  value = '',
+  state = 'initial',
+  placeholder = '',
+  displayInput = null,
+  dropdownOpen = false,
+  selectedIndex = 0,
+} = {}) {
+  const shown = displayInput !== null ? displayInput : value;
+
+  const rules = frameRules();
+  let out = rules.top + '\n';
+
+  if (state === 'submit') {
+    out += `  ${chalk.cyan('›')}  ${chalk.white(value || placeholder)}`;
+  } else if (state === 'cancel') {
+    out += `  ${chalk.red('›')}  ${chalk.strikethrough(chalk.gray(value))}`;
+  } else {
+    out += `  ${chalk.cyan('›')}  ${shown || chalk.dim(placeholder)}`;
+
+    if (dropdownOpen && value.startsWith('/')) {
+      const query = value.toLowerCase();
+      const matches = COMMANDS.filter((c) => c.name.startsWith(query));
+      const active = matches.length ? Math.min(selectedIndex, matches.length - 1) : 0;
+
+      out += '\n  ' + chalk.gray('╭─ Perintah (↑/↓ pilih, Enter jalankan, Tab lengkapi, Esc tutup)') + '\n';
+      if (matches.length > 0) {
+        matches.forEach((cmd, idx) => {
+          if (idx === active) {
+            out += `  ${chalk.gray('│')}  ${chalk.cyan.bold('❯')} ${chalk.cyan.bold(cmd.name.padEnd(11))} ${chalk.gray('─')} ${chalk.white.bold(cmd.desc)}\n`;
+          } else {
+            out += `  ${chalk.gray('│')}    ${chalk.dim(cmd.name.padEnd(11))} ${chalk.gray('─')} ${chalk.dim(cmd.desc)}\n`;
+          }
+        });
+      } else {
+        out += `  ${chalk.gray('│')}  ${chalk.red('Tidak ada perintah yang cocok')}\n`;
+      }
+      out += '  ' + chalk.gray('╰─────────────────────────────────────────────────────────────────────────');
+    }
+  }
+
+  // Garis bawah dan baris status mengikuti area input, sama seperti MCode —
+  // sehingga angka konteks ikut ter-update di setiap pengetikan.
+  out += `\n${rules.bottom}`;
+  out += `\n\n${renderStatusLine()}`;
+  return out;
+}
+
+/**
+ * Input baris slash-command dengan dropdown Perintah.
+ * Diekspor agar layout-nya bisa diuji tanpa harus menjalankan terminal sungguhan.
+ */
+export class SlashTextPrompt extends TextPrompt {
   constructor(opts) {
     const placeholder = opts.placeholder || '';
     let selectedIndex = 0;
@@ -25,42 +88,14 @@ class SlashTextPrompt extends TextPrompt {
       ...opts,
       render() {
         const val = this.value || '';
-        const cursorText = this.valueWithCursor;
-        const displayInput = val ? cursorText : chalk.dim(placeholder);
-
-        let out = '';
-        if (this.state === 'submit') {
-          out = `  ${chalk.cyan('›')} ${chalk.white(val || placeholder)}`;
-        } else if (this.state === 'cancel') {
-          out = `  ${chalk.red('›')} ${chalk.strikethrough(chalk.gray(val))}`;
-        } else {
-          out = `  ${chalk.cyan('›')} ${displayInput}`;
-
-          if (showDropdown && val.startsWith('/')) {
-            const query = val.toLowerCase();
-            const matches = COMMANDS.filter((c) => c.name.startsWith(query));
-
-            if (selectedIndex >= matches.length) {
-              selectedIndex = 0;
-            }
-
-            out += '\n  ' + chalk.gray('╭─ Perintah (↑/↓ pilih, Enter jalankan, Tab lengkapi, Esc tutup)') + '\n';
-            if (matches.length > 0) {
-              matches.forEach((cmd, idx) => {
-                const isSelected = idx === selectedIndex;
-                if (isSelected) {
-                  out += `  ${chalk.gray('│')}  ${chalk.cyan.bold('❯')} ${chalk.cyan.bold(cmd.name.padEnd(11))} ${chalk.gray('─')} ${chalk.white.bold(cmd.desc)}\n`;
-                } else {
-                  out += `  ${chalk.gray('│')}    ${chalk.dim(cmd.name.padEnd(11))} ${chalk.gray('─')} ${chalk.dim(cmd.desc)}\n`;
-                }
-              });
-            } else {
-              out += `  ${chalk.gray('│')}  ${chalk.red('Tidak ada perintah yang cocok')}\n`;
-            }
-            out += '  ' + chalk.gray('╰─────────────────────────────────────────────────────────────────────────');
-          }
-        }
-        return out;
+        return buildPromptFrame({
+          value: val,
+          state: this.state,
+          placeholder,
+          displayInput: val ? this.valueWithCursor : null,
+          dropdownOpen: showDropdown,
+          selectedIndex,
+        });
       },
     });
 

@@ -1,4 +1,5 @@
 import { getSystemPrompt } from './systemPrompt.js';
+import { estimateMessagesTokens, resolveContextWindow } from './context.js';
 
 /**
  * Pengelola riwayat percakapan (Conversation History) multi-turn.
@@ -137,6 +138,66 @@ export class Conversation {
     const systemMsg = this.messages[0];
     const recentMessages = this.messages.slice(-(maxMessages - 1));
     this.messages = [systemMsg, ...recentMessages];
+  }
+
+  /**
+   * Memangkas riwayat berdasarkan perkiraan token, bukan jumlah pesan.
+   *
+   * `trim(maxMessages)` menghitung pesan, padahal ukuran tiap pesan bisa
+   * berbeda jauh: satu hasil `read_file` bisa 40.000 karakter sementara
+   * balasan pendek hanya beberapa ratus. Karena itu pemangkasan berbasis
+   * pesan bisa menembus context window dan membuat request ditolak provider.
+   *
+   * Pemangkasan dilakukan dari depan (pesan terlama dibuang lebih dulu) dan
+   * system prompt selalu dipertahankan. Pesan `tool` tidak pernah dilepas dari
+   * pesan `assistant` yang memanggilnya — memotong pasangan itu membuat
+   * provider menolak request dengan error "tool message without tool_call_id".
+   *
+   * @param {number} [budgetTokens]
+   * @param {{model?:string, contextWindow?:number}} [options]
+   * @returns {{trimmed:boolean, removed:number, stillOverBudget:boolean}}
+   */
+  trimToTokenBudget(budgetTokens, { model = null, contextWindow = null } = {}) {
+    const base =
+      Number.isFinite(contextWindow) && contextWindow > 0
+        ? contextWindow
+        : resolveContextWindow(model);
+
+    // Sisakan 20% ruang supaya balasan model masih muat setelah riwayat dipangkas.
+    const budget =
+      Number.isFinite(budgetTokens) && budgetTokens > 0 ? budgetTokens : base * 0.8;
+
+    const before = this.messages.length;
+    if (estimateMessagesTokens(this.messages) <= budget) {
+      return { trimmed: false, removed: 0, stillOverBudget: false };
+    }
+
+    const hasSystem = this.messages[0]?.role === 'system';
+    const systemMsg = hasSystem ? this.messages[0] : null;
+    const body = hasSystem ? this.messages.slice(1) : this.messages.slice();
+
+    let start = 0;
+    while (start < body.length) {
+      const candidate = systemMsg ? [systemMsg, ...body.slice(start)] : body.slice(start);
+      if (estimateMessagesTokens(candidate) <= budget) break;
+
+      const dropped = body[start];
+      start += 1;
+
+      // Hasil tool menempel pada pesan assistant yang memanggilnya. Membuang
+      // pemanggil tanpa membuang hasilnya membuat provider menolak request.
+      if (dropped?.role === 'assistant' && Array.isArray(dropped.tool_calls) && dropped.tool_calls.length > 0) {
+        while (start < body.length && body[start].role === 'tool') start += 1;
+      }
+    }
+
+    this.messages = systemMsg ? [systemMsg, ...body.slice(start)] : body.slice(start);
+
+    return {
+      trimmed: true,
+      removed: before - this.messages.length,
+      stillOverBudget: estimateMessagesTokens(this.messages) > budget,
+    };
   }
 }
 

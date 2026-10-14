@@ -1,0 +1,6 @@
+# Normalisasi line ending lintas platform.
+# Bentuk kanonik repositori ini adalah LF, baik di dalam git
+# maupun di working copy.
+# `text=auto` membuat git mendeteksi berkas biner sendiri,
+# sehingga aturan ini aman untuk aset gambar maupun audio.
+* text=auto eol=lf
