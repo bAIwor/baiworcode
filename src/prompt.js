@@ -9,7 +9,8 @@ export const COMMANDS = [
   { name: '/provider', desc: 'Alias untuk perintah /model' },
   { name: '/login', desc: 'Login ke provider OAuth (Gemini, Copilot, dll)' },
   { name: '/logout', desc: 'Logout dari sesi provider OAuth' },
-  { name: '/clear', desc: 'Membersihkan layar dan menampilkan ulang banner' },
+  { name: '/clear', desc: 'Bersihkan layar & reset riwayat percakapan' },
+  { name: '/reset', desc: 'Reset konteks percakapan AI tanpa clear layar' },
   { name: '/exit', desc: 'Keluar dari bAIwor Code' },
 ];
 

@@ -8,35 +8,67 @@ import { runModelMenu } from '../src/modelMenu.js';
 import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
+import { handleUserChat, resetConversation, conversationSession } from '../src/chat/index.js';
 
 function stripAnsi(str) {
   return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
 }
 
+/** Lebar kolom satu karakter (karakter lebar seperti CJK/emoji dihitung 2). */
+function charWidth(ch) {
+  const code = ch.codePointAt(0);
+  if (
+    (code >= 0x1100 && code <= 0x115f) ||
+    (code >= 0x2329 && code <= 0x232a) ||
+    (code >= 0x2e80 && code <= 0x303e) ||
+    (code >= 0x3040 && code <= 0xa4cf) ||
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xfe10 && code <= 0xfe19) ||
+    (code >= 0xfe30 && code <= 0xfe6f) ||
+    (code >= 0xff00 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6) ||
+    (code >= 0x1f300 && code <= 0x1faff)
+  ) {
+    return 2;
+  }
+  return 1;
+}
+
 function visualWidth(str) {
-  const clean = stripAnsi(str);
   let w = 0;
-  for (const ch of clean) {
-    const code = ch.codePointAt(0);
-    if (
-      (code >= 0x1100 && code <= 0x115f) ||
-      (code >= 0x2329 && code <= 0x232a) ||
-      (code >= 0x2e80 && code <= 0x303e) ||
-      (code >= 0x3040 && code <= 0xa4cf) ||
-      (code >= 0xac00 && code <= 0xd7a3) ||
-      (code >= 0xf900 && code <= 0xfaff) ||
-      (code >= 0xfe10 && code <= 0xfe19) ||
-      (code >= 0xfe30 && code <= 0xfe6f) ||
-      (code >= 0xff00 && code <= 0xff60) ||
-      (code >= 0xffe0 && code <= 0xffe6) ||
-      (code >= 0x1f300 && code <= 0x1faff)
-    ) {
-      w += 2;
-    } else {
-      w += 1;
-    }
+  for (const ch of stripAnsi(str)) {
+    w += charWidth(ch);
   }
   return w;
+}
+
+/**
+ * Potong string ber-ANSI tanpa merusak kode escape.
+ * Pemotongan buta per karakter bisa mengiris di tengah `\x1b[...m` sehingga
+ * sisa kode warna bocor ke teks berikutnya.
+ */
+function truncateAnsi(str, maxWidth) {
+  let out = '';
+  let w = 0;
+  let i = 0;
+  while (i < str.length) {
+    if (str[i] === '\x1b') {
+      const m = /^\x1b\[[0-9;]*[a-zA-Z]/.exec(str.slice(i));
+      if (m) {
+        out += m[0];
+        i += m[0].length;
+        continue;
+      }
+    }
+    const ch = String.fromCodePoint(str.codePointAt(i));
+    const cw = charWidth(ch);
+    if (w + cw > maxWidth) break;
+    out += ch;
+    w += cw;
+    i += ch.length;
+  }
+  return out;
 }
 
 const targetWidth = 71;
@@ -44,10 +76,9 @@ const targetWidth = 71;
 function padBox(content) {
   let clean = content;
   if (visualWidth(clean) > targetWidth) {
-    while (visualWidth(clean) > targetWidth - 1 && clean.length > 0) {
-      clean = clean.slice(0, -1);
-    }
-    clean += '…';
+    // Potong pada batas karakter, lalu reset atribut agar '…' dan isi kotak
+    // tidak mewarisi warna dari potongan terakhir.
+    clean = truncateAnsi(clean, targetWidth - 1) + '\x1b[0m…';
   }
   const w = visualWidth(clean);
   const pad = Math.max(0, targetWidth - w);
@@ -186,21 +217,29 @@ function showBanner() {
   console.log();
 }
 
+// Label pemakaian yang butuh argumen (nama di COMMANDS sengaja tanpa argumen)
+const HELP_USAGE = {
+  '/login': '/login [provider]',
+  '/logout': '/logout [provider]',
+};
+
 function showHelp() {
   const gold = chalk.hex('#FBBF24');
   const green = chalk.hex('#10B981');
   const dim = chalk.hex('#6B7280');
 
+  // Diturunkan dari COMMANDS supaya daftar bantuan tidak pernah basi
+  // ketika perintah baru ditambahkan, dan kolomnya selalu rata.
+  const rows = COMMANDS.map((c) => [HELP_USAGE[c.name] || c.name, c.desc]);
+  const width = Math.max(...rows.map(([usage]) => usage.length));
+
   console.log();
   console.log(gold.bold('  📖 Panduan Perintah:'));
-  console.log(`    ${green('/help')}                 ${dim('─')}  Menampilkan panduan perintah`);
-  console.log(`    ${green('/status')}               ${dim('─')}  Melihat status konfigurasi & sesi login`);
-  console.log(`    ${green('/model')}                ${dim('─')}  Pilih & kelola model AI / provider (ala Hermes)`);
-  console.log(`    ${green('/provider')}             ${dim('─')}  Alias untuk perintah /model`);
-  console.log(`    ${green('/login [provider]')}      ${dim('─')}  Login ke provider OAuth (Gemini, Copilot, dll)`);
-  console.log(`    ${green('/logout [provider]')}     ${dim('─')}  Logout dari sesi provider OAuth`);
-  console.log(`    ${green('/clear')}                ${dim('─')}  Membersihkan layar dan menampilkan ulang banner`);
-  console.log(`    ${green('/exit')}                 ${dim('─')}  Keluar dari bAIwor Code`);
+  for (const [usage, desc] of rows) {
+    console.log(`    ${green(usage.padEnd(width))}  ${dim('─')}  ${desc}`);
+  }
+  console.log();
+  console.log(chalk.gray('  💡 Ketik langsung pertanyaan atau instruksi coding apa saja untuk chat dengan bAIwor!'));
   console.log();
 }
 
@@ -308,7 +347,11 @@ async function startInteractive() {
       case '/logout':
         await logout(arg || undefined);
         break;
+      case '/reset':
+        resetConversation();
+        break;
       case '/clear':
+        conversationSession.reset();
         console.clear();
         showBanner();
         break;
@@ -318,10 +361,14 @@ async function startInteractive() {
       case '':
         break;
       default:
-        console.log(
-          chalk.hex('#F87171')(`  Perintah "${command}" mboten dipunmangertosi.`) +
-            chalk.hex('#6B7280')(` Ketik ${chalk.green('/help')} atau ${chalk.green('/')} untuk daftar perintah.`)
-        );
+        if (mainCmd.startsWith('/')) {
+          console.log(
+            chalk.hex('#F87171')(`  Perintah "${command}" mboten dipunmangertosi.`) +
+              chalk.hex('#6B7280')(` Ketik ${chalk.green('/help')} atau ${chalk.green('/')} untuk daftar perintah.`)
+          );
+        } else {
+          await handleUserChat(command);
+        }
         break;
     }
   }
@@ -333,7 +380,13 @@ program
   .name('baiworcode')
   .description('bAIwor Code v1.0.0 — baiwor.my.id')
   .version('1.0.0')
-  .action(async () => {
+  .argument('[prompt...]', 'Pertanyaan atau instruksi coding langsung')
+  .action(async (promptParts) => {
+    if (promptParts && promptParts.length > 0) {
+      const fullPrompt = promptParts.join(' ');
+      await handleUserChat(fullPrompt);
+      process.exit(0);
+    }
     await startInteractive();
   });
 

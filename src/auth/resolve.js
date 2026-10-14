@@ -25,6 +25,15 @@ export async function resolveActiveCredentials() {
       );
     }
 
+    const activeModel =
+      config.activeModel && config.activeModel !== 'Not configured'
+        ? config.activeModel
+        : cp.model;
+
+    if (!activeModel) {
+      throw new Error(`Model untuk provider '${cp.name}' belum dikonfigurasi. Ketik /model untuk memilih model.`);
+    }
+
     return {
       provider: cp.name,
       type: 'custom',
@@ -34,7 +43,7 @@ export async function resolveActiveCredentials() {
         'Content-Type': 'application/json',
         'User-Agent': 'bAIwor-Code/1.0.0',
       },
-      model: config.activeModel,
+      model: activeModel,
     };
   }
 
@@ -54,6 +63,11 @@ export async function resolveActiveCredentials() {
       );
     }
 
+    const activeModel =
+      config.activeModel && config.activeModel !== 'Not configured'
+        ? config.activeModel
+        : prov.defaultModel;
+
     return {
       provider: prov.name,
       type: 'oauth',
@@ -63,7 +77,7 @@ export async function resolveActiveCredentials() {
         'Content-Type': 'application/json',
         'User-Agent': 'bAIwor-Code/1.0.0',
       },
-      model: config.activeModel,
+      model: activeModel,
     };
   }
 

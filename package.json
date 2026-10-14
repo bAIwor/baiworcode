@@ -12,7 +12,8 @@
     "url": "git+ssh://git@github.com/Baiwor/baiworcode.git"
   },
   "scripts": {
-    "start": "node ./bin/baiwor.js"
+    "start": "node ./bin/baiwor.js",
+    "test": "node --test"
   },
   "keywords": [
     "baiwor",

@@ -75,16 +75,25 @@ export function saveConfig(partialConfig) {
     const current = getConfig();
     const merged = { ...current, ...partialConfig };
 
-    // Deep merge khusus untuk key oauth (per provider id)
+    // Merge khusus key oauth: digabung PER provider id, bukan diganti utuh.
+    // Patch parsial (mis. hanya { clientId }) tidak boleh menghapus accessToken
+    // atau apiKey yang sudah tersimpan. Patch yang membawa `method` dianggap
+    // sesi baru (login ulang / refresh token) sehingga diganti utuh, supaya
+    // kredensial lama tidak tercampur — mis. apiKey lama tertinggal saat
+    // pengguna beralih ke login OAuth.
     if (partialConfig && typeof partialConfig.oauth === 'object' && partialConfig.oauth !== null) {
-      merged.oauth = {
-        ...(current.oauth || {}),
-        ...partialConfig.oauth,
-      };
-      for (const k of Object.keys(merged.oauth)) {
-        if (merged.oauth[k] === null || merged.oauth[k] === undefined) {
-          delete merged.oauth[k];
+      merged.oauth = { ...(current.oauth || {}) };
+      for (const [id, patch] of Object.entries(partialConfig.oauth)) {
+        if (patch === null || patch === undefined) {
+          delete merged.oauth[id];
+          continue;
         }
+        if (typeof patch !== 'object') {
+          continue;
+        }
+        merged.oauth[id] = 'method' in patch
+          ? { ...patch }
+          : { ...(merged.oauth[id] || {}), ...patch };
       }
     }
 
