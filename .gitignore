@@ -13,3 +13,4 @@ config.json.bak*
 .logo-work/
 .vscode/
 .idea/
+docs/
