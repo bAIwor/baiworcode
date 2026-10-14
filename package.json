@@ -4,24 +4,41 @@
   "description": "bAIwor Code — Terminal AI Coding Agent (baiwor.my.id)",
   "type": "module",
   "bin": {
-    "baiworcode": "./bin/baiwor.js",
-    "baiwor": "./bin/baiwor.js"
+    "baiworcode": "bin/baiwor.js",
+    "baiwor": "bin/baiwor.js"
   },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/Baiwor/baiworcode.git"
+    "url": "git+https://github.com/bAIwor/baiworcode.git"
+  },
+  "homepage": "https://baiwor.my.id",
+  "bugs": {
+    "url": "https://github.com/bAIwor/baiworcode/issues"
   },
   "scripts": {
     "start": "node ./bin/baiwor.js",
-    "test": "node --test"
+    "test": "node --test",
+    "prepublishOnly": "npm test"
   },
   "keywords": [
     "baiwor",
     "punakawan",
     "cli",
-    "ai-agent"
+    "ai-agent",
+    "coding-agent",
+    "terminal",
+    "openai-compatible",
+    "gemini",
+    "indonesia"
   ],
   "author": "Wijang",
+  "license": "MIT",
   "engines": {
     "node": ">=18"
   },
