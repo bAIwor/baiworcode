@@ -7,6 +7,7 @@ import { getConfig, CONFIG_FILE, maskSecret } from '../src/config.js';
 import { runModelMenu } from '../src/modelMenu.js';
 import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
+import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
 
 function stripAnsi(str) {
   return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
@@ -53,25 +54,85 @@ function padBox(content) {
   return '  ' + chalk.gray('│ ') + clean + ' '.repeat(pad) + chalk.gray(' │');
 }
 
+const BAWOR_TEXT_LOGO = [
+  '  ██████╗  █████╗ ██╗██╗    ██╗ ██████╗ ██████╗ ',
+  '  ██╔══██╗██╔══██╗██║██║    ██║██╔═══██╗██╔══██╗',
+  '  ██████╔╝███████║██║██║ █╗ ██║██║   ██║██████╔╝',
+  '  ██╔══██╗██╔══██║██║██║███╗██║██║   ██║██╔══██╗',
+  '  ██████╔╝██║  ██║██║╚███╔███╔╝╚██████╔╝██║  ██║',
+  '  ╚═════╝ ╚═╝  ╚═╝╚═╝ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝',
+];
+
+/** Logo teks bAIwor: "b" putih, "AI" merah, "wor" putih. */
+function colorizeTextLogoLine(line) {
+  return (
+    chalk.white.bold(line.slice(0, 10)) +
+    chalk.redBright.bold(line.slice(10, 21)) +
+    chalk.white.bold(line.slice(21))
+  );
+}
+
+const LOGO_INDENT = '  ';
+const LOGO_GAP = ' ';
+const TEXT_LOGO_WIDTH = Math.max(...BAWOR_TEXT_LOGO.map((l) => l.length));
+
+/**
+ * Header pembuka: muka Bawor (kiri) berdampingan dengan logo teks bAIwor (kanan).
+ * Menyesuaikan lebar terminal: berdampingan -> bertumpuk -> logo teks saja.
+ */
+function printLogoHeader() {
+  const artLines =
+    (chalk.level > 0 && BAWOR_LOGO.color)
+      ? BAWOR_LOGO.color
+      : (BAWOR_LOGO.mono || BAWOR_LOGO.lines || []);
+  const textLines = BAWOR_TEXT_LOGO.map(colorizeTextLogoLine);
+  const columns = process.stdout.columns || 80;
+
+  const sideBySideWidth =
+    LOGO_INDENT.length + BAWOR_LOGO.cols + LOGO_GAP.length + TEXT_LOGO_WIDTH;
+
+  // 1. Terminal cukup lebar: logo berdampingan
+  if (columns >= sideBySideWidth) {
+    const artH = artLines.length;
+    const textH = textLines.length;
+    const padTop = Math.max(0, Math.floor((artH - textH) / 2));
+    const padBot = Math.max(0, artH - textH - padTop);
+
+    const right = [
+      ...Array(padTop).fill(''),
+      ...textLines,
+      ...Array(padBot).fill(''),
+    ];
+
+    for (let i = 0; i < artH; i++) {
+      console.log(LOGO_INDENT + artLines[i] + LOGO_GAP + (right[i] || ''));
+    }
+    return;
+  }
+
+  // 2. Muat untuk logo saja: tampilkan bertumpuk (muka di atas, teks di bawah)
+  if (columns >= BAWOR_LOGO.cols + LOGO_INDENT.length) {
+    for (const line of artLines) {
+      console.log(LOGO_INDENT + line);
+    }
+    console.log();
+    for (const line of textLines) {
+      console.log(line);
+    }
+    return;
+  }
+
+  // 3. Terlalu sempit: logo teks saja
+  for (const line of textLines) {
+    console.log(line);
+  }
+}
+
 function showBanner() {
   const config = getConfig();
 
-  const logo = [
-    '  ██████╗  █████╗ ██╗██╗    ██╗ ██████╗ ██████╗ ',
-    '  ██╔══██╗██╔══██╗██║██║    ██║██╔═══██╗██╔══██╗',
-    '  ██████╔╝███████║██║██║ █╗ ██║██║   ██║██████╔╝',
-    '  ██╔══██╗██╔══██║██║██║███╗██║██║   ██║██╔══██╗',
-    '  ██████╔╝██║  ██║██║╚███╔███╔╝╚██████╔╝██║  ██║',
-    '  ╚═════╝ ╚═╝  ╚═╝╚═╝ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝'
-  ];
-
   console.log();
-  for (const line of logo) {
-    const b = line.slice(0, 10);
-    const ai = line.slice(10, 21);
-    const wor = line.slice(21);
-    console.log(chalk.white.bold(b) + chalk.redBright.bold(ai) + chalk.white.bold(wor));
-  }
+  printLogoHeader();
   console.log(chalk.gray('  🎭 "Saka Bawor dadi bAIwor — Jiwa Punakawan, Pikiran AI, Ati Banyumas"'));
   console.log();
 
@@ -175,6 +236,17 @@ function printStatus() {
   console.log();
 }
 
+function showExitMessage() {
+  console.log(chalk.hex('#F59E0B')('\n  Matur nuwun! Sampun nganggo bAIwor Code. 🙏'));
+  console.log(chalk.gray('  🌐 Website official  : ') + chalk.cyan('https://baiwor.my.id'));
+  console.log(
+    chalk.gray('  🎁 Bonus token/credit: ') +
+      chalk.cyan('https://agentik.my.id') +
+      chalk.dim(' (Dapatkan bonus token/credit untuk instalasi bAIwor Code)\n')
+  );
+  process.exit(0);
+}
+
 async function startInteractive() {
   showBanner();
 
@@ -184,8 +256,7 @@ async function startInteractive() {
     });
 
     if (p.isCancel(input) || input === null) {
-      console.log(chalk.hex('#F59E0B')('\n  Matur nuwun! Sampai jumpa lagi. 🙏\n'));
-      process.exit(0);
+      showExitMessage();
     }
 
     let command = input.trim();
@@ -242,8 +313,7 @@ async function startInteractive() {
         showBanner();
         break;
       case '/exit':
-        console.log(chalk.hex('#F59E0B')('\n  Matur nuwun! Sampun ngginakaken bAIwor Code. 🙏\n'));
-        process.exit(0);
+        showExitMessage();
         break;
       case '':
         break;
