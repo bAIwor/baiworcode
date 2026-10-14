@@ -57,8 +57,21 @@ export async function handleUserChat(promptText) {
   let frameIdx = 0;
   let spinnerInterval = null;
 
+  /**
+   * Menghapus baris spinner memakai carriage return.
+   * Hanya berguna di terminal sungguhan — saat output dialihkan (pipe/redirect),
+   * `\r` tidak menimpa apa pun sehingga escape code-nya justru mengotori berkas.
+   */
+  const clearSpinnerLine = (suffix = '') => {
+    if (process.stdout.isTTY) process.stdout.write(`\r\x1b[K${suffix}`);
+  };
+
   const startThinkingSpinner = (msg = 'bAIwor sedang berpikir...') => {
     stopThinkingSpinner();
+    // Animasi spinner bergantung pada carriage return untuk menimpa baris
+    // sebelumnya. Bila stdout bukan TTY (mis. `baiworcode "prompt" > hasil.txt`),
+    // animasi dilewati agar ribuan frame tidak membanjiri keluaran.
+    if (!process.stdout.isTTY) return;
     process.stdout.write(`\n  ${chalk.cyan(spinnerFrames[0])} ${chalk.dim(msg)}`);
     spinnerInterval = setInterval(() => {
       frameIdx = (frameIdx + 1) % spinnerFrames.length;
@@ -111,7 +124,7 @@ export async function handleUserChat(promptText) {
           stopThinkingSpinner();
           hasFirstTokenArrived = true;
           // Bersihkan baris spinner dan buat baris baru untuk output jawaban
-          process.stdout.write('\r\x1b[K\n');
+          clearSpinnerLine('\n');
         },
         onReasoning: (chunk) => {
           if (!isReasoningActive) {
@@ -203,7 +216,7 @@ export async function handleUserChat(promptText) {
     stopThinkingSpinner();
 
     if (err.name === 'AbortError') {
-      process.stdout.write('\r\x1b[K');
+      clearSpinnerLine();
       process.stdout.write(chalk.yellow('\n  ⏹ [Dibatalkan oleh pengguna]\n\n'));
       // Jika sudah ada respons sebagian sebelum dibatalkan, simpan agar histori tetap utuh
       if (err.partialContent && err.partialContent.trim()) {
@@ -213,7 +226,7 @@ export async function handleUserChat(promptText) {
     }
 
     // Bersihkan baris spinner sebelum cetak pesan error
-    process.stdout.write('\r\x1b[K\n');
+    clearSpinnerLine('\n');
 
     // Tangani HTTP Error secara ramah
     if (err.status === 401 || err.status === 403) {
