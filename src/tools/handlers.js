@@ -2,30 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exec } from 'node:child_process';
 import os from 'node:os';
+import { isSubPath, isSensitivePath, analyzeCommand } from './sandbox.js';
 
-/**
- * Memeriksa apakah child berada di dalam direktori parent
- */
-export function isSubPath(parent, child) {
-  const rel = path.relative(path.resolve(parent), path.resolve(child));
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
-
-/**
- * Memeriksa apakah path mengarah ke berkas atau direktori sensitif
- */
-export function isSensitivePath(targetPath) {
-  const norm = path.normalize(targetPath).toLowerCase();
-  const home = path.normalize(os.homedir()).toLowerCase();
-
-  const protectedSubs = ['.ssh', '.baiwor', '.aws', '.gnupg', '.azure', 'id_rsa', 'id_ed25519'];
-  for (const sub of protectedSubs) {
-    if (isSubPath(path.join(home, sub), targetPath) || norm.includes(path.sep + sub)) {
-      return true;
-    }
-  }
-  return false;
-}
+// Helper path tetap diekspor dari modul ini agar kontrak lama tidak berubah.
+export { isSubPath, isSensitivePath };
 
 /**
  * Menormalkan path berkas berdasarkan CWD aktif dengan perlindungan Sandbox (F1)
@@ -317,6 +297,17 @@ export async function handleRunCommand({ command, cwd }) {
         output: err.message,
       };
     }
+  }
+
+  // Penjaga sandbox perintah (temuan audit A5): mengunci `cwd` saja tidak cukup —
+  // isi perintah masih bisa menunjuk path absolut di luar workspace atau
+  // memuat `cd ..` untuk keluar. Periksa string perintah sebelum eksekusi.
+  const verdict = analyzeCommand(command, { workspace: process.cwd() });
+  if (!verdict.allowed) {
+    return {
+      success: false,
+      output: `Ditolak oleh sandbox bAIwor [${verdict.category}]: ${verdict.reason}`,
+    };
   }
 
   return new Promise((resolve) => {
