@@ -509,12 +509,33 @@ export async function runModelMenu() {
           { value: 'switch_model', label: 'Ganti model aktif' },
           { value: 'refresh_models', label: `Refresh daftar model dari ${cleanUrl(cp.baseUrl)}/models` },
           { value: 'edit_key', label: `Ubah API Key (${maskSecret(cp.apiKey)})` },
+          { value: 'delete', label: chalk.redBright(`Hapus provider ${cp.name}`) },
           { value: 'back', label: '← Kembali' },
         ],
       });
 
       if (p.isCancel(subChoice) || subChoice === 'back') {
         continue;
+      }
+
+      if (subChoice === 'delete') {
+        const confirm = await p.confirm({
+          message: `Apakah Anda yakin ingin menghapus custom provider "${cp.name}"?`,
+          initialValue: false,
+        });
+        if (p.isCancel(confirm) || !confirm) continue;
+
+        const filtered = customList.filter((x) => x.name !== cp.name);
+        const updates = { customProviders: filtered };
+        if (config.activeProvider === cp.name) {
+          updates.activeProvider = 'Agentik';
+          const agentikObj = customList.find((x) => x && x.name && x.name.toLowerCase() === 'agentik');
+          updates.activeModel = agentikObj?.model || 'gemini-3.8-flash-high';
+          updates.activeType = 'custom';
+        }
+        saveConfig(updates);
+        p.outro(chalk.yellow(`✓ Provider ${cp.name} berhasil dihapus.`));
+        return;
       }
 
       if (subChoice === 'activate') {
