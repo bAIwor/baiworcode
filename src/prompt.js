@@ -4,10 +4,13 @@ import readline from 'node:readline';
 
 export const COMMANDS = [
   { name: '/help', desc: 'Menampilkan panduan perintah & bantuan' },
+  { name: '/status', desc: 'Status konfigurasi, model aktif & sesi login' },
   { name: '/model', desc: 'Pilih & kelola model AI / provider (ala Hermes)' },
   { name: '/provider', desc: 'Alias untuk perintah /model' },
+  { name: '/login', desc: 'Login ke provider OAuth (Gemini, Copilot, dll)' },
+  { name: '/logout', desc: 'Logout dari sesi provider OAuth' },
   { name: '/clear', desc: 'Membersihkan layar dan menampilkan ulang banner' },
-  { name: '/exit', desc: 'Keluar dari bAIwor CLI' },
+  { name: '/exit', desc: 'Keluar dari bAIwor Code' },
 ];
 
 class SlashTextPrompt extends TextPrompt {

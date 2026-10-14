@@ -3,10 +3,10 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
-import readline from 'node:readline';
-import { getConfig } from '../src/config.js';
+import { getConfig, CONFIG_FILE, maskSecret } from '../src/config.js';
 import { runModelMenu } from '../src/modelMenu.js';
 import { askBaiworInput, COMMANDS } from '../src/prompt.js';
+import { login, logout, authStatus } from '../src/auth/index.js';
 
 function stripAnsi(str) {
   return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
@@ -132,11 +132,46 @@ function showHelp() {
 
   console.log();
   console.log(gold.bold('  📖 Panduan Perintah:'));
-  console.log(`    ${green('/help')}      ${dim('─')}  Menampilkan panduan perintah`);
-  console.log(`    ${green('/model')}     ${dim('─')}  Pilih & kelola model AI / provider (ala Hermes)`);
-  console.log(`    ${green('/provider')}  ${dim('─')}  Alias untuk perintah /model`);
-  console.log(`    ${green('/clear')}     ${dim('─')}  Membersihkan layar dan menampilkan ulang banner`);
-  console.log(`    ${green('/exit')}      ${dim('─')}  Keluar dari bAIwor CLI`);
+  console.log(`    ${green('/help')}                 ${dim('─')}  Menampilkan panduan perintah`);
+  console.log(`    ${green('/status')}               ${dim('─')}  Melihat status konfigurasi & sesi login`);
+  console.log(`    ${green('/model')}                ${dim('─')}  Pilih & kelola model AI / provider (ala Hermes)`);
+  console.log(`    ${green('/provider')}             ${dim('─')}  Alias untuk perintah /model`);
+  console.log(`    ${green('/login [provider]')}      ${dim('─')}  Login ke provider OAuth (Gemini, Copilot, dll)`);
+  console.log(`    ${green('/logout [provider]')}     ${dim('─')}  Logout dari sesi provider OAuth`);
+  console.log(`    ${green('/clear')}                ${dim('─')}  Membersihkan layar dan menampilkan ulang banner`);
+  console.log(`    ${green('/exit')}                 ${dim('─')}  Keluar dari bAIwor Code`);
+  console.log();
+}
+
+function printStatus() {
+  const config = getConfig();
+  const oauthList = authStatus();
+
+  console.log();
+  console.log(chalk.hex('#FBBF24').bold('  📊 Status Sistem & Konfigurasi bAIwor Code:'));
+  console.log(`    ${chalk.dim('Lokasi Config :')} ${chalk.cyan(CONFIG_FILE)}`);
+  console.log(`    ${chalk.dim('Provider Aktif:')} ${chalk.green.bold(config.activeProvider)} ${chalk.dim(`(${config.activeType})`)}`);
+  console.log(`    ${chalk.dim('Model Aktif   :')} ${chalk.hex('#F59E0B').bold(config.activeModel)}`);
+  console.log();
+
+  console.log(chalk.white.bold('  🔐 Status Sesi OAuth Providers:'));
+  for (const item of oauthList) {
+    const badge = item.loggedIn ? chalk.green('● Logged In ') : chalk.gray('○ Belum Login');
+    const tokenInfo = item.loggedIn ? chalk.gray(`[Token: ${item.maskedToken}] (${item.expiryStatus})`) : '';
+    console.log(`    ${badge} ${chalk.bold(item.name.padEnd(16))} ${chalk.dim(`(${item.method})`)} ${tokenInfo}`);
+  }
+
+  const customList = config.customProviders || [];
+  if (customList.length > 0) {
+    console.log();
+    console.log(chalk.white.bold('  🌐 Custom Providers Tersimpan:'));
+    for (const cp of customList) {
+      const isAct = config.activeType === 'custom' && config.activeProvider === cp.name;
+      const marker = isAct ? chalk.green('● ') : chalk.gray('○ ');
+      const maskedKey = maskSecret(cp.apiKey);
+      console.log(`    ${marker}${chalk.bold(cp.name)} ─ ${chalk.dim(cp.baseUrl)} [Key: ${maskedKey}] ─ Model: ${chalk.cyan(cp.model)}`);
+    }
+  }
   console.log();
 }
 
@@ -181,20 +216,33 @@ async function startInteractive() {
       }
     }
 
-    switch (command) {
+    const parts = command.split(/\s+/);
+    const mainCmd = parts[0];
+    const arg = parts.slice(1).join(' ').trim();
+
+    switch (mainCmd) {
       case '/help':
         showHelp();
+        break;
+      case '/status':
+        printStatus();
         break;
       case '/model':
       case '/provider':
         await runModelMenu();
+        break;
+      case '/login':
+        await login(arg || undefined);
+        break;
+      case '/logout':
+        await logout(arg || undefined);
         break;
       case '/clear':
         console.clear();
         showBanner();
         break;
       case '/exit':
-        console.log(chalk.hex('#F59E0B')('\n  Matur nuwun! Sampun ngginakaken bAIwor CLI. 🙏\n'));
+        console.log(chalk.hex('#F59E0B')('\n  Matur nuwun! Sampun ngginakaken bAIwor Code. 🙏\n'));
         process.exit(0);
         break;
       case '':
@@ -220,6 +268,14 @@ program
   });
 
 program
+  .command('status')
+  .description('Tampilkan status konfigurasi dan sesi login')
+  .action(() => {
+    printStatus();
+    process.exit(0);
+  });
+
+program
   .command('model')
   .description('Pilih dan kelola model AI / provider (ala Hermes)')
   .action(async () => {
@@ -232,6 +288,22 @@ program
   .description('Alias untuk perintah model')
   .action(async () => {
     await runModelMenu();
+    process.exit(0);
+  });
+
+program
+  .command('login [provider]')
+  .description('Login ke provider OAuth (Gemini, Copilot, dll)')
+  .action(async (provider) => {
+    await login(provider);
+    process.exit(0);
+  });
+
+program
+  .command('logout [provider]')
+  .description('Logout dari sesi provider OAuth')
+  .action(async (provider) => {
+    await logout(provider);
     process.exit(0);
   });
 

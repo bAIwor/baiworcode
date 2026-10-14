@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
 import { getConfig, saveConfig } from './config.js';
+import { login, logout, PROVIDERS } from './auth/index.js';
 
 function cleanUrl(urlStr) {
   try {
@@ -23,21 +24,17 @@ export async function runModelMenu() {
     let optionNumber = 1;
     const selectOptions = [];
 
-    // 1. 5 OAuth Providers bawaan
-    const oauthProviders = [
-      { id: 'google-gemini', name: 'Google Gemini', desc: 'Google Account OAuth / Gemini CLI' },
-      { id: 'openai', name: 'OpenAI', desc: 'ChatGPT / Codex Subscription OAuth' },
-      { id: 'github-copilot', name: 'GitHub Copilot', desc: 'GitHub Device OAuth' },
-      { id: 'qwen', name: 'Qwen', desc: 'Qwen Cloud CLI OAuth' },
-      { id: 'minimax', name: 'MiniMax', desc: 'OAuth Coding Plan' },
-    ];
-
-    for (const prov of oauthProviders) {
+    // 1. 5 OAuth Providers bawaan dari Registry
+    for (const prov of Object.values(PROVIDERS)) {
       const isActive = config.activeType === 'oauth' && config.activeProvider === prov.name;
+      const authData = config.oauth?.[prov.id];
+      const isLoggedIn = Boolean(authData && (authData.accessToken || authData.apiKey));
+      const loginBadge = isLoggedIn ? chalk.cyan.dim(' [Logged In]') : '';
       const suffix = isActive ? chalk.green.bold(' ← currently active') : '';
+
       selectOptions.push({
         value: `oauth_${prov.id}`,
-        label: `${optionNumber}. ${prov.name} ▸ (${prov.desc})${suffix}`,
+        label: `${optionNumber}. ${prov.name} ▸ (${prov.desc})${loginBadge}${suffix}`,
       });
       optionNumber++;
     }
@@ -87,14 +84,95 @@ export async function runModelMenu() {
     // Aksi: 5 OAuth Providers
     if (choice.startsWith('oauth_')) {
       const provId = choice.replace('oauth_', '');
-      const provObj = oauthProviders.find((x) => x.id === provId);
-      const provName = provObj ? provObj.name : provId;
+      const provObj = PROVIDERS[provId];
+      if (!provObj) continue;
 
-      p.note(
-        `Alur login OAuth untuk ${chalk.bold(provName)} akan dihubungkan di Tahap 2B.\nSaat ini silakan gunakan Custom endpoint API (seperti AgentikMyID).`,
-        'OAuth Provider'
-      );
-      continue;
+      const authData = config.oauth?.[provId];
+      const isLoggedIn = Boolean(authData && (authData.accessToken || authData.apiKey));
+
+      if (!isLoggedIn) {
+        // Belum login -> tawarkan login
+        const res = await login(provId);
+        if (res && res.success) {
+          return;
+        }
+        continue;
+      }
+
+      // Sudah login -> Tawarkan: Aktifkan, Ganti model, Logout, ← Kembali
+      const activeModelForProv =
+        config.activeProvider === provObj.name ? config.activeModel : provObj.defaultModel;
+
+      const subChoice = await p.select({
+        message: `Kelola ${chalk.bold(provObj.name)} (${chalk.green('Logged In')}):`,
+        options: [
+          {
+            value: 'activate',
+            label: `Aktifkan ${provObj.name} (${activeModelForProv})`,
+          },
+          {
+            value: 'switch_model',
+            label: 'Ganti model aktif',
+          },
+          {
+            value: 'logout',
+            label: chalk.redBright(`Logout dari ${provObj.name}`),
+          },
+          {
+            value: 'back',
+            label: '← Kembali',
+          },
+        ],
+      });
+
+      if (p.isCancel(subChoice) || subChoice === 'back') {
+        continue;
+      }
+
+      if (subChoice === 'activate') {
+        saveConfig({
+          activeProvider: provObj.name,
+          activeModel: activeModelForProv,
+          activeType: 'oauth',
+        });
+        p.outro(chalk.green(`✓ ${provObj.name} (${activeModelForProv}) sekarang aktif!`));
+        return;
+      }
+
+      if (subChoice === 'switch_model') {
+        const picked = await p.select({
+          message: `Pilih model untuk ${provObj.name}:`,
+          options: [
+            ...provObj.models.map((m) => ({ value: m, label: m })),
+            { value: '__custom__', label: '✎ Ketik model lain...' },
+          ],
+        });
+
+        if (p.isCancel(picked)) continue;
+
+        let finalModel = picked;
+        if (picked === '__custom__') {
+          const typed = await p.text({
+            message: 'Ketik nama model:',
+            defaultValue: provObj.defaultModel,
+          });
+          if (p.isCancel(typed)) continue;
+          finalModel = typed.trim();
+        }
+
+        saveConfig({
+          activeProvider: provObj.name,
+          activeModel: finalModel,
+          activeType: 'oauth',
+        });
+        p.outro(chalk.green(`✓ Model ${provObj.name} diubah menjadi: ${finalModel}`));
+        return;
+      }
+
+      if (subChoice === 'logout') {
+        await logout(provId);
+        continue;
+      }
     }
 
     // Aksi: Custom Provider yang sudah tersimpan
@@ -254,6 +332,13 @@ export async function runModelMenu() {
         },
       });
       if (p.isCancel(baseUrl)) continue;
+
+      if (baseUrl.trim().startsWith('http://')) {
+        p.note(
+          chalk.yellow('Peringatan: URL menggunakan protokol HTTP (tidak terenkripsi).\nPastikan Anda berada di jaringan terpercaya demi keamanan API Key Anda.'),
+          'Peringatan Keamanan'
+        );
+      }
 
       const apiKey = await p.password({
         message: '3. API Key:',
