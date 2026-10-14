@@ -1,0 +1,25 @@
+{
+  "name": "baiwor",
+  "version": "1.0.0",
+  "description": "bAIwor CLI — AI Agent Lokal Punakawan World",
+  "type": "module",
+  "bin": {
+    "baiwor": "./bin/baiwor.js"
+  },
+  "scripts": {
+    "start": "node ./bin/baiwor.js"
+  },
+  "keywords": [
+    "baiwor",
+    "punakawan",
+    "cli",
+    "ai-agent"
+  ],
+  "author": "Wijang",
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^0.9.0",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0"
+  }
+}
