@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
-import { getConfig, saveConfig } from './config.js';
+import { getConfig, saveConfig, maskSecret } from './config.js';
 import { login, logout, PROVIDERS } from './auth/index.js';
 
 function cleanUrl(urlStr) {
@@ -10,6 +10,147 @@ function cleanUrl(urlStr) {
   } catch {
     return urlStr.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
   }
+}
+
+const DEFAULT_AGENTIK_MODELS = [
+  'gemini-3.8-flash-high',
+  'gemini-3.5-flash',
+  'claude-sonnet-5-5',
+  'claude-sonnet-4-6',
+  'gemini-3.7-flash',
+  'gemini-3.1-flash-lite',
+];
+
+/**
+ * Alur konfigurasi interaktif Agentik AI ala Hermes:
+ * 1. Base URL (default https://api.agentik.my.id/v1)
+ * 2. API Key (bonus token di https://agentik.my.id)
+ * 3. Pilih Model (probe otomatis dari /models)
+ */
+async function configureAgentikFlow(existingCp, customList, config) {
+  const currentUrl = existingCp?.baseUrl || 'https://api.agentik.my.id/v1';
+  const currentKey = existingCp?.apiKey || '';
+  const currentModel = existingCp?.model || 'gemini-3.8-flash-high';
+
+  console.log();
+  console.log(chalk.hex('#FBBF24').bold('  👑 Konfigurasi Agentik AI (Sponsor Resmi bAIwor Code):'));
+  console.log(chalk.gray('  🎁 Dapatkan bonus token/credit gratis di: ') + chalk.cyan('https://agentik.my.id'));
+  console.log();
+
+  // 1. Base URL
+  const inputUrl = await p.text({
+    message: '1. API Base URL:',
+    defaultValue: currentUrl,
+    placeholder: 'https://api.agentik.my.id/v1',
+    validate(val) {
+      if (!val || !val.trim()) return 'Base URL tidak boleh kosong';
+      if (!val.startsWith('http://') && !val.startsWith('https://')) {
+        return 'URL harus diawali dengan http:// atau https://';
+      }
+    },
+  });
+  if (p.isCancel(inputUrl)) return;
+  const baseUrl = inputUrl.trim().replace(/\/+$/, '');
+
+  // 2. API Key
+  const inputKey = await p.password({
+    message: `2. API Key Agentik${currentKey ? ` [tersimpan: ${maskSecret(currentKey)}]` : ''}:`,
+    mask: '•',
+    validate(val) {
+      if (!val && !currentKey) return 'API Key tidak boleh kosong. Dapatkan di https://agentik.my.id';
+    },
+  });
+  if (p.isCancel(inputKey)) return;
+  const apiKey = (inputKey && inputKey.trim()) ? inputKey.trim() : currentKey;
+
+  // 3. Probe model list dari server (seperti Hermes)
+  const s = p.spinner();
+  s.start(`Menghubungi ${cleanUrl(baseUrl)}/models...`);
+
+  let fetchedModels = [];
+  try {
+    const res = await fetch(`${baseUrl}/models`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'User-Agent': 'bAIwor-cli/1.0.0',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const list = Array.isArray(data.data)
+        ? data.data
+        : Array.isArray(data.models)
+        ? data.models
+        : Array.isArray(data)
+        ? data
+        : [];
+      fetchedModels = list
+        .map((m) => (typeof m === 'string' ? m : m.id || m.name))
+        .filter(Boolean);
+    }
+  } catch {}
+
+  const availableModels = fetchedModels.length > 0 ? fetchedModels : DEFAULT_AGENTIK_MODELS;
+
+  if (fetchedModels.length > 0) {
+    s.stop(chalk.green(`✓ Terhubung! Ditemukan ${fetchedModels.length} model di server Agentik.`));
+  } else {
+    s.stop(chalk.yellow('Menggunakan daftar model rekomendasi Agentik.'));
+  }
+
+  // 4. Pilih Model
+  const pickedModel = await p.select({
+    message: '3. Pilih model aktif:',
+    options: [
+      ...availableModels.map((m) => ({
+        value: m,
+        label: m === currentModel ? `${m} (saat ini)` : m,
+      })),
+      { value: '__custom__', label: '✎ Ketik nama model lain...' },
+    ],
+  });
+  if (p.isCancel(pickedModel)) return;
+
+  let finalModel = pickedModel;
+  if (pickedModel === '__custom__') {
+    const typed = await p.text({
+      message: 'Ketik nama model:',
+      defaultValue: currentModel,
+      validate(val) {
+        if (!val || !val.trim()) return 'Nama model tidak boleh kosong';
+      },
+    });
+    if (p.isCancel(typed)) return;
+    finalModel = typed.trim();
+  }
+
+  // 5. Simpan dan Aktifkan
+  const agentikObj = {
+    name: 'Agentik',
+    baseUrl,
+    apiKey,
+    model: finalModel,
+    models: availableModels,
+  };
+
+  const updatedCustom = [...customList];
+  const idx = updatedCustom.findIndex((c) => c && c.name && c.name.toLowerCase() === 'agentik');
+  if (idx >= 0) {
+    updatedCustom[idx] = agentikObj;
+  } else {
+    updatedCustom.unshift(agentikObj);
+  }
+
+  saveConfig({
+    customProviders: updatedCustom,
+    activeProvider: 'Agentik',
+    activeModel: finalModel,
+    activeType: 'custom',
+  });
+
+  p.outro(chalk.green(`✓ Agentik AI (${finalModel}) sekarang aktif! Siap nggarap kodingan, Lur!`));
 }
 
 export async function runModelMenu() {
@@ -23,8 +164,25 @@ export async function runModelMenu() {
 
     let optionNumber = 1;
     const selectOptions = [];
+    const customList = config.customProviders || [];
 
-    // 1. 5 OAuth Providers bawaan dari Registry
+    // 1. AGENTIK AI (Sponsor Resmi & Token Bonus - Wajib Nomor 1 Paling Atas)
+    const agentikCp = customList.find(
+      (cp) => cp && cp.name && cp.name.toLowerCase() === 'agentik'
+    );
+    if (agentikCp) {
+      const isAgentikActive =
+        config.activeType === 'custom' && config.activeProvider.toLowerCase() === 'agentik';
+      const suffix = isAgentikActive ? chalk.green.bold(' ← currently active') : '';
+      const displayUrl = cleanUrl(agentikCp.baseUrl);
+      selectOptions.push({
+        value: 'custom_Agentik',
+        label: `${optionNumber}. 👑 ${chalk.yellow.bold('Agentik AI')} ⭐ ${chalk.dim(`(${displayUrl})`)} — ${chalk.cyan(agentikCp.model)}${suffix}`,
+      });
+      optionNumber++;
+    }
+
+    // 2. Google Gemini OAuth
     for (const prov of Object.values(PROVIDERS)) {
       const isActive = config.activeType === 'oauth' && config.activeProvider === prov.name;
       const authData = config.oauth?.[prov.id];
@@ -39,9 +197,11 @@ export async function runModelMenu() {
       optionNumber++;
     }
 
-    // 2. Custom Providers Tersimpan
-    const customList = config.customProviders || [];
-    for (const cp of customList) {
+    // 3. Custom Providers lain yang tersimpan (selain Agentik)
+    const otherCustomList = customList.filter(
+      (cp) => cp && cp.name && cp.name.toLowerCase() !== 'agentik'
+    );
+    for (const cp of otherCustomList) {
       const isActive = config.activeType === 'custom' && config.activeProvider === cp.name;
       const suffix = isActive ? chalk.green.bold(' ← currently active') : '';
       const displayUrl = cleanUrl(cp.baseUrl);
@@ -52,16 +212,13 @@ export async function runModelMenu() {
       optionNumber++;
     }
 
-    // 3. Menu Aksi di bagian bawah
+    // 4. Menu Aksi di bagian bawah
     selectOptions.push({
       value: 'action_add_custom',
       label: chalk.hex('#38BDF8')('+ Custom endpoint (enter URL manually)'),
     });
 
-    const removableList = customList.filter(
-      (cp) => cp && cp.name && cp.name.toLowerCase() !== 'agentik'
-    );
-    if (removableList.length > 0) {
+    if (otherCustomList.length > 0) {
       selectOptions.push({
         value: 'action_remove_custom',
         label: chalk.redBright('- Remove a saved custom provider'),
@@ -179,14 +336,174 @@ export async function runModelMenu() {
     // Aksi: Custom Provider yang sudah tersimpan (termasuk Agentik)
     if (choice.startsWith('custom_')) {
       const cpName = choice.replace('custom_', '');
-      const cp = customList.find((x) => x.name === cpName);
+      const cp = customList.find(
+        (x) => x && x.name && x.name.toLowerCase() === cpName.toLowerCase()
+      );
       if (!cp) continue;
 
       const isAgentik = cp.name.toLowerCase() === 'agentik';
-      const typeLabel = isAgentik ? 'Lokal bAIwor' : 'Custom';
 
+      if (isAgentik) {
+        // Jika belum ada API Key, langsung buka wizard konfigurasi ala Hermes
+        if (!cp.apiKey || !cp.apiKey.trim()) {
+          await configureAgentikFlow(cp, customList, config);
+          return;
+        }
+
+        const subChoice = await p.select({
+          message: `Kelola ${chalk.bold('Agentik AI')} 👑 ⭐ (Sponsor Resmi):`,
+          options: [
+            { value: 'activate', label: `Aktifkan Agentik (${cp.model})` },
+            { value: 'setup_flow', label: '⚡ Konfigurasi cepat (Base URL, API Key & Model ala Hermes)' },
+            { value: 'switch_model', label: 'Ganti model aktif' },
+            { value: 'refresh_models', label: `Refresh daftar model dari ${cleanUrl(cp.baseUrl)}/models` },
+            { value: 'edit_key', label: `Ubah API Key (${maskSecret(cp.apiKey)})` },
+            { value: 'back', label: '← Kembali' },
+          ],
+        });
+
+        if (p.isCancel(subChoice) || subChoice === 'back') {
+          continue;
+        }
+
+        if (subChoice === 'setup_flow') {
+          await configureAgentikFlow(cp, customList, config);
+          return;
+        }
+
+        if (subChoice === 'activate') {
+          saveConfig({
+            activeProvider: cp.name,
+            activeModel: cp.model,
+            activeType: 'custom',
+          });
+          p.outro(chalk.green(`✓ Agentik AI (${cp.model}) sekarang aktif! Siap nggarap kodingan, Lur!`));
+          return;
+        }
+
+        if (subChoice === 'edit_key') {
+          const inputKey = await p.text({
+            message: 'Masukkan API Key baru untuk Agentik:',
+            placeholder: 'Dapatkan token/credit di https://agentik.my.id',
+            validate(val) {
+              if (!val || !val.trim()) return 'API Key tidak boleh kosong';
+            },
+          });
+          if (p.isCancel(inputKey)) continue;
+
+          const updatedCustom = customList.map((item) => {
+            if (item.name.toLowerCase() === 'agentik') {
+              return { ...item, apiKey: inputKey.trim() };
+            }
+            return item;
+          });
+
+          saveConfig({ customProviders: updatedCustom });
+          p.outro(chalk.green('✓ API Key untuk Agentik berhasil diperbarui!'));
+          return;
+        }
+
+        if (subChoice === 'switch_model') {
+          const modelsList =
+            cp.models && cp.models.length > 0 ? cp.models : DEFAULT_AGENTIK_MODELS;
+
+          const picked = await p.select({
+            message: 'Pilih model aktif untuk Agentik:',
+            options: [
+              ...modelsList.map((m) => ({ value: m, label: m })),
+              { value: '__manual__', label: '✎ Ketik nama model lain...' },
+            ],
+          });
+
+          if (p.isCancel(picked)) continue;
+
+          let finalModel = picked;
+          if (picked === '__manual__') {
+            finalModel = await p.text({
+              message: 'Ketik nama model:',
+              placeholder: 'contoh: gemini-3.8-flash-high',
+              validate(val) {
+                if (!val || !val.trim()) return 'Nama model tidak boleh kosong';
+              },
+            });
+            if (p.isCancel(finalModel)) continue;
+            finalModel = finalModel.trim();
+          }
+
+          const updatedCustom = customList.map((item) => {
+            if (item.name.toLowerCase() === 'agentik') {
+              const currentModels = Array.isArray(item.models) ? item.models : [];
+              const nextModels = currentModels.includes(finalModel) ? currentModels : [...currentModels, finalModel];
+              return { ...item, model: finalModel, models: nextModels };
+            }
+            return item;
+          });
+
+          const updates = { customProviders: updatedCustom };
+          if (config.activeType === 'custom' && config.activeProvider.toLowerCase() === 'agentik') {
+            updates.activeModel = finalModel;
+          }
+          saveConfig(updates);
+          p.outro(chalk.green(`✓ Model Agentik diubah menjadi: ${finalModel}`));
+          return;
+        }
+
+        if (subChoice === 'refresh_models') {
+          const s = p.spinner();
+          s.start(`Menghubungi ${cleanUrl(cp.baseUrl)}/models...`);
+
+          try {
+            const res = await fetch(`${cp.baseUrl}/models`, {
+              headers: {
+                Authorization: `Bearer ${cp.apiKey}`,
+                'User-Agent': 'bAIwor-cli/1.0.0',
+              },
+              signal: AbortSignal.timeout(10000),
+            });
+
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+
+            const data = await res.json();
+            const list = Array.isArray(data.data)
+              ? data.data
+              : Array.isArray(data.models)
+              ? data.models
+              : Array.isArray(data)
+              ? data
+              : [];
+            const fetched = list
+              .map((m) => (typeof m === 'string' ? m : m.id || m.name))
+              .filter(Boolean);
+
+            if (fetched.length === 0) {
+              s.stop(chalk.yellow('Tidak ada model yang ditemukan dari server.'));
+              continue;
+            }
+
+            s.stop(chalk.green(`Berhasil memperbarui ${fetched.length} model dari Agentik!`));
+
+            const updatedCustom = customList.map((item) => {
+              if (item.name.toLowerCase() === 'agentik') {
+                return { ...item, models: fetched };
+              }
+              return item;
+            });
+            saveConfig({ customProviders: updatedCustom });
+            continue;
+          } catch (err) {
+            s.stop(chalk.red(`Gagal me-refresh model: ${err.message}`));
+            continue;
+          }
+        }
+
+        continue;
+      }
+
+      // Handler untuk Custom Provider selain Agentik
       const subChoice = await p.select({
-        message: `Kelola ${chalk.bold(cp.name)} (${typeLabel}):`,
+        message: `Kelola Custom Provider: ${chalk.bold(cp.name)}`,
         options: [
           { value: 'activate', label: `Aktifkan ${cp.name} (${cp.model})` },
           { value: 'switch_model', label: 'Ganti model aktif' },
@@ -203,9 +520,6 @@ export async function runModelMenu() {
       if (subChoice === 'activate') {
         if (!cp.apiKey || !cp.apiKey.trim()) {
           console.log(chalk.yellow(`\n  ℹ️  API Key untuk ${cp.name} belum diatur.`));
-          if (isAgentik) {
-            console.log(chalk.gray('     Dapatkan bonus token/credit di https://agentik.my.id\n'));
-          }
           const inputKey = await p.text({
             message: `Masukkan API Key ${cp.name}:`,
             validate(val) {
@@ -235,7 +549,6 @@ export async function runModelMenu() {
       if (subChoice === 'edit_key') {
         const inputKey = await p.text({
           message: `Masukkan API Key baru untuk ${cp.name}:`,
-          placeholder: isAgentik ? 'Dapatkan di https://agentik.my.id' : '',
           validate(val) {
             if (!val || !val.trim()) return 'API Key tidak boleh kosong';
           },
@@ -255,21 +568,8 @@ export async function runModelMenu() {
       }
 
       if (subChoice === 'switch_model') {
-        const defaultAgentikModels = [
-          'gemini-3.8-flash-high',
-          'gemini-3.5-flash',
-          'claude-sonnet-5-5',
-          'claude-sonnet-4-6',
-          'gemini-3.7-flash',
-          'gemini-3.1-flash-lite',
-        ];
-
         const modelsList =
-          cp.models && cp.models.length > 0
-            ? cp.models
-            : isAgentik
-            ? defaultAgentikModels
-            : [cp.model];
+          cp.models && cp.models.length > 0 ? cp.models : [cp.model];
 
         const picked = await p.select({
           message: `Pilih model untuk ${cp.name}:`,
