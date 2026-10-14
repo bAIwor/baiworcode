@@ -6,47 +6,59 @@ import {
   handleListDirectory,
   handleRunCommand,
 } from './handlers.js';
+import {
+  registerTool,
+  getDefinitions,
+  dispatchTool,
+  capToolOutput,
+  MAX_TOOL_OUTPUT_CHARS,
+  listToolsets,
+  clearRegistry,
+} from './registry.js';
 
-export { TOOL_DEFINITIONS };
+// Inisialisasi registrasi 5 tools bawaan ke dalam Registry ala Hermes
+const handlersMap = {
+  read_file: { handler: handleReadFile, toolset: 'file', emoji: '📖' },
+  write_file: { handler: handleWriteFile, toolset: 'file', emoji: '✏️' },
+  edit_file: { handler: handleEditFile, toolset: 'file', emoji: '✂️' },
+  list_directory: { handler: handleListDirectory, toolset: 'file', emoji: '📁' },
+  run_command: { handler: handleRunCommand, toolset: 'terminal', emoji: '⚡' },
+};
+
+for (const def of TOOL_DEFINITIONS) {
+  const fn = def.function;
+  const meta = handlersMap[fn.name] || {};
+  registerTool({
+    name: fn.name,
+    toolset: meta.toolset || 'core',
+    emoji: meta.emoji || '⚡',
+    schema: {
+      description: fn.description,
+      parameters: fn.parameters,
+    },
+    handler: meta.handler,
+  });
+}
 
 /**
- * Dispatcher untuk mengeksekusi tool berdasarkan nama dan argumen
+ * Dispatcher untuk mengeksekusi tool berdasarkan nama dan argumen.
+ * Menggunakan Hermes-style Tool Registry.
  *
  * @param {string} toolName
  * @param {string|Object} rawArgs
  * @returns {Promise<{ success: boolean, output: string }>}
  */
 export async function executeTool(toolName, rawArgs) {
-  let args = rawArgs;
-
-  if (typeof rawArgs === 'string') {
-    try {
-      args = JSON.parse(rawArgs);
-    } catch {
-      return {
-        success: false,
-        output: `Error: Format argumen JSON untuk ${toolName} tidak valid: ${rawArgs}`,
-      };
-    }
-  }
-
-  args = args || {};
-
-  switch (toolName) {
-    case 'read_file':
-      return await handleReadFile(args);
-    case 'write_file':
-      return await handleWriteFile(args);
-    case 'edit_file':
-      return await handleEditFile(args);
-    case 'list_directory':
-      return await handleListDirectory(args);
-    case 'run_command':
-      return await handleRunCommand(args);
-    default:
-      return {
-        success: false,
-        output: `Error: Tool '${toolName}' tidak dikenal dalam sistem bAIwor Code.`,
-      };
-  }
+  return await dispatchTool(toolName, rawArgs);
 }
+
+export {
+  TOOL_DEFINITIONS,
+  registerTool,
+  getDefinitions,
+  dispatchTool,
+  capToolOutput,
+  MAX_TOOL_OUTPUT_CHARS,
+  listToolsets,
+  clearRegistry,
+};

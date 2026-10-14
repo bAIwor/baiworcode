@@ -90,6 +90,7 @@ export async function handleUserChat(promptText) {
   const MAX_AGENT_TURNS = 10;
   let currentTurn = 0;
   let hasFirstTurnSucceeded = false;
+  let completedNaturally = false;
 
   try {
     while (currentTurn < MAX_AGENT_TURNS) {
@@ -185,7 +186,18 @@ export async function handleUserChat(promptText) {
       conversationSession.addAssistantMessage(result.content || '');
       conversationSession.trim(50);
       process.stdout.write('\n\n');
+      completedNaturally = true;
       break;
+    }
+
+    // Jika loop keluar karena mencapai batas putaran tanpa final answer (A1)
+    if (!completedNaturally) {
+      console.log(chalk.yellow(`\n  ⚠️  Batas ${MAX_AGENT_TURNS} putaran tool tercapai tanpa jawaban akhir.`));
+      console.log(chalk.gray('     Model terus meminta pemanggilan tool tanpa menyimpulkan. Coba persempit atau perjelas permintaan Anda.\n'));
+      conversationSession.addAssistantMessage(
+        '[Sistem] Batas putaran tool tercapai sebelum jawaban akhir diberikan.'
+      );
+      conversationSession.trim(50);
     }
   } catch (err) {
     stopThinkingSpinner();

@@ -4,7 +4,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
-import { TOOL_DEFINITIONS, executeTool } from '../src/tools/index.js';
+import {
+  TOOL_DEFINITIONS,
+  executeTool,
+  capToolOutput,
+  registerTool,
+  getDefinitions,
+  listToolsets,
+} from '../src/tools/index.js';
 import {
   handleReadFile,
   handleWriteFile,
@@ -110,6 +117,35 @@ describe('Tahap 3B: File System Handlers', () => {
     assert.equal(res.success, true);
     assert.match(res.output, /bAIwor Agentik/);
   });
+
+  it('harus dapat menjalankan perintah chained dengan && di semua sistem operasi (F3)', async () => {
+    const res = await handleRunCommand({
+      command: 'node -e "console.log(\'STEP_A\')" && node -e "console.log(\'STEP_B\')"',
+    });
+
+    assert.equal(res.success, true);
+    assert.match(res.output, /STEP_A/);
+    assert.match(res.output, /STEP_B/);
+  });
+
+  it('harus menolak akses ke berkas di luar workspace (F1 Sandbox)', async () => {
+    // Jalur di luar workspace dan di luar tmpdir
+    const outsidePath = path.resolve(process.cwd(), '..', '..', 'arbitrary_outside_file.txt');
+    const res = await handleReadFile({ file_path: outsidePath });
+
+    assert.equal(res.success, false);
+    assert.match(res.output, /Akses ditolak/i);
+    assert.match(res.output, /luar direktori workspace/i);
+  });
+
+  it('harus menolak akses ke berkas/direktori sensitif .baiwor atau .ssh (F1)', async () => {
+    const sensitiveFile = path.join(os.homedir(), '.baiwor', 'config.json');
+    const res = await handleReadFile({ file_path: sensitiveFile });
+
+    assert.equal(res.success, false);
+    assert.match(res.output, /Akses ditolak/i);
+    assert.match(res.output, /sensitif/i);
+  });
 });
 
 describe('Tahap 3B: Tool Dispatcher & JSON Argument Parser', () => {
@@ -123,6 +159,58 @@ describe('Tahap 3B: Tool Dispatcher & JSON Argument Parser', () => {
     const res = await executeTool('unknown_magic_tool', {});
     assert.equal(res.success, false);
     assert.match(res.output, /tidak dikenal/i);
+  });
+
+  it('harus memotong output yang melebihi batas budget karakter (A2/F5)', () => {
+    const hugeText = 'X'.repeat(50000);
+    const capped = capToolOutput(hugeText, 40000);
+
+    assert.ok(capped.length < 50000);
+    assert.match(capped, /Output dipotong: 10000 karakter melebihi budget context/);
+  });
+
+  it('harus mendukung pendaftaran tool baru via registerTool ala Hermes (F4)', async () => {
+    registerTool({
+      name: 'hitung_kuadrat',
+      toolset: 'math',
+      schema: {
+        description: 'Menghitung kuadrat angka',
+        parameters: {
+          type: 'object',
+          properties: { n: { type: 'number' } },
+          required: ['n'],
+        },
+      },
+      handler: async ({ n }) => {
+        return { success: true, output: `Hasil: ${n * n}` };
+      },
+    });
+
+    const res = await executeTool('hitung_kuadrat', JSON.stringify({ n: 7 }));
+    assert.equal(res.success, true);
+    assert.match(res.output, /Hasil: 49/);
+  });
+
+  it('harus menyaring tool dengan check_fn yang bernilai false saat getDefinitions()', () => {
+    registerTool({
+      name: 'tool_rahasia_nonaktif',
+      toolset: 'secret',
+      schema: { description: 'Tool rahasia' },
+      handler: async () => ({ success: true, output: 'ok' }),
+      check: () => false, // probe gagal
+    });
+
+    const defs = getDefinitions();
+    const found = defs.some((d) => d.function.name === 'tool_rahasia_nonaktif');
+    assert.equal(found, false);
+  });
+
+  it('harus mengelompokkan toolsets dengan listToolsets()', () => {
+    const sets = listToolsets();
+    assert.ok(Array.isArray(sets.file));
+    assert.ok(sets.file.includes('read_file'));
+    assert.ok(Array.isArray(sets.terminal));
+    assert.ok(sets.terminal.includes('run_command'));
   });
 });
 

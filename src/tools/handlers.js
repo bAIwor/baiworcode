@@ -4,20 +4,69 @@ import { exec } from 'node:child_process';
 import os from 'node:os';
 
 /**
- * Menormalkan path berkas berdasarkan CWD aktif
+ * Memeriksa apakah child berada di dalam direktori parent
  */
-function resolveSafePath(filePath, baseDir = process.cwd()) {
+export function isSubPath(parent, child) {
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+/**
+ * Memeriksa apakah path mengarah ke berkas atau direktori sensitif
+ */
+export function isSensitivePath(targetPath) {
+  const norm = path.normalize(targetPath).toLowerCase();
+  const home = path.normalize(os.homedir()).toLowerCase();
+
+  const protectedSubs = ['.ssh', '.baiwor', '.aws', '.gnupg', '.azure', 'id_rsa', 'id_ed25519'];
+  for (const sub of protectedSubs) {
+    if (isSubPath(path.join(home, sub), targetPath) || norm.includes(path.sep + sub)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Menormalkan path berkas berdasarkan CWD aktif dengan perlindungan Sandbox (F1)
+ */
+export function resolveSafePath(filePath, baseDir = process.cwd(), allowTmp = true) {
   if (!filePath || typeof filePath !== 'string') {
     throw new Error('File path tidak valid.');
   }
-  return path.isAbsolute(filePath) ? path.normalize(filePath) : path.resolve(baseDir, filePath);
+
+  const normalizedBase = path.resolve(baseDir);
+  const resolved = path.isAbsolute(filePath)
+    ? path.resolve(filePath)
+    : path.resolve(normalizedBase, filePath);
+
+  if (isSensitivePath(resolved)) {
+    throw new Error(`Akses ditolak: Jalur '${filePath}' merupakan area konfigurasi/kredensial sensitif yang dilindungi oleh bAIwor.`);
+  }
+
+  const inWorkspace = isSubPath(normalizedBase, resolved);
+  const inTmp = allowTmp && isSubPath(os.tmpdir(), resolved);
+
+  if (!inWorkspace && !inTmp) {
+    throw new Error(`Akses ditolak: Jalur '${filePath}' berada di luar direktori workspace proyek (${normalizedBase}).`);
+  }
+
+  return resolved;
 }
 
 /**
  * Handler untuk membaca berkas
  */
 export async function handleReadFile({ file_path, offset = 1, limit = 200 }) {
-  const resolved = resolveSafePath(file_path);
+  let resolved;
+  try {
+    resolved = resolveSafePath(file_path);
+  } catch (err) {
+    return {
+      success: false,
+      output: err.message,
+    };
+  }
 
   if (!fs.existsSync(resolved)) {
     return {
@@ -62,7 +111,16 @@ export async function handleReadFile({ file_path, offset = 1, limit = 200 }) {
  * Handler untuk menulis berkas baru atau menimpa berkas
  */
 export async function handleWriteFile({ file_path, content }) {
-  const resolved = resolveSafePath(file_path);
+  let resolved;
+  try {
+    resolved = resolveSafePath(file_path);
+  } catch (err) {
+    return {
+      success: false,
+      output: err.message,
+    };
+  }
+
   const dir = path.dirname(resolved);
 
   if (!fs.existsSync(dir)) {
@@ -82,7 +140,15 @@ export async function handleWriteFile({ file_path, content }) {
  * Handler untuk mengedit berkas (search and replace)
  */
 export async function handleEditFile({ file_path, old_content, new_content }) {
-  const resolved = resolveSafePath(file_path);
+  let resolved;
+  try {
+    resolved = resolveSafePath(file_path);
+  } catch (err) {
+    return {
+      success: false,
+      output: err.message,
+    };
+  }
 
   if (!fs.existsSync(resolved)) {
     return {
@@ -144,7 +210,15 @@ export async function handleEditFile({ file_path, old_content, new_content }) {
  * Handler untuk melihat daftar isi direktori
  */
 export async function handleListDirectory({ dir_path = '.', recursive = false, max_depth = 2 }) {
-  const resolved = resolveSafePath(dir_path);
+  let resolved;
+  try {
+    resolved = resolveSafePath(dir_path);
+  } catch (err) {
+    return {
+      success: false,
+      output: err.message,
+    };
+  }
 
   if (!fs.existsSync(resolved)) {
     return {
@@ -233,11 +307,22 @@ export async function handleRunCommand({ command, cwd }) {
     };
   }
 
-  const executionCwd = cwd ? resolveSafePath(cwd) : process.cwd();
+  let executionCwd = process.cwd();
+  if (cwd) {
+    try {
+      executionCwd = resolveSafePath(cwd);
+    } catch (err) {
+      return {
+        success: false,
+        output: err.message,
+      };
+    }
+  }
 
   return new Promise((resolve) => {
     const isWindows = os.platform() === 'win32';
-    const shellOpt = isWindows ? 'powershell.exe' : '/bin/bash';
+    // Di Windows gunakan cmd.exe bawaan (mendukung pemisah chained && dan || standar)
+    const shellOpt = isWindows ? (process.env.ComSpec || 'cmd.exe') : '/bin/bash';
 
     const child = exec(command, {
       cwd: executionCwd,
