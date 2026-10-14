@@ -153,6 +153,62 @@ function extractAbsolutePaths(command) {
   return found;
 }
 
+/**
+ * Pola perintah yang SAH tapi berisiko — boleh dijalankan, tapi sebaiknya
+ * dikonfirmasi dulu ke pengguna (dipakai oleh approval gate / Human-in-the-Loop).
+ *
+ * Dipisahkan dari DANGEROUS_RULES: yang di sini TIDAK ditolak oleh sandbox,
+ * hanya ditandai agar pemanggil bisa menampilkan prompt Y/n.
+ */
+export const CONFIRM_RULES = [
+  { re: /\bgit\s+push\b/i, reason: 'mengirim perubahan ke repositori remote' },
+  { re: /\bnpm\s+publish\b/i, reason: 'menerbitkan paket ke registri publik' },
+  { re: /\bnpm\s+(?:i|install)\s+(?:-g|--global)\b/i, reason: 'memasang paket secara global di sistem' },
+  { re: /\bgit\s+reset\s+--hard\b/i, reason: 'membuang seluruh perubahan lokal' },
+  { re: /\bgit\s+clean\s+-[a-z]*[fd]/i, reason: 'menghapus berkas yang belum dilacak' },
+  { re: /\bgit\s+(?:checkout|restore)\s+--?\s*\./i, reason: 'membuang perubahan pada seluruh berkas' },
+  { re: /\brm\s+(?:-[a-zA-Z]+\s+)*-[a-zA-Z]*[rR][a-zA-Z]*\b/i, reason: 'menghapus berkas secara rekursif' },
+  { re: /\bdel\s+\/[a-z]*[fq][a-z]*\b/i, reason: 'menghapus berkas secara paksa' },
+  { re: /\b(?:kill|taskkill|pkill)\b/i, reason: 'menghentikan proses yang sedang berjalan' },
+  { re: /\bchmod\b|\bchown\b|\bicacls\b/i, reason: 'mengubah izin atau kepemilikan berkas' },
+];
+
+/**
+ * Mengklasifikasikan perintah menjadi tiga tingkat keputusan:
+ *
+ *   - `deny`    : ditolak mutlak oleh sandbox (tidak pernah wajar untuk agent).
+ *   - `confirm` : sah, tetapi berisiko — sebaiknya minta persetujuan pengguna (Y/n).
+ *   - `allow`   : jalankan langsung.
+ *
+ * `analyzeCommand()` tetap menjadi sumber kebenaran untuk keputusan tolak,
+ * sehingga perilaku sandbox tidak berubah — fungsi ini hanya menambah satu
+ * tingkat di antaranya.
+ *
+ * @param {string} command
+ * @param {Object} [options]
+ * @param {string} [options.workspace]
+ * @returns {{ decision: 'allow'|'confirm'|'deny', category: string|null, reason: string|null }}
+ */
+export function classifyCommand(command, options = {}) {
+  const verdict = analyzeCommand(command, options);
+  if (!verdict.allowed) {
+    return { decision: 'deny', category: verdict.category, reason: verdict.reason };
+  }
+
+  const raw = String(command ?? '');
+  for (const rule of CONFIRM_RULES) {
+    if (rule.re.test(raw)) {
+      return {
+        decision: 'confirm',
+        category: 'needs-approval',
+        reason: `Perintah ini ${rule.reason}.`,
+      };
+    }
+  }
+
+  return { decision: 'allow', category: null, reason: null };
+}
+
 function deny(category, reason) {
   return { allowed: false, category, reason };
 }

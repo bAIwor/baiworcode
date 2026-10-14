@@ -22,9 +22,9 @@ import {
 import { streamChatCompletion } from '../src/chat/client.js';
 
 describe('Tahap 3B: Tool Definitions & Schemas', () => {
-  it('harus memuat 5 tools utama dengan format OpenAI Function Calling', () => {
+  it('harus memuat 7 tools utama dengan format OpenAI Function Calling', () => {
     assert.equal(Array.isArray(TOOL_DEFINITIONS), true);
-    assert.equal(TOOL_DEFINITIONS.length, 5);
+    assert.equal(TOOL_DEFINITIONS.length, 7);
 
     const names = TOOL_DEFINITIONS.map((t) => t.function.name);
     assert.ok(names.includes('read_file'));
@@ -32,6 +32,8 @@ describe('Tahap 3B: Tool Definitions & Schemas', () => {
     assert.ok(names.includes('edit_file'));
     assert.ok(names.includes('list_directory'));
     assert.ok(names.includes('run_command'));
+    assert.ok(names.includes('search_files'));
+    assert.ok(names.includes('todo_list'));
   });
 });
 

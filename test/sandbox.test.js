@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
-import { analyzeCommand, isSubPath, isSensitivePath, isPathAllowed } from '../src/tools/sandbox.js';
+import { analyzeCommand, classifyCommand, isSubPath, isSensitivePath, isPathAllowed } from '../src/tools/sandbox.js';
 import { handleRunCommand } from '../src/tools/handlers.js';
 
 const WORKSPACE = process.cwd();
@@ -70,6 +70,41 @@ describe('Sandbox A5: penjaga perintah terminal', () => {
 
   it('menolak perintah kosong', () => {
     assert.equal(analyzeCommand('   ', { workspace: WORKSPACE }).allowed, false);
+  });
+});
+
+describe('Sandbox: klasifikasi tiga tingkat untuk approval gate', () => {
+  it('menandai perintah berisiko sebagai "confirm" (bukan ditolak)', () => {
+    for (const cmd of [
+      'git push origin main',
+      'npm publish',
+      'rm -rf node_modules',
+      'git reset --hard HEAD~1',
+      'npm install -g typescript',
+    ]) {
+      const r = classifyCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(r.decision, 'confirm', `seharusnya minta konfirmasi: ${cmd}`);
+      assert.equal(r.category, 'needs-approval');
+      assert.ok(r.reason, 'alasan konfirmasi harus diisi');
+    }
+  });
+
+  it('perintah aman langsung "allow" tanpa konfirmasi', () => {
+    for (const cmd of ['npm test', 'git status --short', 'node -e "1"', 'ls src']) {
+      assert.equal(classifyCommand(cmd, { workspace: WORKSPACE }).decision, 'allow', cmd);
+    }
+  });
+
+  it('perintah terlarang tetap "deny" dan tidak berubah jadi confirm', () => {
+    for (const cmd of ['rm -rf /', 'cat ~/.ssh/id_rsa', 'cd ..', 'git push --force origin main']) {
+      const r = classifyCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(r.decision, 'deny', `seharusnya ditolak: ${cmd}`);
+    }
+  });
+
+  it('analyzeCommand tetap konsisten dengan perilaku sebelumnya', () => {
+    assert.equal(analyzeCommand('git push origin main', { workspace: WORKSPACE }).allowed, true);
+    assert.equal(analyzeCommand('rm -rf /', { workspace: WORKSPACE }).allowed, false);
   });
 });
 

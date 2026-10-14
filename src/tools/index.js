@@ -6,6 +6,8 @@ import {
   handleListDirectory,
   handleRunCommand,
 } from './handlers.js';
+import { handleSearchFiles } from './searchTool.js';
+import { handleTodoList } from './todoTool.js';
 import {
   registerTool,
   getDefinitions,
@@ -16,13 +18,15 @@ import {
   clearRegistry,
 } from './registry.js';
 
-// Inisialisasi registrasi 5 tools bawaan ke dalam Registry ala Hermes
+// Inisialisasi registrasi tools bawaan ke dalam Registry ala Hermes
 const handlersMap = {
   read_file: { handler: handleReadFile, toolset: 'file', emoji: '📖' },
   write_file: { handler: handleWriteFile, toolset: 'file', emoji: '✏️' },
   edit_file: { handler: handleEditFile, toolset: 'file', emoji: '✂️' },
   list_directory: { handler: handleListDirectory, toolset: 'file', emoji: '📁' },
   run_command: { handler: handleRunCommand, toolset: 'terminal', emoji: '⚡' },
+  search_files: { handler: handleSearchFiles, toolset: 'file', emoji: '🔎' },
+  todo_list: { handler: handleTodoList, toolset: 'todo', emoji: '📋' },
 };
 
 for (const def of TOOL_DEFINITIONS) {
@@ -61,4 +65,6 @@ export {
   MAX_TOOL_OUTPUT_CHARS,
   listToolsets,
   clearRegistry,
+  handleSearchFiles,
+  handleTodoList,
 };

@@ -120,4 +120,64 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'search_files',
+      description: 'Mencari teks/fungsi di seluruh berkas proyek (target "content") atau mencari nama berkas dengan pola glob (target "files"). Gunakan tool ini alih-alih membuka berkas satu per satu — jauh lebih cepat dan hemat konteks.',
+      parameters: {
+        type: 'object',
+        properties: {
+          pattern: {
+            type: 'string',
+            description: 'Pola regex untuk pencarian isi berkas (misal: "function handleUserChat"), atau pola glob untuk pencarian nama berkas (misal: "*.test.js").',
+          },
+          target: {
+            type: 'string',
+            enum: ['content', 'files'],
+            description: '"content" mencari di dalam isi berkas, "files" mencari berdasarkan nama berkas. Default: content.',
+          },
+          path: {
+            type: 'string',
+            description: 'Direktori atau berkas awal pencarian (default: "." untuk direktori aktif).',
+          },
+          file_glob: {
+            type: 'string',
+            description: 'Filter nama berkas saat target="content" (misal: "*.js"). Opsional.',
+          },
+        },
+        required: ['pattern'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'todo_list',
+      description: 'Menyusun dan memperbarui daftar tugas untuk pekerjaan multi-langkah (3 langkah atau lebih). Panggil tanpa parameter untuk membaca daftar saat ini. Urutan daftar menunjukkan prioritas, dan hanya SATU item boleh berstatus in_progress. Tandai sebuah tugas selesai hanya setelah pekerjaannya benar-benar terverifikasi, bukan sekadar niat.',
+      parameters: {
+        type: 'object',
+        properties: {
+          todos: {
+            type: 'array',
+            description: 'Daftar tugas yang ditulis. Kosongkan parameter ini untuk sekadar membaca daftar.',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'ID unik singkat, misal "1", "2".' },
+                content: { type: 'string', description: 'Deskripsi tugas.' },
+                status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'cancelled'] },
+                parent: { type: 'string', description: 'Opsional: id item lain untuk menjadikan ini sub-tugas.' },
+              },
+              required: ['id', 'content', 'status'],
+            },
+          },
+          merge: {
+            type: 'boolean',
+            description: 'true: perbarui item yang sudah ada berdasarkan id dan tambahkan yang baru. false (default): ganti seluruh daftar dengan rencana baru.',
+          },
+        },
+      },
+    },
+  },
 ];
