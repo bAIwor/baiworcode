@@ -20,6 +20,7 @@ import {
   handleRunCommand,
 } from '../src/tools/handlers.js';
 import { streamChatCompletion } from '../src/chat/client.js';
+import { setApprovalHandler, resetApprovalHandler } from '../src/tools/approval.js';
 
 describe('Tahap 3B: Tool Definitions & Schemas', () => {
   it('harus memuat 7 tools utama dengan format OpenAI Function Calling', () => {
@@ -263,3 +264,46 @@ describe('Tahap 3B: SSE Streaming Tool Calls Accumulation', () => {
     assert.equal(result.tool_calls[0].function.arguments, '{"file_path":"index.js"}');
   });
 });
+
+describe('Tahap 5: Human-in-the-Loop Command Approval Gate', () => {
+  after(() => {
+    resetApprovalHandler();
+  });
+
+  it('harus mengeksekusi perintah confirm jika pengguna menyetujui', async () => {
+    setApprovalHandler(async () => ({ approved: true }));
+
+    const res = await handleRunCommand({ command: 'npm publish --dry-run' });
+    assert.equal(res.success, true);
+    assert.match(res.output, /baiworcode/i);
+  });
+
+  it('harus menolak eksekusi dan mengembalikan alasan jika pengguna menolak', async () => {
+    setApprovalHandler(async (cmd) => ({
+      approved: false,
+      message: `Perintah '${cmd}' dibatalkan oleh pengguna (butuh konfirmasi).`,
+    }));
+
+    const res = await handleRunCommand({ command: 'git push origin main' });
+    assert.equal(res.success, false);
+    assert.match(res.output, /dibatalkan oleh pengguna/i);
+    assert.match(res.output, /butuh konfirmasi/i);
+  });
+
+  it('harus otomatis membatalkan dan tidak menggantung saat mode non-TTY', async () => {
+    resetApprovalHandler(); // Menguji perilaku riil saat non-TTY
+
+    // Pasang batas timer 2 detik untuk memastikan tidak menggantung
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('TIMEOUT: approval gate menggantung di mode non-TTY!')), 2000)
+    );
+
+    const execPromise = handleRunCommand({ command: 'git push origin main' });
+    const res = await Promise.race([execPromise, timeoutPromise]);
+
+    assert.equal(res.success, false);
+    assert.match(res.output, /dibatalkan otomatis/i);
+    assert.match(res.output, /non-TTY/i);
+  });
+});
+

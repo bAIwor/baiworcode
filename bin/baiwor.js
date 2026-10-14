@@ -9,6 +9,7 @@ import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
 import { handleUserChat, resetConversation, conversationSession } from '../src/chat/index.js';
+import { resolveActiveCredentials } from '../src/auth/resolve.js';
 
 function stripAnsi(str) {
   return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
@@ -239,19 +240,61 @@ function showHelp() {
     console.log(`    ${green(usage.padEnd(width))}  ${dim('─')}  ${desc}`);
   }
   console.log();
+  console.log(gold.bold('  🚀 Mulai dari sini (Contoh untuk Pemula):'));
+  console.log(`    ${chalk.cyan('baiworcode "jelaskan struktur proyek ini"')}`);
+  console.log(`    ${chalk.cyan('baiworcode "perbaiki error di src/index.js"')}`);
+  console.log(`    ${chalk.cyan('baiworcode "buatkan test untuk fungsi hitungTotal"')}`);
+  console.log();
   console.log(chalk.gray('  💡 Ketik langsung pertanyaan atau instruksi coding apa saja untuk chat dengan bAIwor!'));
   console.log();
 }
 
-function printStatus() {
+/**
+ * Mengukur round-trip latency ke endpoint provider yang sedang aktif secara tahan-gagal.
+ */
+async function checkActiveProviderLatency() {
+  try {
+    const creds = await resolveActiveCredentials();
+    const startTime = performance.now();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    let testUrl = (creds.baseUrl || '').trim().replace(/\/+$/, '');
+    if (!testUrl.endsWith('/models') && !testUrl.endsWith('/chat/completions')) {
+      testUrl = `${testUrl}/models`;
+    }
+
+    try {
+      await fetch(testUrl, {
+        method: 'GET',
+        headers: creds.headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      const elapsed = Math.round(performance.now() - startTime);
+      return `${elapsed} ms`;
+    } catch {
+      clearTimeout(timeout);
+      return 'tidak tersedia';
+    }
+  } catch {
+    return 'tidak tersedia';
+  }
+}
+
+async function printStatus() {
   const config = getConfig();
   const oauthList = authStatus();
+
+  const latency = await checkActiveProviderLatency();
+  const latencyBadge = latency.endsWith('ms') ? chalk.green(latency) : chalk.gray(latency);
 
   console.log();
   console.log(chalk.hex('#FBBF24').bold('  📊 Status Sistem & Konfigurasi bAIwor Code:'));
   console.log(`    ${chalk.dim('Lokasi Config :')} ${chalk.cyan(CONFIG_FILE)}`);
   console.log(`    ${chalk.dim('Provider Aktif:')} ${chalk.green.bold(config.activeProvider)} ${chalk.dim(`(${config.activeType})`)}`);
   console.log(`    ${chalk.dim('Model Aktif   :')} ${chalk.hex('#F59E0B').bold(config.activeModel)}`);
+  console.log(`    ${chalk.dim('Latency       :')} ${latencyBadge}`);
   console.log();
 
   console.log(chalk.white.bold('  🔐 Status Sesi OAuth Providers:'));
@@ -335,7 +378,7 @@ async function startInteractive() {
         showHelp();
         break;
       case '/status':
-        printStatus();
+        await printStatus();
         break;
       case '/model':
       case '/provider':
@@ -393,8 +436,8 @@ program
 program
   .command('status')
   .description('Tampilkan status konfigurasi dan sesi login')
-  .action(() => {
-    printStatus();
+  .action(async () => {
+    await printStatus();
     process.exit(0);
   });
 

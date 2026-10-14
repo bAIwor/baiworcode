@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exec } from 'node:child_process';
 import os from 'node:os';
-import { isSubPath, isSensitivePath, analyzeCommand } from './sandbox.js';
+import { isSubPath, isSensitivePath, analyzeCommand, classifyCommand } from './sandbox.js';
+import { requestCommandApproval } from './approval.js';
 
 // Helper path tetap diekspor dari modul ini agar kontrak lama tidak berubah.
 export { isSubPath, isSensitivePath };
@@ -299,15 +300,25 @@ export async function handleRunCommand({ command, cwd }) {
     }
   }
 
-  // Penjaga sandbox perintah (temuan audit A5): mengunci `cwd` saja tidak cukup —
-  // isi perintah masih bisa menunjuk path absolut di luar workspace atau
-  // memuat `cd ..` untuk keluar. Periksa string perintah sebelum eksekusi.
-  const verdict = analyzeCommand(command, { workspace: process.cwd() });
-  if (!verdict.allowed) {
+  // Penjaga sandbox perintah (A5) & Approval Gate (Tahap 5):
+  // Mengklasifikasikan perintah menjadi: deny, confirm, atau allow.
+  const classification = classifyCommand(command, { workspace: process.cwd() });
+
+  if (classification.decision === 'deny') {
     return {
       success: false,
-      output: `Ditolak oleh sandbox bAIwor [${verdict.category}]: ${verdict.reason}`,
+      output: `Ditolak oleh sandbox bAIwor [${classification.category}]: ${classification.reason}`,
     };
+  }
+
+  if (classification.decision === 'confirm') {
+    const approval = await requestCommandApproval(command, classification.reason);
+    if (!approval.approved) {
+      return {
+        success: false,
+        output: approval.message || `Perintah '${command}' dibatalkan oleh pengguna (butuh konfirmasi).`,
+      };
+    }
   }
 
   return new Promise((resolve) => {
