@@ -21,7 +21,15 @@ describe('StatusLine: Helper', () => {
   it('harus mengembalikan lebar terminal yang masuk akal', () => {
     const w = terminalWidth();
     assert.ok(w >= 40, `lebar ${w} di bawah batas minimum`);
-    assert.ok(w <= 200);
+  });
+
+  it('harus mengikuti lebar terminal walau melewati 200 kolom (fullscreen)', () => {
+    // Regresi: dulu ada cap 200 sehingga saat terminal di-fullscreen lebih
+    // lebar dari itu, garis berhenti mengikuti ukuran layar.
+    assert.equal(terminalWidth(300), 300);
+    assert.equal(terminalWidth(240), 240);
+    assert.equal(terminalWidth(120), 120);
+    assert.equal(terminalWidth(10), 40, 'tetap menghormati lebar minimum');
   });
 
   it('harus menggambar garis sesuai lebar terminal', () => {
@@ -60,18 +68,18 @@ describe('Prompt: Layout Area Input', () => {
   });
 
   it('harus menggambar garis bawah setelah input', () => {
-    const idx = render().split('\n').findIndex((l) => /^ {4}─+$/.test(l));
+    const idx = render().split('\n').findIndex((l) => /^ {2}─+$/.test(l));
     assert.ok(idx > 1, 'garis bawah harus ada setelah baris input');
   });
 
   it('kedua garis harus berakhir di kolom yang sama (ujung kanan sejajar)', () => {
     // Regresi: dulu kedua garis memakai jumlah tanda pisah yang sama sehingga
-    // ujung kanannya berselisih 4 kolom dan terlihat menceng. Sekarang garis
-    // bawah di-indentasi 4 kolom DAN dikurangi 4 tanda pisah supaya ujung
-    // kanan kedua garis tepat sejajar.
+    // ujung kanannya berselisih beberapa kolom dan terlihat menceng. Sekarang
+    // garis bawah di-indentasi STAIR_STEP kolom DAN dikurangi sebanyak itu
+    // supaya ujung kanan kedua garis tepat sejajar.
     const lines = render().split('\n');
     const atas = (lines[0].match(/─/g) || []).length;
-    const bawahLine = lines.find((l) => /^ {4}─+$/.test(l));
+    const bawahLine = lines.find((l) => /^ {2}─+$/.test(l));
     const bawah = (bawahLine.match(/─/g) || []).length;
     assert.ok(atas > 10, 'garis harus punya tanda pisah yang berarti');
     assert.equal(
@@ -79,18 +87,21 @@ describe('Prompt: Layout Area Input', () => {
       bawahLine.length,
       `panjang garis atas ${atas} harus sama dengan panjang garis bawah ${bawahLine.length}`
     );
-    assert.equal(bawah + 4, atas, 'garis bawah = 4 spasi + (dashes garis atas - 4)');
+    assert.equal(bawah + 2, atas, 'garis bawah = 2 spasi + (dashes garis atas - 2)');
   });
 
-  it('garis bawah harus bergeser tepat empat kolom ke kanan', () => {
+  it('garis bawah harus bergeser dan tepi kirinya sejajar dengan tanda ›', () => {
     const lines = render().split('\n');
     assert.ok(lines[0].startsWith('─'), 'garis atas harus mulai di kolom 0');
-    assert.ok(lines[2].startsWith('    ─'), 'garis bawah harus bergeser empat spasi');
+    assert.ok(lines[2].startsWith('  ─'), 'garis bawah harus bergeser dua spasi');
+    // Tanda › pada baris input juga berada di kolom ke-2.
+    assert.equal(lines[1].indexOf('›'), 2);
+    assert.equal(lines[2].indexOf('─'), lines[1].indexOf('›'));
   });
 
   it('harus menyisipkan satu baris kosong sebelum baris status', () => {
     const lines = render().split('\n');
-    const idx = lines.findIndex((l) => /^ {4}─+$/.test(l));
+    const idx = lines.findIndex((l) => /^ {2}─+$/.test(l));
     assert.equal(lines[idx + 1], '', 'harus ada baris kosong setelah garis bawah');
     assert.match(lines[idx + 2], /~\s+│\s+Full access/);
   });
@@ -145,7 +156,7 @@ describe('Prompt: Dropdown Perintah', () => {
 
   it('harus tetap menggambar garis bawah dan status di balik dropdown', () => {
     const lines = render('/he', 'initial', { dropdownOpen: true }).split('\n');
-    assert.ok(lines.findIndex((l) => /^ {4}─+$/.test(l)) > 0);
+    assert.ok(lines.findIndex((l) => /^ {2}─+$/.test(l)) > 0);
     assert.match(lines[lines.length - 1], /Context \d+% left/);
   });
 

@@ -17,17 +17,26 @@ import { getContextUsage, formatContextIndicator } from './chat/context.js';
 const MIN_WIDTH = 40;
 
 /**
- * Mengambil lebar terminal saat ini, dengan batas bawah dan atas yang wajar.
+ * Mengambil lebar terminal saat ini, dengan batas bawah yang wajar.
+ *
+ * @param {number} [cols] Lebar kolom; default dari `process.stdout.columns`
+ *   (parameter ini memudahkan pengujian tanpa TTY sungguhan).
  * @returns {number}
  */
-export function terminalWidth() {
-  const cols = process.stdout.columns;
+export function terminalWidth(cols = process.stdout.columns) {
   if (!Number.isFinite(cols) || cols <= 0) return 80;
-  return Math.max(MIN_WIDTH, Math.min(cols, 200));
+  // Sengaja TIDAK dipatok (cap) di atas: saat terminal di-fullscreen, lebarnya
+  // bisa melewati 200 kolom. Cap lama membuat garis berhenti mengikuti layar.
+  return Math.max(MIN_WIDTH, cols);
 }
 
-/** Lebar undakan antara garis atas dan garis bawah area input. */
-export const STAIR_STEP = 4;
+/**
+ * Lebar undakan antara garis atas dan garis bawah area input.
+ *
+ * Disamakan dengan indentasi baris input (`  ›  `) supaya tepi kiri garis
+ * bawah tepat sejajar dengan tanda `›`.
+ */
+export const STAIR_STEP = 2;
 
 /**
  * Dua garis pemisah yang membingkai area input.
