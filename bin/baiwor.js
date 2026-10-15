@@ -431,6 +431,11 @@ async function startInteractive() {
         showBanner();
         break;
       case '/exit':
+      case '/quit':
+      case '/q':
+      case '/e':
+      case 'exit':
+      case 'quit':
         showExitMessage();
         break;
       case '':

@@ -332,7 +332,7 @@ describe('Prompt: Perilaku CLI Saat Dipipe', () => {
 describe('Prompt: Daftar Perintah', () => {
   it('harus memuat perintah inti yang dipakai README', () => {
     const names = COMMANDS.map((c) => c.name);
-    for (const wajib of ['/help', '/status', '/model', '/clear', '/exit']) {
+    for (const wajib of ['/help', '/status', '/model', '/clear', '/exit', '/quit', '/q', '/e']) {
       assert.ok(names.includes(wajib), `perintah ${wajib} hilang`);
     }
   });
