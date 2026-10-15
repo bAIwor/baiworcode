@@ -52,8 +52,17 @@ describe('CLI --help berwarna', () => {
     assert.equal(out.includes('CONTOH CEPAT'), false, 'footer brand tidak boleh muncul di help subcommand');
   });
 
-  it('--version tetap mencetak nomor versi', () => {
-    const out = run(['--version'], { color: false }).trim();
-    assert.match(out, /^\d+\.\d+\.\d+/);
+  it('mencetak nomor versi lewat --version, --v, dan -v (lowercase)', () => {
+    for (const flag of ['--version', '--v', '-v']) {
+      const out = run([flag], { color: false }).trim();
+      assert.match(out, /^\d+\.\d+\.\d+/, `flag ${flag} harus mencetak versi`);
+    }
+  });
+
+  it('tetap menerima varian lama -V dan --V', () => {
+    for (const flag of ['-V', '--V']) {
+      const out = run([flag], { color: false }).trim();
+      assert.match(out, /^\d+\.\d+\.\d+/, `flag ${flag} harus tetap mencetak versi`);
+    }
   });
 });

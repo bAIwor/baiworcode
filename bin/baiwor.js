@@ -457,7 +457,7 @@ program.addHelpText('after', helpFooter());
 program
   .name('baiworcode')
   .description(`${APP_NAME} v${VERSION} — ${WEBSITE.replace(/^https?:\/\//, '')}`)
-  .version(VERSION)
+  .version(VERSION, '-v, --version')
   .argument('[prompt...]', 'Pertanyaan atau instruksi coding langsung')
   .action(async (promptParts) => {
     if (promptParts && promptParts.length > 0) {
@@ -513,4 +513,13 @@ for (const command of program.commands) {
   applyHelpStyle(command);
 }
 
-program.parse(process.argv);
+// Commander 13 hanya mendukung SATU short flag dan bawaannya huruf besar (-V).
+// bAIwor memakai lowercase (-v) sebagai default, dan tetap menerima varian
+// lain (--v, --V, -V) supaya tidak ada pengguna yang tertinggal.
+const normalizedArgv = process.argv.map((arg) => {
+  if (arg === '--v' || arg === '--V') return '--version';
+  if (arg === '-V') return '-v';
+  return arg;
+});
+
+program.parse(normalizedArgv);
