@@ -134,12 +134,13 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Percobaan ulang otomatis (retry + backoff) saat jaringan tersendat atau provider mengembalikan error 5xx — sebelum byte pertama diterima, jadi jawaban tidak pernah terduplikasi.
   - Pesan kegagalan yang ramah dan spesifik: autentikasi, rate limit, server provider, hingga timeout/jaringan (tidak lagi menampilkan `fetch failed` mentah).
   - Dukungan token `reasoning_content` (model reasoning seperti DeepSeek R1) dan pembatalan via `Ctrl+C`.
+  - Menekan `Ctrl+C` juga menghentikan perintah terminal yang sedang berjalan, termasuk mematikan seluruh pohon proses di Windows.
   - Riwayat percakapan multi-turn dengan pemangkasan otomatis agar tidak melebihi context window.
   - Berkas berakhiran baris CRLF (khas Windows) dibaca dan disunting tanpa menyisakan `\r` atau mengubah akhir baris seluruh berkas.
   - Loop agentic hingga 10 putaran: model bisa memanggil tool, membaca hasilnya, lalu melanjutkan sendiri.
 - **🛠️ 7 Tool Bawaan** — bAIwor tidak hanya menjawab, tapi benar-benar mengerjakan:
   - `read_file`, `write_file`, `edit_file`, `list_directory` — baca, tulis, dan sunting berkas proyek.
-  - `search_files` — cari fungsi/teks di seluruh proyek tanpa membuka berkas satu per satu.
+  - `search_files` — cari fungsi/teks di seluruh proyek tanpa membuka berkas satu per satu, dengan pengaman anti-ReDoS agar pola berat tidak membuat proses menggantung.
   - `run_command` — jalankan `npm test`, linter, git, dan perintah terminal lain.
   - `todo_list` — susun rencana tugas untuk pekerjaan besar dan lacak progresnya.
 - **🔒 Keamanan Berlapis**:
@@ -188,7 +189,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 
 bAIwor Code dapat membaca, menulis, dan menjalankan perintah di komputermu. Karena itu ada dua lapis pengaman:
 
-1. **Sandbox workspace** — semua akses berkas dibatasi pada folder proyek tempat kamu menjalankannya. Percobaan keluar dari folder (misalnya `cd ..`) atau menyentuh area kredensial (`.ssh`, `.aws`, `~/.baiwor`) akan ditolak, dan penolakannya disertai penjelasan.
+1. **Sandbox workspace** — semua akses berkas dibatasi pada folder proyek tempat kamu menjalankannya. Percobaan keluar dari folder (misalnya `cd ..`) atau menyentuh area kredensial (`.ssh`, `.aws`, `~/.baiwor`) akan ditolak, dan penolakannya disertai penjelasan. Pencocokannya sadar konteks: **menyebut** `.ssh` di dalam pesan commit tidak diblokir, tetapi **akses berkasnya** tetap ditolak.
 2. **Approval Gate** — perintah yang berpotensi mengubah status sistem atau repositori (`git push`, `npm publish`, `rm -rf`, `git reset --hard`, dan sejenisnya) tidak dijalankan sebelum kamu menyetujuinya. Jawaban default adalah **Tidak**.
 
 > **Catatan:** pengaman ini bekerja dengan mengenali pola perintah, jadi sifatnya berlapis — bukan isolasi tingkat sistem operasi. Untuk pekerjaan yang sangat sensitif, tetap periksa perintah yang diminta bAIwor sebelum menyetujuinya.

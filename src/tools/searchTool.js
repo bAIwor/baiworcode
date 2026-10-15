@@ -47,6 +47,35 @@ const MAX_FILE_BYTES = 1024 * 1024; // 1 MB per berkas
 const MAX_MATCHES = 200;
 const MAX_FILES_SCANNED = 5000;
 const MAX_LINE_CHARS = 300;
+const MAX_PATTERN_CHARS = 500;
+
+/**
+ * Mendeteksi pola regex yang berpotensi memicu *catastrophic backtracking*
+ * (ReDoS). JavaScript tidak menyediakan timeout untuk `RegExp`, jadi pola yang
+ * jelas berbahaya ditolak lebih awal dengan pesan yang bisa ditindaklanjuti.
+ *
+ * Yang diperiksa: panjang pola dan penumpukan quantifier pada grup
+ * (`(a+)+`, `(.*)*`, `(\d+\s?)+`) — bentuk paling umum penyebab proses
+ * menggantung.
+ *
+ * @param {string} pattern
+ * @returns {string|null} alasan penolakan, atau null bila pola wajar.
+ */
+export function detectRiskyRegex(pattern) {
+  const p = String(pattern ?? '');
+  if (p.length > MAX_PATTERN_CHARS) {
+    return `pola terlalu panjang (maksimum ${MAX_PATTERN_CHARS} karakter)`;
+  }
+  // Grup yang memuat quantifier lalu diulang lagi: (a+)+, (.*)*, (\w*\s?)+.
+  if (/\([^()]*[+*][^()]*\)\s*[+*{]/.test(p)) {
+    return 'quantifier bersarang yang bisa memicu backtracking ekstrem';
+  }
+  // Rangkaian .* beruntun seperti .*.* yang bisa meledak pada baris panjang.
+  if (/(\.\*){2,}/.test(p)) {
+    return 'rangkaian .* berulang';
+  }
+  return null;
+}
 
 /**
  * Mengubah pola glob sederhana menjadi RegExp.
@@ -198,6 +227,14 @@ export async function handleSearchFiles({
   }
 
   // ---------- Mode: cari isi berkas ----------
+  const risk = detectRiskyRegex(pattern);
+  if (risk) {
+    return {
+      success: false,
+      output: `Error: pola regex ditolak (${risk}). Sederhanakan pola agar pencarian tidak menggantung.`,
+    };
+  }
+
   let contentRe;
   try {
     contentRe = new RegExp(pattern);

@@ -11,6 +11,7 @@ import {
   registerTool,
   getDefinitions,
   listToolsets,
+  handleSearchFiles,
 } from '../src/tools/index.js';
 import {
   handleReadFile,
@@ -20,6 +21,7 @@ import {
   handleRunCommand,
 } from '../src/tools/handlers.js';
 import { streamChatCompletion } from '../src/chat/client.js';
+import { detectRiskyRegex } from '../src/tools/searchTool.js';
 import { setApprovalHandler, resetApprovalHandler } from '../src/tools/approval.js';
 
 describe('Tahap 3B: Tool Definitions & Schemas', () => {
@@ -348,6 +350,24 @@ describe('Tahap 5: Human-in-the-Loop Command Approval Gate', () => {
     assert.equal(res.success, false);
     assert.match(res.output, /dibatalkan otomatis/i);
     assert.match(res.output, /non-TTY/i);
+  });
+});
+
+describe('search_files: pengaman ReDoS', () => {
+  it('menandai pola berbahaya dan meloloskan pola wajar', () => {
+    assert.ok(detectRiskyRegex('(a+)+'));
+    assert.ok(detectRiskyRegex('(.*)*'));
+    assert.ok(detectRiskyRegex('(\\d+)+'));
+    assert.ok(detectRiskyRegex('.*.*'));
+    assert.equal(detectRiskyRegex('function\\s+\\w+'), null);
+    assert.equal(detectRiskyRegex('(foo|bar)+'), null);
+    assert.equal(detectRiskyRegex('TODO'), null);
+  });
+
+  it('handleSearchFiles menolak pola berbahaya dengan pesan jelas', async () => {
+    const res = await handleSearchFiles({ pattern: '(a+)+', path: '.' });
+    assert.equal(res.success, false);
+    assert.match(res.output, /ditolak/i);
   });
 });
 

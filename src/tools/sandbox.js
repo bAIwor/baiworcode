@@ -245,6 +245,74 @@ function findEscapingRelativePath(command, workspace) {
 }
 
 /**
+ * Karakter yang dianggap bagian dari sebuah nama, bukan batas token.
+ * Dipakai agar `foo.ssh` atau `id_rsa.pub` tidak ikut dianggap area kredensial.
+ */
+const NAME_CHAR_RE = /[A-Za-z0-9_.]/;
+
+/**
+ * Menentukan apakah posisi `index` berada di dalam tanda kutip (' atau ").
+ *
+ * Dipakai untuk membedakan path sungguhan dari sekadar sebutan di dalam teks,
+ * mis. pesan commit `git commit -m "catatan soal .ssh"`.
+ *
+ * @param {string} str
+ * @param {number} index
+ * @returns {boolean}
+ */
+function isInsideQuotes(str, index) {
+  let quote = null;
+  for (let i = 0; i < index; i += 1) {
+    const ch = str[i];
+    if (ch === '\\') {
+      i += 1; // lewati karakter yang di-escape
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    }
+  }
+  return quote !== null;
+}
+
+/**
+ * Apakah sebuah nama sensitif benar-benar dipakai sebagai path, bukan sekadar
+ * disebut dalam teks bebas.
+ *
+ * Nama dianggap berbahaya bila:
+ *   - diapit pemisah path / drive di salah satu sisinya — `~/.ssh`,
+ *     `.ssh/id_rsa`, `C:\...\.aws`; atau
+ *   - muncul sebagai token utuh di LUAR tanda kutip — `cat .npmrc`.
+ *
+ * Dengan aturan ini `git commit -m "docs soal .ssh"` tidak lagi ditolak,
+ * sementara akses nyata ke area kredensial tetap diblokir.
+ *
+ * @param {string} raw
+ * @param {string} name
+ * @returns {boolean}
+ */
+function referencesSensitiveName(raw, name) {
+  const lower = raw.toLowerCase();
+  const needle = name.toLowerCase();
+  let idx = lower.indexOf(needle);
+
+  while (idx !== -1) {
+    const before = idx > 0 ? raw[idx - 1] : '';
+    const after = raw[idx + needle.length] || '';
+    const bounded = !NAME_CHAR_RE.test(before) && !NAME_CHAR_RE.test(after);
+
+    if (bounded) {
+      const pathLike = /[~/\\:]/.test(before) || /[/\\]/.test(after);
+      if (pathLike || !isInsideQuotes(raw, idx)) return true;
+    }
+    idx = lower.indexOf(needle, idx + 1);
+  }
+  return false;
+}
+
+/**
  * Menganalisis perintah terminal sebelum dieksekusi.
  *
  * @param {string} command - Perintah shell yang diminta model.
@@ -260,11 +328,9 @@ export function analyzeCommand(command, options = {}) {
     return deny('empty', 'Perintah kosong.');
   }
 
-  const lower = raw.toLowerCase();
-
-  // 1. Referensi ke area kredensial
+  // 1. Referensi ke area kredensial (hanya bila benar-benar berupa path).
   for (const dir of SENSITIVE_DIRS) {
-    if (lower.includes(dir)) {
+    if (referencesSensitiveName(raw, dir)) {
       return deny(
         'sensitive-path',
         `Perintah menyentuh area kredensial '${dir}' yang dilindungi. Gunakan tool berkas bila memang perlu, atau minta pengguna membukanya sendiri.`
@@ -272,7 +338,7 @@ export function analyzeCommand(command, options = {}) {
     }
   }
   for (const file of SENSITIVE_FILES) {
-    if (lower.includes(file)) {
+    if (referencesSensitiveName(raw, file)) {
       return deny(
         'sensitive-path',
         `Perintah menyentuh berkas kredensial '${file}' yang dilindungi.`

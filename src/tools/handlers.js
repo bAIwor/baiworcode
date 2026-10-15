@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { exec } from 'node:child_process';
+import { exec, spawn } from 'node:child_process';
 import os from 'node:os';
 import { isSubPath, isSensitivePath, analyzeCommand, classifyCommand } from './sandbox.js';
 import { requestCommandApproval } from './approval.js';
@@ -293,9 +293,50 @@ export async function handleListDirectory({ dir_path = '.', recursive = false, m
 }
 
 /**
- * Handler untuk menjalankan perintah terminal
+ * Menghentikan proses beserta anak-cucunya.
+ *
+ * Di Windows `child.kill()` hanya membunuh shell (cmd.exe) dan meninggalkan
+ * proses anak yang sudah dijalankan, jadi `taskkill /T /F` dipakai agar seluruh
+ * pohon proses benar-benar berhenti.
+ *
+ * @param {import('node:child_process').ChildProcess|null} child
  */
-export async function handleRunCommand({ command, cwd }) {
+function terminateProcessTree(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+
+  if (os.platform() === 'win32' && child.pid) {
+    try {
+      const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      killer.on('error', () => {
+        try {
+          child.kill();
+        } catch {
+          // abaikan
+        }
+      });
+      return;
+    } catch {
+      // jatuh ke child.kill() di bawah
+    }
+  }
+
+  try {
+    child.kill('SIGTERM');
+  } catch {
+    // abaikan
+  }
+}
+
+/**
+ * Handler untuk menjalankan perintah terminal
+ *
+ * @param {{command:string, cwd?:string}} args
+ * @param {{signal?:AbortSignal}} [options] - Signal pembatalan dari sesi chat.
+ */
+export async function handleRunCommand({ command, cwd }, options = {}) {
   if (!command || !command.trim()) {
     return {
       success: false,
@@ -337,9 +378,27 @@ export async function handleRunCommand({ command, cwd }) {
   }
 
   return new Promise((resolve) => {
+    const signal = options?.signal || null;
     const isWindows = os.platform() === 'win32';
     // Di Windows gunakan cmd.exe bawaan (mendukung pemisah chained && dan || standar)
     const shellOpt = isWindows ? (process.env.ComSpec || 'cmd.exe') : '/bin/bash';
+
+    let settled = false;
+
+    const onAbort = () => {
+      terminateProcessTree(child);
+      finish({
+        success: false,
+        output: `Perintah dibatalkan oleh pengguna sebelum selesai: ${command}`,
+      });
+    };
+
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (signal) signal.removeEventListener('abort', onAbort);
+      resolve(value);
+    };
 
     const child = exec(command, {
       cwd: executionCwd,
@@ -354,7 +413,7 @@ export async function handleRunCommand({ command, cwd }) {
         let msg = `Perintah selesai dengan error (Exit Code: ${error.code || 1})\n`;
         if (out) msg += `\nSTDOUT:\n${out}`;
         if (err) msg += `\nSTDERR:\n${err}`;
-        resolve({
+        finish({
           success: false,
           output: msg.trim() || error.message,
         });
@@ -365,10 +424,18 @@ export async function handleRunCommand({ command, cwd }) {
       if (out) resultText += out;
       if (err) resultText += (resultText ? '\n\nSTDERR:\n' : '') + err;
 
-      resolve({
+      finish({
         success: true,
         output: resultText || '(Perintah selesai tanpa output)',
       });
     });
+
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+      } else {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    }
   });
 }

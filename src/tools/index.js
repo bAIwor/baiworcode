@@ -50,10 +50,11 @@ for (const def of TOOL_DEFINITIONS) {
  *
  * @param {string} toolName
  * @param {string|Object} rawArgs
+ * @param {Object} [options] - Opsi runtime (mis. { signal } untuk pembatalan)
  * @returns {Promise<{ success: boolean, output: string }>}
  */
-export async function executeTool(toolName, rawArgs) {
-  return await dispatchTool(toolName, rawArgs);
+export async function executeTool(toolName, rawArgs, options = {}) {
+  return await dispatchTool(toolName, rawArgs, options);
 }
 
 export {

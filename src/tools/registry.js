@@ -102,9 +102,10 @@ export function getDefinitions(names = null) {
  *
  * @param {string} name - Nama tool
  * @param {string|Object} rawArgs - Argumen string JSON atau Object
+ * @param {Object} [options] - Opsi runtime yang diteruskan ke handler (mis. { signal })
  * @returns {Promise<{ success: boolean, output: string }>}
  */
-export async function dispatchTool(name, rawArgs) {
+export async function dispatchTool(name, rawArgs, options = {}) {
   const t = tools.get(name);
   if (!t) {
     return {
@@ -135,7 +136,7 @@ export async function dispatchTool(name, rawArgs) {
   args = args || {};
 
   try {
-    const res = await t.handler(args);
+    const res = await t.handler(args, options);
     const success = res && typeof res === 'object' && 'success' in res ? res.success : true;
     const rawOutput = res && typeof res === 'object' && 'output' in res ? res.output : String(res || '');
     return {

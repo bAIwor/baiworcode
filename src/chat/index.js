@@ -251,7 +251,7 @@ export async function handleUserChat(promptText) {
 
           // Eksekusi tool handler sambil mengukur durasi
           const startedAt = Date.now();
-          const toolResult = await executeTool(fnName, rawArgs);
+          const toolResult = await executeTool(fnName, rawArgs, { signal: controller.signal });
           const durationMs = Date.now() - startedAt;
 
           // `todo_list` mengembalikan JSON untuk dibaca model, bukan untuk

@@ -117,6 +117,33 @@ describe('Sandbox A5: penjaga perintah terminal', () => {
   it('menolak perintah kosong', () => {
     assert.equal(analyzeCommand('   ', { workspace: WORKSPACE }).allowed, false);
   });
+
+  it('tidak menolak perintah yang hanya MENYEBUT area kredensial dalam teks', () => {
+    // Regresi: pencocokan substring membuat pesan commit yang menyebut `.ssh`
+    // ikut ditolak, padahal perintahnya sama sekali tidak menyentuh berkas itu.
+    for (const cmd of [
+      'git commit -m "docs soal .ssh"',
+      'git commit -m "hapus referensi .npmrc lama"',
+      'echo "catatan: jangan pernah commit .aws"',
+      'cat id_rsa.pub',
+    ]) {
+      const v = analyzeCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(v.allowed, true, `seharusnya diizinkan: ${cmd} (${v.reason})`);
+    }
+  });
+
+  it('tetap menolak akses nyata ke area kredensial', () => {
+    for (const cmd of [
+      'cat .npmrc',
+      'cat ~/.ssh/id_rsa',
+      'copy .aws/credentials .',
+      'type .baiwor/config.json',
+    ]) {
+      const v = analyzeCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(v.allowed, false, `seharusnya ditolak: ${cmd}`);
+      assert.equal(v.category, 'sensitive-path');
+    }
+  });
 });
 
 describe('Sandbox: klasifikasi tiga tingkat untuk approval gate', () => {
@@ -189,5 +216,21 @@ describe('Sandbox A5: integrasi handleRunCommand', () => {
     const res = await handleRunCommand({ command: 'node -e "console.log(\'sandbox-ok\')"' });
     assert.equal(res.success, true);
     assert.match(res.output, /sandbox-ok/);
+  });
+
+  it('membatalkan perintah panjang saat signal di-abort (Ctrl+C)', async () => {
+    const controller = new AbortController();
+    const started = Date.now();
+    setTimeout(() => controller.abort(), 250);
+
+    const res = await handleRunCommand(
+      { command: 'node -e "setTimeout(() => console.log(\'lama\'), 5000)"' },
+      { signal: controller.signal }
+    );
+    const elapsed = Date.now() - started;
+
+    assert.equal(res.success, false);
+    assert.match(res.output, /dibatalkan/i);
+    assert.ok(elapsed < 4000, `harusnya berhenti cepat, tetapi ${elapsed}ms`);
   });
 });
