@@ -14,6 +14,13 @@ describe('Tahap 3A: System Prompt & Karakter bAIwor', () => {
     assert.match(prompt, /bAIwor Code/i);
     assert.match(prompt, /Workspace \/ CWD/i);
   });
+
+  it('harus memuat informasi model & provider aktif dan instruksi 100% Bahasa Indonesia', () => {
+    const prompt = getSystemPrompt({ model: 'step-5-preview', provider: 'StepFun' });
+    assert.match(prompt, /Model AI Aktif\s*:\s*step-5-preview/);
+    assert.match(prompt, /Provider Aktif\s*:\s*StepFun/);
+    assert.match(prompt, /100% Bahasa Indonesia/);
+  });
 });
 
 describe('Tahap 3A: Conversation Manager & Memory', () => {

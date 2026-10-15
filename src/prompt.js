@@ -121,6 +121,86 @@ export class SlashTextPrompt extends TextPrompt {
       },
     });
 
+    // Mode pembaruan sinkron (DEC private mode 2026) dan buffer atomik
+    // Menghilangkan strobing/flickering pada Windows Terminal dan terminal modern.
+    const SYNC_START = '\x1b[?2026h';
+    const SYNC_END = '\x1b[?2026l';
+
+    this.render = () => {
+      const currentFrame = (this._render(this) ?? '').replace(/\r\n/g, '\n');
+      if (currentFrame === this._prevFrame) return;
+
+      let buf = SYNC_START;
+
+      if (this.state === 'initial') {
+        buf += '\x1b[?25l'; // Sembunyikan kursor hardware selama interaksi input
+        buf += currentFrame;
+        this.state = 'active';
+      } else {
+        const prevLines = this._prevFrame ? this._prevFrame.split('\n') : [];
+        const nextLines = currentFrame.split('\n');
+        const prevH = prevLines.length;
+        const nextH = nextLines.length;
+
+        // Optimasi 1 baris: pengetikan biasa yang hanya mengubah baris input.
+        // Timpa baris secara in-place dengan \r + teks + \x1b[K (tanpa \x1b[2K
+        // yang mengosongkan baris ke spasi) agar tidak timbul flicker / kedipan layar.
+        if (prevH === nextH) {
+          const diffs = [];
+          for (let i = 0; i < nextH; i++) {
+            if (prevLines[i] !== nextLines[i]) diffs.push(i);
+          }
+
+          if (diffs.length === 1) {
+            const lineIdx = diffs[0];
+            const moveUp = prevH - 1 - lineIdx;
+            if (moveUp > 0) buf += `\x1b[${moveUp}A`;
+            buf += '\r' + nextLines[lineIdx] + '\x1b[K';
+            if (moveUp > 0) buf += `\x1b[${moveUp}B`;
+            buf += '\r' + SYNC_END;
+            this.output.write(buf);
+            this._prevFrame = currentFrame;
+            return;
+          }
+        }
+
+        // Multi-line atau perubahan tinggi frame (dropdown buka/tutup, navigasi panah, resize)
+        const moveUp = prevH > 1 ? prevH - 1 : 0;
+        if (moveUp > 0) buf += `\x1b[${moveUp}A`;
+        buf += '\r';
+
+        for (let i = 0; i < nextH; i++) {
+          if (i > 0) buf += '\n\r';
+          buf += nextLines[i] + '\x1b[K';
+        }
+
+        // Jika frame sebelumnya lebih tinggi (mis. dropdown tertutup),
+        // bersihkan sisa baris di bawahnya tanpa memicu scroll buffer terminal
+        if (prevH > nextH) {
+          const extra = prevH - nextH;
+          for (let k = 0; k < extra; k++) {
+            buf += '\x1b[1B\x1b[2K';
+          }
+          buf += `\x1b[${extra}A\r`;
+        } else {
+          buf += '\r';
+        }
+      }
+
+      buf += SYNC_END;
+      this.output.write(buf);
+      this._prevFrame = currentFrame;
+    };
+
+    this.restoreCursor = () => {
+      const prevH = this._prevFrame ? this._prevFrame.split('\n').length : 1;
+      if (prevH > 1) {
+        this.output.write(`\x1b[${prevH - 1}A\r`);
+      } else {
+        this.output.write('\r');
+      }
+    };
+
     // Reset selection & update dropdown ONLY when the typed query actually changes
     this.on('value', (currentVal) => {
       const val = currentVal || '';

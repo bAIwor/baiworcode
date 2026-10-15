@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { buildPromptFrame, COMMANDS } from '../src/prompt.js';
+import { buildPromptFrame, COMMANDS, SlashTextPrompt } from '../src/prompt.js';
 import { renderStatusLine, statusRule, terminalWidth } from '../src/statusLine.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -332,5 +332,107 @@ describe('Prompt: Daftar Perintah', () => {
     for (const cmd of COMMANDS) {
       assert.ok(cmd.desc && cmd.desc.length > 0, `${cmd.name} tidak punya deskripsi`);
     }
+  });
+});
+
+describe('Prompt: Flicker-Free Rendering (Anti-Kedip)', () => {
+  function createMockPrompt() {
+    const writes = [];
+    const fakeOutput = {
+      write(s) {
+        writes.push(s);
+      },
+      on() {},
+      off() {},
+      columns: 80,
+    };
+    const fakeInput = {
+      on() {},
+      off() {},
+      pause() {},
+      resume() {},
+    };
+    const prompt = new SlashTextPrompt({
+      placeholder: 'Test input...',
+      output: fakeOutput,
+      input: fakeInput,
+    });
+    return { prompt, writes };
+  }
+
+  it('harus membungkus pembaruan frame dengan sinkronisasi mode 2026', () => {
+    const { prompt, writes } = createMockPrompt();
+    prompt.state = 'initial';
+    prompt.render();
+    assert.ok(writes.length > 0);
+    assert.ok(writes[0].startsWith('\x1b[?2026h'));
+    assert.ok(writes[0].endsWith('\x1b[?2026l'));
+  });
+
+  it('harus menulis tepat 1 buffer atomik saat mengetik 1 karakter', () => {
+    const { prompt, writes } = createMockPrompt();
+    prompt.state = 'initial';
+    prompt.render();
+    writes.length = 0;
+
+    prompt.value = 'a';
+    prompt.render();
+
+    assert.equal(writes.length, 1, 'setiap ketikan harus memicu tepat satu pemanggilan output.write()');
+  });
+
+  it('tidak boleh memakai \\x1b[2K untuk menghapus baris saat pengetikan biasa', () => {
+    const { prompt, writes } = createMockPrompt();
+    prompt.state = 'initial';
+    prompt.render();
+    writes.length = 0;
+
+    prompt.value = 'halo';
+    prompt.render();
+
+    // \\x1b[2K mengosongkan seluruh baris ke spasi sebelum menulis teks baru,
+    // pemicu utama kedipan/strobing di terminal Windows.
+    assert.ok(
+      !writes[0].includes('\x1b[2K'),
+      'pembaruan pengetikan satu baris tidak boleh mengosongkan baris secara penuh'
+    );
+    // Harus memakai overwrite in-place dengan pembersihan sisa akhir baris \\x1b[K
+    assert.ok(writes[0].includes('\x1b[K'));
+  });
+
+  it('harus tetap atomik saat dropdown dibuka dan navigasi panah', () => {
+    const { prompt, writes } = createMockPrompt();
+    prompt.state = 'initial';
+    prompt.render();
+    writes.length = 0;
+
+    // Buka dropdown
+    prompt.value = '/';
+    prompt.emit('value', '/');
+    prompt.render();
+    assert.equal(writes.length, 1);
+    assert.ok(writes[0].startsWith('\x1b[?2026h'));
+    assert.ok(writes[0].endsWith('\x1b[?2026l'));
+  });
+
+  it('harus membersihkan sisa baris saat dropdown ditutup tanpa meninggalkan baris sampah', () => {
+    const { prompt, writes } = createMockPrompt();
+    prompt.state = 'initial';
+    prompt.render();
+
+    // Buka dropdown
+    prompt.value = '/';
+    prompt.emit('value', '/');
+    prompt.render();
+    writes.length = 0;
+
+    // Tutup dropdown (mis. dengan Esc atau input bukan slash)
+    prompt.value = 'bukan slash';
+    prompt.emit('value', 'bukan slash');
+    prompt.render();
+
+    assert.equal(writes.length, 1);
+    assert.ok(writes[0].startsWith('\x1b[?2026h'));
+    assert.ok(writes[0].endsWith('\x1b[?2026l'));
   });
 });

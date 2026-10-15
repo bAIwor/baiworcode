@@ -39,6 +39,16 @@ function ensureConfigDir() {
   }
 }
 
+let cachedConfig = null;
+let lastCheckTime = 0;
+let lastMtime = 0;
+
+export function clearConfigCache() {
+  cachedConfig = null;
+  lastCheckTime = 0;
+  lastMtime = 0;
+}
+
 function writeAtomicConfig(data) {
   ensureConfigDir();
   const content = JSON.stringify(data, null, 2);
@@ -50,9 +60,16 @@ function writeAtomicConfig(data) {
   try {
     fs.chmodSync(CONFIG_FILE, 0o600);
   } catch {}
+  clearConfigCache();
 }
 
 export function getConfig() {
+  const now = Date.now();
+  // Dalam rentang 500ms, gunakan cache in-memory tanpa disk I/O untuk mencegah lag saat mengetik
+  if (cachedConfig && now - lastCheckTime < 500) {
+    return cachedConfig;
+  }
+
   ensureConfigDir();
 
   if (!fs.existsSync(CONFIG_FILE)) {
@@ -61,6 +78,12 @@ export function getConfig() {
   }
 
   try {
+    const stat = fs.statSync(CONFIG_FILE);
+    if (cachedConfig && stat.mtimeMs === lastMtime) {
+      lastCheckTime = now;
+      return cachedConfig;
+    }
+
     const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
     const parsed = JSON.parse(raw);
     const config = { ...DEFAULT_CONFIG, ...parsed };
@@ -77,8 +100,12 @@ export function getConfig() {
       }
     }
 
+    cachedConfig = config;
+    lastMtime = stat.mtimeMs;
+    lastCheckTime = now;
     return config;
   } catch (err) {
+    clearConfigCache();
     // File rusak: JANGAN timpa! Cadangkan dulu
     const timestamp = Date.now();
     const backupFile = path.join(CONFIG_DIR, `config.json.bak-${timestamp}`);
