@@ -33,10 +33,12 @@ export function buildPromptFrame({
   dropdownOpen = false,
   selectedIndex = 0,
   exitPending = false,
+  columns = null,
 } = {}) {
   const shown = displayInput !== null ? displayInput : value;
 
-  const rules = frameRules();
+  const currentCols = columns ?? terminalWidth();
+  const rules = frameRules(currentCols);
   let out = rules.top + '\n';
 
   if (state === 'submit') {
@@ -44,7 +46,7 @@ export function buildPromptFrame({
   } else if (state === 'cancel') {
     out += `  ${chalk.red('›')}  ${chalk.strikethrough(chalk.gray(value))}`;
   } else if (exitPending && !value) {
-    const width = terminalWidth() - 1;
+    const width = currentCols - 1;
     const msg =
       width < 65
         ? 'Tekan Ctrl+C lagi untuk keluar'
@@ -62,7 +64,7 @@ export function buildPromptFrame({
       // bawah dipatok 76 kolom dan header 66 kolom, sehingga di terminal sempit
       // barisnya meluber dan kotak layout ikut patah. Satu kolom disisakan
       // supaya tidak ada baris yang persis selebar terminal (pemicu wrap).
-      const width = terminalWidth() - 1;
+      const width = currentCols - 1;
       const fit = (text, max = width) => {
         const s = String(text);
         if (max <= 0) return '';
@@ -99,7 +101,7 @@ export function buildPromptFrame({
   // Garis bawah dan baris status mengikuti area input —
   // sehingga angka konteks ikut ter-update di setiap pengetikan.
   out += `\n${rules.bottom}`;
-  out += `\n\n${renderStatusLine()}`;
+  out += `\n\n${renderStatusLine({ maxWidth: currentCols })}`;
   return out;
 }
 
@@ -120,6 +122,7 @@ export class SlashTextPrompt extends TextPrompt {
       ...opts,
       render() {
         const val = this.value || '';
+        const currentCols = this.output?.columns || terminalWidth();
         return buildPromptFrame({
           value: val,
           state: this.state,
@@ -128,7 +131,62 @@ export class SlashTextPrompt extends TextPrompt {
           dropdownOpen: showDropdown,
           selectedIndex,
           exitPending: lastCtrlCTime > 0,
+          columns: currentCols,
         });
+      },
+    });
+
+    const stripAnsi = (str) => String(str).replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+
+    const outStream = opts.output || process.stdout;
+    let prevCols = outStream.columns || terminalWidth();
+    let forceFullRepaint = false;
+
+    const handleResize = () => {
+      if (this.state === 'cancel' || this.state === 'submit') return;
+      forceFullRepaint = true;
+      this.render();
+    };
+
+    if (typeof outStream.on === 'function') {
+      outStream.on('resize', handleResize);
+    }
+
+    const hookRl = (val) => {
+      if (!val) return;
+      if (typeof val.listenerCount === 'function' && val.listenerCount('SIGINT') === 0) {
+        val.on('SIGINT', () => {});
+      }
+      if (!val._baiworHooked) {
+        val._baiworHooked = true;
+        const origPrev = val._historyPrev ? val._historyPrev.bind(val) : () => {};
+        const origNext = val._historyNext ? val._historyNext.bind(val) : () => {};
+        val._historyPrev = () => {
+          if (showDropdown) return;
+          return origPrev();
+        };
+        val._historyNext = () => {
+          if (showDropdown) return;
+          return origNext();
+        };
+      }
+    };
+
+    const ensureRlHooked = () => hookRl(this.rl);
+
+    // Intersep assignment this.rl dari @clack/core
+    // Pasang listener SIGINT kosong supaya Node.js readline internal TIDAK PERNAH
+    // memanggil rl.close() atau mem-pause stdin saat Ctrl+C ditekan.
+    let _rl = undefined;
+    Object.defineProperty(this, 'rl', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        return _rl;
+      },
+      set: (val) => {
+        _rl = val;
+        hookRl(val);
       },
     });
 
@@ -138,8 +196,12 @@ export class SlashTextPrompt extends TextPrompt {
     const SYNC_END = '\x1b[?2026l';
 
     this.render = () => {
+      const currentCols = outStream.columns || terminalWidth();
+      const isResized = forceFullRepaint || currentCols !== prevCols;
+      forceFullRepaint = false;
+
       const currentFrame = (this._render(this) ?? '').replace(/\r\n/g, '\n');
-      if (currentFrame === this._prevFrame) return;
+      if (!isResized && currentFrame === this._prevFrame) return;
 
       let buf = SYNC_START;
 
@@ -147,6 +209,20 @@ export class SlashTextPrompt extends TextPrompt {
         buf += '\x1b[?25l'; // Sembunyikan kursor hardware selama interaksi input
         buf += currentFrame;
         this.state = 'active';
+      } else if (isResized) {
+        // Saat terminal di-resize (fullscreen atau diperkecil),
+        // hitung jumlah baris fisik yang ditempati frame sebelumnya
+        // agar kursor kembali tepat ke baris paling awal frame.
+        const prevLines = this._prevFrame ? this._prevFrame.split('\n') : [];
+        const physicalRows = prevLines.reduce((acc, line) => {
+          const len = stripAnsi(line).length;
+          return acc + Math.max(1, Math.ceil(len / Math.max(1, currentCols)));
+        }, 0);
+
+        const moveUp = physicalRows > 1 ? physicalRows - 1 : 0;
+        if (moveUp > 0) buf += `\x1b[${moveUp}A`;
+        buf += '\r\x1b[J'; // Hapus bersih dari kursor hingga ke bawah layar
+        buf += currentFrame;
       } else {
         const prevLines = this._prevFrame ? this._prevFrame.split('\n') : [];
         const nextLines = currentFrame.split('\n');
@@ -171,11 +247,12 @@ export class SlashTextPrompt extends TextPrompt {
             buf += '\r' + SYNC_END;
             this.output.write(buf);
             this._prevFrame = currentFrame;
+            prevCols = currentCols;
             return;
           }
         }
 
-        // Multi-line atau perubahan tinggi frame (dropdown buka/tutup, navigasi panah, resize)
+        // Multi-line atau perubahan tinggi frame (dropdown buka/tutup, navigasi panah)
         const moveUp = prevH > 1 ? prevH - 1 : 0;
         if (moveUp > 0) buf += `\x1b[${moveUp}A`;
         buf += '\r';
@@ -201,12 +278,18 @@ export class SlashTextPrompt extends TextPrompt {
       buf += SYNC_END;
       this.output.write(buf);
       this._prevFrame = currentFrame;
+      prevCols = currentCols;
     };
 
     this.restoreCursor = () => {
-      const prevH = this._prevFrame ? this._prevFrame.split('\n').length : 1;
-      if (prevH > 1) {
-        this.output.write(`\x1b[${prevH - 1}A\r`);
+      const currentCols = outStream.columns || terminalWidth();
+      const prevLines = this._prevFrame ? this._prevFrame.split('\n') : [];
+      const physicalRows = prevLines.reduce((acc, line) => {
+        const len = stripAnsi(line).length;
+        return acc + Math.max(1, Math.ceil(len / Math.max(1, currentCols)));
+      }, 0);
+      if (physicalRows > 1) {
+        this.output.write(`\x1b[${physicalRows - 1}A\r`);
       } else {
         this.output.write('\r');
       }
@@ -226,23 +309,6 @@ export class SlashTextPrompt extends TextPrompt {
       }
     });
 
-    // Hook readline history so arrow keys don't fight with history lookup or cause lag/jumping
-    const ensureRlHooked = () => {
-      if (this.rl && !this.rl._baiworHooked) {
-        this.rl._baiworHooked = true;
-        const origPrev = this.rl._historyPrev ? this.rl._historyPrev.bind(this.rl) : () => {};
-        const origNext = this.rl._historyNext ? this.rl._historyNext.bind(this.rl) : () => {};
-        this.rl._historyPrev = () => {
-          if (showDropdown) return;
-          return origPrev();
-        };
-        this.rl._historyNext = () => {
-          if (showDropdown) return;
-          return origNext();
-        };
-      }
-    };
-
     const origClose = this.close.bind(this);
     this.close = () => {
       if (ctrlCTimer) {
@@ -250,6 +316,11 @@ export class SlashTextPrompt extends TextPrompt {
         ctrlCTimer = null;
       }
       lastCtrlCTime = 0;
+      if (typeof outStream.off === 'function') {
+        outStream.off('resize', handleResize);
+      } else if (typeof outStream.removeListener === 'function') {
+        outStream.removeListener('resize', handleResize);
+      }
       return origClose();
     };
 
@@ -314,7 +385,9 @@ export class SlashTextPrompt extends TextPrompt {
         ctrlCTimer = setTimeout(() => {
           lastCtrlCTime = 0;
           ctrlCTimer = null;
-          this.render();
+          if (this.state === 'active') {
+            this.render();
+          }
         }, 3000);
         this.render();
         return;

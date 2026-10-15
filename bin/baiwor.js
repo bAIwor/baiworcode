@@ -19,6 +19,9 @@ import { resolveActiveCredentials } from '../src/auth/resolve.js';
 import { applyHelpStyle, helpHeader, helpFooter } from '../src/cliHelp.js';
 import { APP_NAME, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE } from '../src/branding.js';
 
+// Cegah sistem operasi langsung mematikan proses saat Ctrl+C ditekan di terminal
+process.on('SIGINT', () => {});
+
 function stripAnsi(str) {
   return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
 }

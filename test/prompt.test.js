@@ -68,42 +68,32 @@ describe('Prompt: Layout Area Input', () => {
   });
 
   it('harus menggambar garis bawah setelah input', () => {
-    const idx = render().split('\n').findIndex((l) => /^ {2}─+$/.test(l));
-    assert.ok(idx > 1, 'garis bawah harus ada setelah baris input');
+    const lines = render().split('\n');
+    assert.match(lines[2], /^─+$/, 'garis bawah harus ada di baris ke-2 (setelah input)');
   });
 
-  it('kedua garis harus berakhir di kolom yang sama (ujung kanan sejajar)', () => {
-    // Regresi: dulu kedua garis memakai jumlah tanda pisah yang sama sehingga
-    // ujung kanannya berselisih beberapa kolom dan terlihat menceng. Sekarang
-    // garis bawah di-indentasi STAIR_STEP kolom DAN dikurangi sebanyak itu
-    // supaya ujung kanan kedua garis tepat sejajar.
+  it('kedua garis harus berakhir di kolom yang sama dan sejajar sempurna di kiri (simetris)', () => {
     const lines = render().split('\n');
-    const atas = (lines[0].match(/─/g) || []).length;
-    const bawahLine = lines.find((l) => /^ {2}─+$/.test(l));
-    const bawah = (bawahLine.match(/─/g) || []).length;
+    const atas = lines[0].length;
+    const bawah = lines[2].length;
     assert.ok(atas > 10, 'garis harus punya tanda pisah yang berarti');
     assert.equal(
       atas,
-      bawahLine.length,
-      `panjang garis atas ${atas} harus sama dengan panjang garis bawah ${bawahLine.length}`
+      bawah,
+      `panjang garis atas ${atas} harus persis sama dengan panjang garis bawah ${bawah}`
     );
-    assert.equal(bawah + 2, atas, 'garis bawah = 2 spasi + (dashes garis atas - 2)');
   });
 
-  it('garis bawah harus bergeser dan tepi kirinya sejajar dengan tanda ›', () => {
+  it('garis atas dan garis bawah harus sama-sama mulai di kolom 0 (tepi kiri sejajar)', () => {
     const lines = render().split('\n');
     assert.ok(lines[0].startsWith('─'), 'garis atas harus mulai di kolom 0');
-    assert.ok(lines[2].startsWith('  ─'), 'garis bawah harus bergeser dua spasi');
-    // Tanda › pada baris input juga berada di kolom ke-2.
-    assert.equal(lines[1].indexOf('›'), 2);
-    assert.equal(lines[2].indexOf('─'), lines[1].indexOf('›'));
+    assert.ok(lines[2].startsWith('─'), 'garis bawah harus mulai di kolom 0 (sejajar)');
   });
 
   it('harus menyisipkan satu baris kosong sebelum baris status', () => {
     const lines = render().split('\n');
-    const idx = lines.findIndex((l) => /^ {2}─+$/.test(l));
-    assert.equal(lines[idx + 1], '', 'harus ada baris kosong setelah garis bawah');
-    assert.match(lines[idx + 2], /~\s+│\s+Full access/);
+    assert.equal(lines[3], '', 'harus ada baris kosong setelah garis bawah');
+    assert.match(lines[4], /~\s+│\s+Full access/);
   });
 
   it('harus menampilkan baris status sebagai baris terakhir', () => {
@@ -156,7 +146,7 @@ describe('Prompt: Dropdown Perintah', () => {
 
   it('harus tetap menggambar garis bawah dan status di balik dropdown', () => {
     const lines = render('/he', 'initial', { dropdownOpen: true }).split('\n');
-    assert.ok(lines.findIndex((l) => /^ {2}─+$/.test(l)) > 0);
+    assert.ok(lines.findIndex((l, idx) => idx > 1 && /^─+$/.test(l)) > 0);
     assert.match(lines[lines.length - 1], /Context \d+% left/);
   });
 
@@ -573,6 +563,72 @@ describe('Prompt: Pengamanan Ctrl+C dan Escape (Anti-Exit Tidak Disengaja)', () 
     prompt.onKeypress('', { name: 'escape' });
 
     assert.equal(prompt.state, 'active', 'Escape pada baris kosong tidak boleh cancel');
+  });
+
+  it('memasang listener SIGINT pada readline interface saat rl di-assign', () => {
+    const { prompt } = createMockPrompt();
+    const fakeRl = {
+      _listeners: {},
+      on(evt, fn) {
+        this._listeners[evt] = this._listeners[evt] || [];
+        this._listeners[evt].push(fn);
+      },
+      listenerCount(evt) {
+        return (this._listeners[evt] || []).length;
+      },
+      line: '',
+      cursor: 0,
+    };
+
+    prompt.rl = fakeRl;
+    assert.ok(fakeRl.listenerCount('SIGINT') > 0, 'rl harus dipasangi listener SIGINT');
+    assert.equal(prompt.rl, fakeRl);
+  });
+
+  it('me-render ulang dan menyesuaikan ukuran frame saat event resize dipancarkan', () => {
+    let resizeCb = null;
+    const writes = [];
+    const fakeOutput = {
+      columns: 80,
+      write(s) {
+        writes.push(s);
+      },
+      on(evt, cb) {
+        if (evt === 'resize') resizeCb = cb;
+      },
+      off() {},
+    };
+    const fakeInput = {
+      on() {},
+      off() {},
+      pause() {},
+      resume() {},
+      unpipe() {},
+      removeListener() {},
+    };
+
+    const prompt = new SlashTextPrompt({
+      placeholder: 'Resize test...',
+      output: fakeOutput,
+      input: fakeInput,
+    });
+    prompt.state = 'initial';
+    prompt.render();
+    writes.length = 0;
+
+    assert.ok(typeof resizeCb === 'function', 'listener resize harus terdaftar pada output');
+
+    // Ubah ukuran terminal menjadi lebih lebar (mis. fullscreen 160 kolom)
+    fakeOutput.columns = 160;
+    resizeCb();
+
+    assert.ok(writes.length > 0, 'resize harus memicu render ulang');
+    const lastWrite = writes[writes.length - 1];
+    // Garis frame harus menyesuaikan lebar baru (159 tanda pisah)
+    assert.ok(lastWrite.includes('─'.repeat(159)), 'frame harus menyesuaikan ke 160 kolom');
+
+    // Tutup prompt dan pastikan cleanup berjalan
+    prompt.close();
   });
 });
 

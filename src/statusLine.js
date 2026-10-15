@@ -32,34 +32,25 @@ export function terminalWidth(cols = process.stdout.columns) {
 
 /**
  * Lebar undakan antara garis atas dan garis bawah area input.
- *
- * Disamakan dengan indentasi baris input (`  ›  `) supaya tepi kiri garis
- * bawah tepat sejajar dengan tanda `›`.
+ * Nilainya 0 agar tepi kiri garis atas dan garis bawah sejajar sempurna di kolom 0.
  */
-export const STAIR_STEP = 2;
+export const STAIR_STEP = 0;
 
 /**
- * Dua garis pemisah yang membingkai area input.
+ * Dua garis pemisah horizontal yang membingkai area input.
  *
- * Garis bawah di-indentasi {@link STAIR_STEP} kolom sebagai undakan, TETAPI
- * jumlah tanda pisahnya dikurangi sebanyak indentasi itu sehingga KEDUA garis
- * berakhir di kolom yang sama. Sebelumnya kedua garis memakai jumlah tanda
- * pisah yang sama, jadi ujung kanannya berselisih 4 kolom dan terlihat
- * "menceng" / tidak presisi.
+ * Garis atas dan garis bawah memiliki panjang yang sama dan posisi awal yang sama (kolom 0)
+ * sehingga tepi kiri dan tepi kanan KEDUA garis sejajar sempurna dan simetris.
+ * Sisakan 1 kolom di ujung kanan agar tidak memicu pending wrap di Windows ConPTY.
  *
  * @returns {{top:string, bottom:string, dashes:number}}
  */
-export function frameRules() {
-  // `span` = lebar tampil tiap garis. Sisakan beberapa kolom di kanan: garis
-  // yang panjangnya persis selebar terminal memicu "pending wrap" di Windows —
-  // newline berikutnya pindah dua baris sehingga clack menghitung tinggi frame
-  // keliru dan menggambar ulang seluruh kotak tiap ketikan (efek berkedip).
-  const span = Math.max(10 + STAIR_STEP, terminalWidth() - STAIR_STEP - 1);
-  const dashes = Math.max(6, span - STAIR_STEP);
+export function frameRules(cols = process.stdout.columns) {
+  const span = Math.max(10, terminalWidth(cols) - 1);
   return {
-    dashes,
+    dashes: span,
     top: chalk.gray('─'.repeat(span)),
-    bottom: chalk.gray(`${' '.repeat(STAIR_STEP)}${'─'.repeat(dashes)}`),
+    bottom: chalk.gray('─'.repeat(span)),
   };
 }
 
