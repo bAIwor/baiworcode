@@ -510,13 +510,29 @@ describe('Prompt: Pengamanan Ctrl+C dan Escape (Anti-Exit Tidak Disengaja)', () 
     assert.match(writes[writes.length - 1], /Tekan Ctrl\+C (sekali lagi|lagi) untuk keluar/);
   });
 
-  it('Ctrl+C dua kali berturut-turut pada input kosong harus mengizinkan pembatalan/keluar', () => {
+  it('Ctrl+C berulang cepat (< 400ms karena key repeat / bounce) harus diabaikan dan tidak langsung keluar', () => {
+    const { prompt } = createMockPrompt();
+    prompt.value = '';
+
+    // Tekan pertama
+    prompt.onKeypress('\u0003', { name: 'c', ctrl: true, sequence: '\u0003' });
+    assert.equal(prompt.state, 'active');
+
+    // Key repeat langsung tiba
+    prompt.onKeypress('\u0003', { name: 'c', ctrl: true, sequence: '\u0003' });
+    assert.equal(prompt.state, 'active', 'key repeat < 400ms tidak boleh memicu keluar');
+  });
+
+  it('Ctrl+C dua kali berturut-turut pada input kosong harus mengizinkan pembatalan/keluar', async () => {
     const { prompt } = createMockPrompt();
     prompt.value = '';
 
     // Tekan Ctrl+C pertama kali
     prompt.onKeypress('\u0003', { name: 'c', ctrl: true, sequence: '\u0003' });
     assert.equal(prompt.state, 'active');
+
+    // Jeda antar penekanan fisik manusia yang sah (> 400ms)
+    await new Promise((r) => setTimeout(r, 450));
 
     // Tekan Ctrl+C kedua kali
     prompt.onKeypress('\u0003', { name: 'c', ctrl: true, sequence: '\u0003' });

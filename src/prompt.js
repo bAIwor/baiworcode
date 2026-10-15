@@ -113,7 +113,7 @@ export class SlashTextPrompt extends TextPrompt {
     let selectedIndex = 0;
     let showDropdown = false;
     let lastVal = '';
-    let ctrlCPending = false;
+    let lastCtrlCTime = 0;
     let ctrlCTimer = null;
 
     super({
@@ -127,7 +127,7 @@ export class SlashTextPrompt extends TextPrompt {
           displayInput: val ? this.valueWithCursor : null,
           dropdownOpen: showDropdown,
           selectedIndex,
-          exitPending: ctrlCPending,
+          exitPending: lastCtrlCTime > 0,
         });
       },
     });
@@ -249,7 +249,7 @@ export class SlashTextPrompt extends TextPrompt {
         clearTimeout(ctrlCTimer);
         ctrlCTimer = null;
       }
-      ctrlCPending = false;
+      lastCtrlCTime = 0;
       return origClose();
     };
 
@@ -269,11 +269,11 @@ export class SlashTextPrompt extends TextPrompt {
         // Jika ada teks yang sedang diketik: hapus teks baris input (seperti shell/REPL)
         // Pengguna tidak kehilangan sesi atau keluar dari bAIwor Code karena salah pencet
         if (val.length > 0) {
+          lastCtrlCTime = 0;
           if (ctrlCTimer) {
             clearTimeout(ctrlCTimer);
             ctrlCTimer = null;
           }
-          ctrlCPending = false;
           this.value = '';
           this._cursor = 0;
           if (this.rl) {
@@ -287,31 +287,42 @@ export class SlashTextPrompt extends TextPrompt {
           return;
         }
 
-        // Jika baris input kosong: minta konfirmasi penekanan kedua dalam 2.5 detik
-        if (ctrlCPending) {
+        const now = Date.now();
+        const elapsed = now - lastCtrlCTime;
+
+        // Cegah auto-repeat / key bounce dari penekanan fisik yang sama (< 400ms).
+        // Pada Windows, menahan Ctrl+C sedikit saja mengirimkan event berulang.
+        if (lastCtrlCTime > 0 && elapsed < 400) {
+          return;
+        }
+
+        // Penekanan kedua yang sah (antara 400ms dan 3000ms): izinkan keluar
+        if (lastCtrlCTime > 0 && elapsed <= 3000) {
           if (ctrlCTimer) {
             clearTimeout(ctrlCTimer);
             ctrlCTimer = null;
           }
-          ctrlCPending = false;
-          // Penekanan kedua terkonfirmasi: izinkan keluar
+          lastCtrlCTime = 0;
           return origOnKeypress(u, key);
         }
 
-        // Penekanan pertama pada baris kosong: pasang timer peringatan
-        ctrlCPending = true;
+        // Penekanan pertama pada baris kosong: pasang waktu & timer peringatan
+        lastCtrlCTime = now;
+        if (ctrlCTimer) {
+          clearTimeout(ctrlCTimer);
+        }
         ctrlCTimer = setTimeout(() => {
-          ctrlCPending = false;
+          lastCtrlCTime = 0;
           ctrlCTimer = null;
           this.render();
-        }, 2500);
+        }, 3000);
         this.render();
         return;
       }
 
       // Jika tombol lain ditekan saat peringatan keluar aktif, batalkan status peringatan
-      if (ctrlCPending) {
-        ctrlCPending = false;
+      if (lastCtrlCTime > 0) {
+        lastCtrlCTime = 0;
         if (ctrlCTimer) {
           clearTimeout(ctrlCTimer);
           ctrlCTimer = null;
