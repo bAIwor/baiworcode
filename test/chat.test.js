@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { buildChatEndpoint, streamChatCompletion } from '../src/chat/client.js';
+import { isNetworkError } from '../src/chat/index.js';
 import { Conversation } from '../src/chat/conversation.js';
 import { getSystemPrompt } from '../src/chat/systemPrompt.js';
 
@@ -242,5 +243,130 @@ describe('Tahap 3A: SSE Streaming & Line Buffering Parser', () => {
     );
 
     errServer.close();
+  });
+
+  it('harus mengurai reasoning & tool_calls pada baris terakhir tanpa [DONE]', async () => {
+    const tailServer = http.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"choices":[{"delta":{"content":"Halo "}}]}\n\n');
+      // Baris terakhir sengaja tanpa newline penutup dan tanpa [DONE].
+      res.write(
+        'data: {"choices":[{"delta":{"reasoning_content":"pikir","tool_calls":[{"index":0,"id":"call_tail","type":"function","function":{"name":"read_file","arguments":"{}"}}]}}]}'
+      );
+      res.end();
+    });
+
+    await new Promise((resolve) => tailServer.listen(0, '127.0.0.1', resolve));
+    const port = tailServer.address().port;
+
+    const result = await streamChatCompletion({
+      credentials: { baseUrl: `http://127.0.0.1:${port}/v1`, headers: {}, model: 'test' },
+      messages: [{ role: 'user', content: 'test' }],
+    });
+
+    tailServer.close();
+    assert.equal(result.content, 'Halo ');
+    assert.equal(result.reasoning, 'pikir');
+    assert.ok(result.tool_calls && result.tool_calls.length === 1);
+    assert.equal(result.tool_calls[0].function.name, 'read_file');
+  });
+});
+
+describe('Tahap 3A: Retry & Backoff Klien Streaming', () => {
+  it('harus mencoba ulang saat provider mengembalikan 5xx lalu berhasil', async () => {
+    let attempts = 0;
+    const srv = http.createServer((req, res) => {
+      attempts += 1;
+      if (attempts === 1) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'temporarily unavailable' } }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"choices":[{"delta":{"content":"Pulih"}}]}\n\n');
+      res.write('data: [DONE]\n\n');
+      res.end();
+    });
+
+    await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
+    const port = srv.address().port;
+
+    const result = await streamChatCompletion({
+      credentials: { baseUrl: `http://127.0.0.1:${port}/v1`, headers: {}, model: 'test' },
+      messages: [{ role: 'user', content: 'test' }],
+      retryDelayMs: 0,
+    });
+
+    srv.close();
+    assert.equal(result.content, 'Pulih');
+    assert.equal(attempts, 2, 'harus mengirim ulang tepat sekali setelah 503');
+  });
+
+  it('harus menyerah setelah batas retry tercapai (1 awal + 2 retry)', async () => {
+    let attempts = 0;
+    const srv = http.createServer((req, res) => {
+      attempts += 1;
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: 'boom' } }));
+    });
+
+    await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
+    const port = srv.address().port;
+
+    await assert.rejects(
+      streamChatCompletion({
+        credentials: { baseUrl: `http://127.0.0.1:${port}/v1`, headers: {}, model: 'test' },
+        messages: [{ role: 'user', content: 'test' }],
+        maxRetries: 2,
+        retryDelayMs: 0,
+      }),
+      (err) => {
+        assert.equal(err.status, 500);
+        return true;
+      }
+    );
+
+    srv.close();
+    assert.equal(attempts, 3);
+  });
+
+  it('tidak boleh mengulang permintaan 4xx klien', async () => {
+    let attempts = 0;
+    const srv = http.createServer((req, res) => {
+      attempts += 1;
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: 'bad request' } }));
+    });
+
+    await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
+    const port = srv.address().port;
+
+    await assert.rejects(
+      streamChatCompletion({
+        credentials: { baseUrl: `http://127.0.0.1:${port}/v1`, headers: {}, model: 'test' },
+        messages: [{ role: 'user', content: 'test' }],
+        retryDelayMs: 0,
+      }),
+      (err) => {
+        assert.equal(err.status, 400);
+        return true;
+      }
+    );
+
+    srv.close();
+    assert.equal(attempts, 1, '4xx bukan gangguan sesaat, tidak diulang');
+  });
+});
+
+describe('Klasifikasi Error Jaringan', () => {
+  it('harus mengenali timeout & kode transport, dan menolak error HTTP biasa', () => {
+    assert.equal(isNetworkError(Object.assign(new Error('x'), { name: 'TimeoutError' })), true);
+    assert.equal(isNetworkError(Object.assign(new Error('x'), { code: 'ECONNREFUSED' })), true);
+    assert.equal(
+      isNetworkError(Object.assign(new Error('x'), { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } })),
+      true
+    );
+    assert.equal(isNetworkError(Object.assign(new Error('x'), { status: 401 })), false);
+    assert.equal(isNetworkError(null), false);
   });
 });

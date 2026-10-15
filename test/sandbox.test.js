@@ -22,6 +22,30 @@ describe('Sandbox A5: penjaga perintah terminal', () => {
     }
   });
 
+  it('menolak escape lewat path relatif di perintah non-cd', () => {
+    // Regresi: dulu hanya `cd`/`pushd` yang diperiksa, sehingga `type ..\x`
+    // atau `git -C ..` bisa menembus sandbox lewat path relatif.
+    for (const cmd of [
+      'type ..\\..\\secret.txt',
+      'copy ..\\rahasia.txt .',
+      'echo isi > ..\\out.txt',
+      'dir ..\\..',
+      'git -C .. status',
+      'cat ../../etc/passwd',
+    ]) {
+      const v = analyzeCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(v.allowed, false, `seharusnya ditolak: ${cmd}`);
+      assert.equal(v.category, 'workspace-escape');
+    }
+  });
+
+  it('tetap mengizinkan path relatif yang tidak keluar workspace', () => {
+    for (const cmd of ['ls src/../lib', 'node src/../bin/baiwor.js --help', 'git diff HEAD~1..HEAD']) {
+      const v = analyzeCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(v.allowed, true, `seharusnya diizinkan: ${cmd} (${v.reason})`);
+    }
+  });
+
   it('menolak akses ke area kredensial', () => {
     for (const cmd of [
       'cat ~/.ssh/id_rsa',
@@ -66,6 +90,28 @@ describe('Sandbox A5: penjaga perintah terminal', () => {
     const inside = path.join(WORKSPACE, 'src', 'tools', 'handlers.js');
     const v = analyzeCommand(`node --check "${inside}"`, { workspace: WORKSPACE });
     assert.equal(v.allowed, true, v.reason || '');
+  });
+
+  it('mengizinkan URL di dalam perintah (regresi: skema http(s) terbaca sebagai drive)', () => {
+    // Dulu `https://github.com` cocok dengan pola path absolut Windows karena
+    // `s:` + `//` dianggap drive `s:`, sehingga perintah sah ikut ditolak.
+    for (const cmd of [
+      'git clone https://github.com/bAIwor/baiworcode.git',
+      'git remote add origin https://github.com/a/b.git',
+      'curl -sSf https://example.com/api',
+    ]) {
+      const v = analyzeCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(v.allowed, true, `seharusnya diizinkan: ${cmd} (${v.reason})`);
+    }
+
+    // Path absolut asli di luar workspace tetap harus ditolak, bukan ikut lolos
+    // hanya karena ada URL di perintah yang sama.
+    const outside = path.join(path.parse(WORKSPACE).root, 'rahasia-baiwor.txt');
+    const escaped = analyzeCommand(`curl https://example.com && type "${outside}"`, {
+      workspace: WORKSPACE,
+    });
+    assert.equal(escaped.allowed, false);
+    assert.equal(escaped.category, 'workspace-escape');
   });
 
   it('menolak perintah kosong', () => {

@@ -4,6 +4,7 @@ import { getConfig, saveConfig, maskSecret } from '../config.js';
 import { PROVIDERS } from './registry.js';
 import { runDeviceFlow } from './device.js';
 import { runPkceFlow } from './pkce.js';
+import { USER_AGENT } from '../branding.js';
 
 export { PROVIDERS } from './registry.js';
 
@@ -28,7 +29,7 @@ async function refreshAccessToken(provider, currentAuth) {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'bAIwor-Code/1.0.0',
+        'User-Agent': USER_AGENT,
       },
       body: bodyParams.toString(),
       signal: AbortSignal.timeout(10000),

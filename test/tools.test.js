@@ -79,6 +79,18 @@ describe('Tahap 3B: File System Handlers', () => {
     assert.ok(!res.output.includes('1: Halo 1'));
   });
 
+  it('read_file harus membuang \\r pada berkas berakhiran CRLF', async () => {
+    const targetFile = path.join(tmpDir, 'crlf_read.txt');
+    fs.writeFileSync(targetFile, 'Baris A\r\nBaris B\r\n', 'utf8');
+
+    const res = await handleReadFile({ file_path: targetFile });
+
+    assert.equal(res.success, true);
+    assert.ok(res.output.includes('1: Baris A'));
+    assert.ok(res.output.includes('2: Baris B'));
+    assert.equal(res.output.includes('\r'), false, 'output read_file tidak boleh menyisakan \\r');
+  });
+
   it('harus dapat mengedit potongan kode spesifik (edit_file)', async () => {
     const targetFile = path.join(tmpDir, 'edit_test.js');
     fs.writeFileSync(targetFile, 'const a = 1;\nconst b = 2;\nconsole.log(a + b);', 'utf8');
@@ -104,6 +116,38 @@ describe('Tahap 3B: File System Handlers', () => {
 
     assert.equal(res.success, false);
     assert.match(res.output, /tidak ditemukan/i);
+  });
+
+  it('edit_file harus mempertahankan akhir baris CRLF berkas', async () => {
+    const targetFile = path.join(tmpDir, 'crlf_test.js');
+    fs.writeFileSync(targetFile, 'const a = 1;\r\nconst b = 2;\r\nconst c = 3;\r\n', 'utf8');
+
+    // old_content memakai LF (seperti keluaran model) sehingga memicu jalur normalisasi.
+    const res = await handleEditFile({
+      file_path: targetFile,
+      old_content: 'const a = 1;\nconst b = 2;',
+      new_content: 'const a = 1;\nconst b = 42;',
+    });
+
+    assert.equal(res.success, true);
+    const updated = fs.readFileSync(targetFile, 'utf8');
+    assert.equal(updated, 'const a = 1;\r\nconst b = 42;\r\nconst c = 3;\r\n');
+    assert.equal((updated.match(/(?<!\r)\n/g) || []).length, 0, 'tidak boleh menyisakan LF telanjang');
+  });
+
+  it('edit_file harus menulis new_content apa adanya walau memuat $& dan $1', async () => {
+    const targetFile = path.join(tmpDir, 'dollar_test.js');
+    fs.writeFileSync(targetFile, 'const x = 1;\n', 'utf8');
+
+    const res = await handleEditFile({
+      file_path: targetFile,
+      old_content: 'const x = 1;',
+      new_content: 'const y = "$& $1 $` $$";',
+    });
+
+    assert.equal(res.success, true);
+    const updated = fs.readFileSync(targetFile, 'utf8');
+    assert.equal(updated, 'const y = "$& $1 $` $$";\n');
   });
 
   it('harus dapat melihat isi direktori dan mengabaikan node_modules (list_directory)', async () => {
@@ -172,7 +216,7 @@ describe('Tahap 3B: Tool Dispatcher & JSON Argument Parser', () => {
     assert.match(capped, /Output dipotong: 10000 karakter melebihi budget context/);
   });
 
-  it('harus mendukung pendaftaran tool baru via registerTool ala Hermes (F4)', async () => {
+  it('harus mendukung pendaftaran tool baru via registerTool (F4)', async () => {
     registerTool({
       name: 'hitung_kuadrat',
       toolset: 'math',

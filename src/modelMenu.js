@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import * as p from '@clack/prompts';
 import { getConfig, saveConfig, maskSecret } from './config.js';
 import { login, logout, PROVIDERS } from './auth/index.js';
+import { CLI_USER_AGENT } from './branding.js';
 
 function cleanUrl(urlStr) {
   try {
@@ -22,7 +23,7 @@ const DEFAULT_AGENTIK_MODELS = [
 ];
 
 /**
- * Alur konfigurasi interaktif Agentik AI ala Hermes:
+ * Alur konfigurasi interaktif Agentik AI:
  * 1. Base URL (default https://api.agentik.my.id/v1)
  * 2. API Key (bonus token di https://agentik.my.id)
  * 3. Pilih Model (probe otomatis dari /models)
@@ -63,7 +64,7 @@ async function configureAgentikFlow(existingCp, customList, config) {
   if (p.isCancel(inputKey)) return;
   const apiKey = (inputKey && inputKey.trim()) ? inputKey.trim() : currentKey;
 
-  // 3. Probe model list dari server (seperti Hermes)
+  // 3. Probe daftar model dari server (endpoint /models)
   const s = p.spinner();
   s.start(`Menghubungi ${cleanUrl(baseUrl)}/models...`);
 
@@ -72,7 +73,7 @@ async function configureAgentikFlow(existingCp, customList, config) {
     const res = await fetch(`${baseUrl}/models`, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        'User-Agent': 'bAIwor-cli/1.0.0',
+        'User-Agent': CLI_USER_AGENT,
       },
       signal: AbortSignal.timeout(10000),
     });
@@ -127,12 +128,18 @@ async function configureAgentikFlow(existingCp, customList, config) {
   }
 
   // 5. Simpan dan Aktifkan
+  // Model yang diketik manual belum tentu ada di daftar probe — selipkan agar
+  // ia tetap muncul pada menu "Ganti model" berikutnya.
+  const modelsWithFinal = availableModels.includes(finalModel)
+    ? availableModels
+    : [finalModel, ...availableModels];
+
   const agentikObj = {
     name: 'Agentik',
     baseUrl,
     apiKey,
     model: finalModel,
-    models: availableModels,
+    models: modelsWithFinal,
   };
 
   const updatedCustom = [...customList];
@@ -344,7 +351,7 @@ export async function runModelMenu() {
       const isAgentik = cp.name.toLowerCase() === 'agentik';
 
       if (isAgentik) {
-        // Jika belum ada API Key, langsung buka wizard konfigurasi ala Hermes
+        // Jika belum ada API Key, langsung buka wizard konfigurasi
         if (!cp.apiKey || !cp.apiKey.trim()) {
           await configureAgentikFlow(cp, customList, config);
           return;
@@ -354,7 +361,7 @@ export async function runModelMenu() {
           message: `Kelola ${chalk.bold('Agentik AI')} 👑 ⭐ (Sponsor Resmi):`,
           options: [
             { value: 'activate', label: `Aktifkan Agentik (${cp.model})` },
-            { value: 'setup_flow', label: '⚡ Konfigurasi cepat (Base URL, API Key & Model ala Hermes)' },
+            { value: 'setup_flow', label: '⚡ Konfigurasi cepat (Base URL, API Key & Model)' },
             { value: 'switch_model', label: 'Ganti model aktif' },
             { value: 'refresh_models', label: `Refresh daftar model dari ${cleanUrl(cp.baseUrl)}/models` },
             { value: 'edit_key', label: `Ubah API Key (${maskSecret(cp.apiKey)})` },
@@ -456,7 +463,7 @@ export async function runModelMenu() {
             const res = await fetch(`${cp.baseUrl}/models`, {
               headers: {
                 Authorization: `Bearer ${cp.apiKey}`,
-                'User-Agent': 'bAIwor-cli/1.0.0',
+                'User-Agent': CLI_USER_AGENT,
               },
               signal: AbortSignal.timeout(10000),
             });
@@ -641,7 +648,7 @@ export async function runModelMenu() {
           const res = await fetch(`${cp.baseUrl}/models`, {
             headers: {
               Authorization: `Bearer ${cp.apiKey}`,
-              'User-Agent': 'bAIwor-cli/1.0.0',
+              'User-Agent': CLI_USER_AGENT,
             },
             signal: AbortSignal.timeout(10000),
           });
@@ -745,7 +752,7 @@ export async function runModelMenu() {
         const res = await fetch(`${cleanBase}/models`, {
           headers: {
             Authorization: `Bearer ${apiKey.trim()}`,
-            'User-Agent': 'bAIwor-cli/1.0.0',
+            'User-Agent': CLI_USER_AGENT,
           },
           signal: AbortSignal.timeout(10000),
         });

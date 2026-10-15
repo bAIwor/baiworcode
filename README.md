@@ -104,13 +104,13 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 
 ## ⚡ Fitur Utama
 
-- **Antarmuka Elegan ala MCode**:
+- **Antarmuka Elegan & Bersih**:
   - Maskot Wajah Topeng Bawor presisi tinggi (19 kolom × 7 baris, simetris dan anti-menceng).
   - Banner 3D ASCII Shadow Merah-Putih.
   - Kotak informasi terminal dinamis anti-pecah (*visual column aware*).
-  - Area input dibingkai dua garis pemisah ala MCode, dengan baris status yang ikut bergerak saat kamu mengetik — `~ │ Full access │ ✦ <model> · <provider> │ Context 92% left`.
+  - Area input dibingkai dua garis pemisah, dengan baris status yang ikut bergerak saat kamu mengetik — `~ │ Full access │ ✦ <model> · <provider> │ Context 92% left`.
   - Kedua garis memakai jumlah tanda pisah yang sama dan hanya berbeda empat kolom, memberi kesan undakan. Baris status menyesuaikan diri bila terminal sempit: rincian token, nama provider, dan keterangan akses dikorbankan berurutan agar tidak pernah melewati lebar terminal dan merusak kotak layout.
-- **Timeline Aktivitas ala MCode**:
+- **Timeline Aktivitas**:
   - Setiap tool yang dijalankan dicatat sebagai pohon: nama tool, durasi, dan jumlah baris output.
   - Tool yang gagal ditandai merah agar mudah dipindai sekilas, dan keluarannya ikut diringkas.
   - Daftar tugas dari `todo_list` dirender sebagai checklist di bawah node-nya, lengkap dengan progres `3/5 selesai`.
@@ -124,15 +124,18 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - **Navigasi Perintah Cerdas (Slash Commands)**:
   - Ketik `/` untuk memunculkan menu dropdown perintah secara real-time.
   - Navigasi dengan tombol panah (`↑` / `↓`), auto-complete dengan `Tab`, eksekusi dengan `Enter`, batal dengan `Esc`.
-- **Arsitektur Autentikasi & Provider ala Hermes CLI**:
+- **Arsitektur Autentikasi & Provider**:
   - **Google Gemini OAuth** via PKCE (loopback + S256) — login tanpa menyimpan API key di disk.
   - **Agentik AI** sebagai provider bawaan (endpoint OpenAI-compatible + bonus token).
   - Dukungan **Custom OpenAI-compatible endpoints** lengkap dengan fetch otomatis `/models` dan ganti model aktif.
   - Konfigurasi tersimpan otomatis & atomik di `~/.baiwor/config.json` dengan proteksi backup bila file korup.
 - **Mesin Chat Streaming & Agentic Loop**:
   - Panggilan `/chat/completions` streaming (SSE) dengan line-buffering agar aman dari potongan TCP.
+  - Percobaan ulang otomatis (retry + backoff) saat jaringan tersendat atau provider mengembalikan error 5xx — sebelum byte pertama diterima, jadi jawaban tidak pernah terduplikasi.
+  - Pesan kegagalan yang ramah dan spesifik: autentikasi, rate limit, server provider, hingga timeout/jaringan (tidak lagi menampilkan `fetch failed` mentah).
   - Dukungan token `reasoning_content` (model reasoning seperti DeepSeek R1) dan pembatalan via `Ctrl+C`.
   - Riwayat percakapan multi-turn dengan pemangkasan otomatis agar tidak melebihi context window.
+  - Berkas berakhiran baris CRLF (khas Windows) dibaca dan disunting tanpa menyisakan `\r` atau mengubah akhir baris seluruh berkas.
   - Loop agentic hingga 10 putaran: model bisa memanggil tool, membaca hasilnya, lalu melanjutkan sendiri.
 - **🛠️ 7 Tool Bawaan** — bAIwor tidak hanya menjawab, tapi benar-benar mengerjakan:
   - `read_file`, `write_file`, `edit_file`, `list_directory` — baca, tulis, dan sunting berkas proyek.

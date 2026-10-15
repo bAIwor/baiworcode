@@ -1,11 +1,11 @@
 /**
  * Tool `todo_list` untuk bAIwor Code.
  *
- * Port ringkas dari `tools/todo_tool.py` milik Hermes Agent. Dipakai agar bAIwor
+ * Port ringkas dari pola `todo_tool` pada agen CLI modern. Dipakai agar bAIwor
  * dapat menyusun rencana tugas saat mengerjakan fitur besar, sehingga pengguna
  * pemula bisa melihat progres langkah demi langkah.
  *
- * Perilaku (mengikuti Hermes):
+ * Perilaku:
  *   - Panggil tanpa `todos` -> membaca daftar saat ini.
  *   - Kirim `todos`        -> mengganti seluruh daftar (default) atau merge by id.
  *   - Urutan daftar = prioritas. Hanya SATU item boleh `in_progress`.
@@ -17,7 +17,6 @@ export const MAX_TODO_ITEMS = 256;
 export const MAX_TODO_CONTENT_CHARS = 4000;
 
 const TRUNCATION_MARKER = '… [dipotong]';
-const ACTIVE_STATUSES = new Set(['pending', 'in_progress']);
 
 function capContent(content) {
   if (content.length > MAX_TODO_CONTENT_CHARS) {
@@ -213,9 +212,4 @@ export async function handleTodoList({ todos, merge = false } = {}) {
   } catch (err) {
     return { success: false, output: `Error: ${err.message}` };
   }
-}
-
-/** Apakah ada item yang masih aktif (pending / in_progress). */
-export function hasActiveTodos() {
-  return todoStore.read().some((item) => ACTIVE_STATUSES.has(item.status));
 }

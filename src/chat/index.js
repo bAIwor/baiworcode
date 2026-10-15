@@ -3,7 +3,7 @@ import { resolveActiveCredentials } from '../auth/resolve.js';
 import { conversationSession } from './conversation.js';
 import { streamChatCompletion } from './client.js';
 import { TOOL_DEFINITIONS, executeTool } from '../tools/index.js';
-import { todoStore } from '../tools/todoTool.js';
+import { todoStore, resetTodoStore } from '../tools/todoTool.js';
 import { renderTimeline, renderTodoChecklist, formatTodoProgress } from './timeline.js';
 import { getContextUsage, formatContextIndicator, formatContextWarning } from './context.js';
 
@@ -11,6 +11,41 @@ export { conversationSession };
 
 let activeAbortController = null;
 let isStreamingActive = false;
+
+/**
+ * Kode transport yang menandakan masalah jaringan/waktu habis — bukan kesalahan
+ * kredensial atau permintaan. Dipakai untuk memberi pesan yang lebih ramah
+ * ketimbang menampilkan "fetch failed" mentah dari runtime.
+ */
+const NETWORK_ERROR_CODES = new Set([
+  'ENOTFOUND',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'EPIPE',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_RST',
+]);
+
+const TIMEOUT_ERROR_CODES = new Set([
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+]);
+
+export function isNetworkError(err) {
+  if (!err) return false;
+  if (err.name === 'TimeoutError') return true;
+  const code = err.code || err.cause?.code;
+  return NETWORK_ERROR_CODES.has(code);
+}
+
+function networkErrorCode(err) {
+  return err?.code || err?.cause?.code || null;
+}
 
 /**
  * Membatalkan proses streaming yang sedang berlangsung jika ada.
@@ -26,9 +61,14 @@ export function abortCurrentChat() {
 
 /**
  * Mengosongkan riwayat percakapan.
+ *
+ * Daftar tugas ikut direset karena ia bagian dari konteks sesi: tanpa itu,
+ * checklist dari pekerjaan sebelumnya akan muncul lagi pada `todo_list`
+ * pertama di sesi berikutnya dan menyesatkan model.
  */
 export function resetConversation() {
   conversationSession.reset();
+  resetTodoStore();
   console.log(chalk.green('\n  ✓ Riwayat percakapan telah direset.\n'));
 }
 
@@ -299,10 +339,17 @@ export async function handleUserChat(promptText) {
       console.log(chalk.red.bold(`  ⚠️  Server Provider Error (${err.status}): Layanan AI sedang mengalami gangguan.`));
       console.log(chalk.gray(`     Detail : ${err.message}`));
       console.log(chalk.gray('     Silakan coba beberapa saat lagi.\n'));
-    } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
-      console.log(chalk.red.bold('  🌐 Masalah Jaringan: Tidak dapat terhubung ke endpoint AI.'));
+    } else if (isNetworkError(err)) {
+      const code = networkErrorCode(err);
+      const isTimeout = err.name === 'TimeoutError' || TIMEOUT_ERROR_CODES.has(code);
+      const label = isTimeout
+        ? 'Koneksi ke provider habis waktu (timeout).'
+        : 'Tidak dapat terhubung ke endpoint AI.';
+      console.log(chalk.red.bold(`  🌐 Masalah Jaringan: ${label}`));
       console.log(chalk.gray(`     Endpoint : ${err.url || credentials.baseUrl}`));
-      console.log(chalk.gray('     Periksa koneksi internet Anda atau periksa URL endpoint di menu /model.\n'));
+      console.log(chalk.gray(`     Provider : ${credentials.provider} (${credentials.type})`));
+      if (code) console.log(chalk.gray(`     Kode     : ${code}`));
+      console.log(chalk.gray('     Periksa koneksi internet atau URL endpoint lewat /model, lalu coba lagi.\n'));
     } else {
       console.log(chalk.red.bold('  ⚠️  Gagal memproses pesan:'));
       console.log(chalk.red(`     ${err.message}`));

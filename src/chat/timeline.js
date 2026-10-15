@@ -225,7 +225,7 @@ export function renderTodoChecklist(items, { useColor = true, maxItem = 70 } = {
 }
 
 /**
- * Merender daftar aktivitas tool sebagai pohon ala MCode:
+ * Merender daftar aktivitas tool sebagai pohon:
  * setiap node membawa nama tool, durasi, jumlah baris output, dan ringkasan.
  *
  * @param {Array<{name:string, args?:object, durationMs:number, output?:string, success?:boolean, detail?:string, extraMeta?:string}>} events

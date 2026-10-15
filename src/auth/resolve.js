@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import { getConfig } from '../config.js';
 import { PROVIDERS } from './registry.js';
 import { getAccessToken } from './index.js';
+import { USER_AGENT } from '../branding.js';
 
 /**
  * Menghubungkan kredensial provider aktif (Custom API Key atau OAuth Bearer Token)
@@ -41,7 +42,7 @@ export async function resolveActiveCredentials() {
       headers: {
         Authorization: `Bearer ${cp.apiKey}`,
         'Content-Type': 'application/json',
-        'User-Agent': 'bAIwor-Code/1.0.0',
+        'User-Agent': USER_AGENT,
       },
       model: activeModel,
     };
@@ -75,7 +76,7 @@ export async function resolveActiveCredentials() {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'User-Agent': 'bAIwor-Code/1.0.0',
+        'User-Agent': USER_AGENT,
       },
       model: activeModel,
     };

@@ -50,7 +50,7 @@ describe('StatusLine: Helper', () => {
   });
 });
 
-describe('Prompt: Layout Area Input ala MCode', () => {
+describe('Prompt: Layout Area Input', () => {
   it('harus menggambar garis atas sebelum baris input', () => {
     assert.match(render().split('\n')[0], /^─+$/);
   });
@@ -249,6 +249,33 @@ describe('Prompt: Frame Tidak Melewati Lebar Terminal', () => {
     ).split('\n');
     for (const line of lines) {
       assert.ok(line.length <= terminalWidth(), `baris panjang ${line.length}`);
+    }
+  });
+
+  it('frame dengan dropdown harus muat juga di terminal sempit', () => {
+    // Regresi: kotak bawah dropdown dulu dipatok 76 kolom dan header 66 kolom,
+    // sehingga di terminal < 76 kolom barisnya meluber dan kotak ikut patah.
+    const orig = process.stdout.columns;
+    try {
+      for (const w of [40, 52, 68]) {
+        process.stdout.columns = w;
+        const lines = polos(
+          buildPromptFrame({
+            value: '/',
+            placeholder: 'Ask bAIwor Code to do anything...',
+            dropdownOpen: true,
+          })
+        ).split('\n');
+        for (const line of lines) {
+          assert.ok(line.length <= w, `lebar ${w}: baris ${line.length} kolom -> ${line.slice(0, 50)}`);
+        }
+        assert.ok(
+          lines.some((l) => l.includes('Perintah')),
+          `lebar ${w}: header dropdown hilang`
+        );
+      }
+    } finally {
+      process.stdout.columns = orig;
     }
   });
 

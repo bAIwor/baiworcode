@@ -14,6 +14,94 @@ export function buildChatEndpoint(baseUrl) {
 }
 
 /**
+ * Batas percobaan ulang bawaan untuk gangguan sementara provider.
+ * Retry hanya dilakukan SEBELUM byte pertama dibaca, jadi respons yang sudah
+ * mulai mengalir tidak pernah diduplikasi.
+ */
+export const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_RETRY_DELAY_MS = 400;
+
+/** Status HTTP yang layak dicoba ulang — murni gangguan sementara server. */
+function isRetryableStatus(status) {
+  return Number.isInteger(status) && status >= 500 && status < 600;
+}
+
+/** Kode error transport yang menandakan gangguan jaringan sesaat. */
+const RETRYABLE_NETWORK_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'ETIMEDOUT',
+  'EPIPE',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_RST',
+]);
+
+function isTransientNetworkError(err) {
+  if (!err) return false;
+  if (err.name === 'TimeoutError') return true;
+  const code = err.code || err.cause?.code;
+  return RETRYABLE_NETWORK_CODES.has(code);
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Menjalankan `fetch` dengan retry + backoff eksponensial untuk error yang
+ * bersifat sementara (timeout/jaringan dan HTTP 5xx). Permintaan 4xx tidak
+ * diulang karena bukan gangguan sesaat; 429 (rate limit) juga sengaja tidak
+ * diulang agar kuota tidak makin terkuras.
+ *
+ * @param {string} url
+ * @param {RequestInit} init
+ * @param {{maxRetries:number, retryDelayMs:number}} options
+ * @returns {Promise<Response>}
+ */
+async function requestWithRetry(url, init, { maxRetries, retryDelayMs }) {
+  let response;
+  let lastError;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    if (init.signal?.aborted) {
+      const abortErr = new Error('Streaming dihentikan oleh pengguna.');
+      abortErr.name = 'AbortError';
+      throw abortErr;
+    }
+
+    try {
+      response = await fetch(url, init);
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err;
+      lastError = err;
+      if (attempt < maxRetries && isTransientNetworkError(err)) {
+        await sleep(retryDelayMs * 2 ** attempt);
+        continue;
+      }
+      throw err;
+    }
+
+    if (!response.ok && isRetryableStatus(response.status) && attempt < maxRetries) {
+      // Buang isi respons gagal sebelum mengulang agar koneksi tidak menggantung.
+      try {
+        await response.body?.cancel();
+      } catch {
+        // abaikan
+      }
+      await sleep(retryDelayMs * 2 ** attempt);
+      continue;
+    }
+
+    return response;
+  }
+
+  if (lastError) throw lastError;
+  return response;
+}
+
+/**
  * Melakukan panggilan streaming chat completion ke endpoint OpenAI-compatible.
  * Menggunakan line-buffering untuk mencegah error JSON.parse pada potongan TCP/SSE chunk.
  * Mendukung akumulasi tool_calls untuk Agentic Tool Calling (Tahap 3B).
@@ -26,6 +114,8 @@ export function buildChatEndpoint(baseUrl) {
  * @param {Function} [options.onStart] - Callback saat token pertama tiba
  * @param {Function} [options.onDelta] - Callback setiap token konten tiba
  * @param {Function} [options.onReasoning] - Callback setiap token reasoning/thinking tiba
+ * @param {number} [options.maxRetries] - Jumlah percobaan ulang untuk gangguan sesaat (default 2)
+ * @param {number} [options.retryDelayMs] - Jeda dasar backoff dalam ms (default 400)
  * @returns {Promise<{ content: string, reasoning: string, tool_calls: Array|null, completed: boolean }>}
  */
 export async function streamChatCompletion({
@@ -36,6 +126,8 @@ export async function streamChatCompletion({
   onStart,
   onDelta,
   onReasoning,
+  maxRetries = DEFAULT_MAX_RETRIES,
+  retryDelayMs = DEFAULT_RETRY_DELAY_MS,
 }) {
   const url = buildChatEndpoint(credentials.baseUrl);
   const payload = {
@@ -49,14 +141,18 @@ export async function streamChatCompletion({
     payload.tool_choice = 'auto';
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      ...credentials.headers,
+  const response = await requestWithRetry(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        ...credentials.headers,
+      },
+      body: JSON.stringify(payload),
+      signal,
     },
-    body: JSON.stringify(payload),
-    signal,
-  });
+    { maxRetries, retryDelayMs }
+  );
 
   if (!response.ok) {
     let errorDetail = '';
@@ -93,6 +189,70 @@ export async function streamChatCompletion({
   let fullReasoning = '';
   const accumulatedToolCalls = [];
 
+  /**
+   * Menerapkan satu objek SSE ke akumulator.
+   *
+   * Dipakai baik untuk baris di dalam loop maupun untuk sisa buffer di akhir
+   * stream, supaya `reasoning_content` dan `tool_calls` pada baris terakhir
+   * — yang mungkin tidak diakhiri newline atau `[DONE]` — tidak ikut terbuang.
+   */
+  const applyChunk = (parsed) => {
+    const choice = parsed?.choices?.[0];
+    const delta = choice?.delta;
+
+    if (!delta && !choice?.message) return;
+
+    if (!hasStarted) {
+      hasStarted = true;
+      if (onStart) onStart();
+    }
+
+    // Tangani token reasoning / thinking (DeepSeek R1 dsb.)
+    if (delta?.reasoning_content) {
+      fullReasoning += delta.reasoning_content;
+      if (onReasoning) {
+        onReasoning(delta.reasoning_content);
+      }
+    }
+
+    // Tangani token konten utama
+    if (delta?.content) {
+      fullContent += delta.content;
+      if (onDelta) {
+        onDelta(delta.content);
+      }
+    }
+
+    // Tangani token tool calls (OpenAI function calling)
+    if (delta?.tool_calls && Array.isArray(delta.tool_calls)) {
+      for (const tc of delta.tool_calls) {
+        const idx = tc.index ?? 0;
+        if (!accumulatedToolCalls[idx]) {
+          accumulatedToolCalls[idx] = {
+            id: tc.id || '',
+            type: tc.type || 'function',
+            function: {
+              name: tc.function?.name || '',
+              arguments: tc.function?.arguments || '',
+            },
+          };
+        } else {
+          if (tc.id) accumulatedToolCalls[idx].id = tc.id;
+          if (tc.function?.name) accumulatedToolCalls[idx].function.name += tc.function.name;
+          if (tc.function?.arguments) accumulatedToolCalls[idx].function.arguments += tc.function.arguments;
+        }
+      }
+    }
+
+    // Fallback jika provider mengirimkan tool_calls langsung di object message
+    if (choice?.message?.tool_calls && Array.isArray(choice.message.tool_calls)) {
+      for (const tc of choice.message.tool_calls) {
+        const idx = tc.index ?? accumulatedToolCalls.length;
+        accumulatedToolCalls[idx] = tc;
+      }
+    }
+  };
+
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -121,61 +281,7 @@ export async function streamChatCompletion({
             };
           }
           try {
-            const parsed = JSON.parse(jsonStr);
-            const choice = parsed.choices?.[0];
-            const delta = choice?.delta;
-
-            if (!delta && !choice?.message) continue;
-
-            if (!hasStarted) {
-              hasStarted = true;
-              if (onStart) onStart();
-            }
-
-            // Tangani token reasoning / thinking (DeepSeek R1 dsb.)
-            if (delta?.reasoning_content) {
-              fullReasoning += delta.reasoning_content;
-              if (onReasoning) {
-                onReasoning(delta.reasoning_content);
-              }
-            }
-
-            // Tangani token konten utama
-            if (delta?.content) {
-              fullContent += delta.content;
-              if (onDelta) {
-                onDelta(delta.content);
-              }
-            }
-
-            // Tangani token tool calls (OpenAI function calling)
-            if (delta?.tool_calls && Array.isArray(delta.tool_calls)) {
-              for (const tc of delta.tool_calls) {
-                const idx = tc.index ?? 0;
-                if (!accumulatedToolCalls[idx]) {
-                  accumulatedToolCalls[idx] = {
-                    id: tc.id || '',
-                    type: tc.type || 'function',
-                    function: {
-                      name: tc.function?.name || '',
-                      arguments: tc.function?.arguments || '',
-                    },
-                  };
-                } else {
-                  if (tc.id) accumulatedToolCalls[idx].id = tc.id;
-                  if (tc.function?.name) accumulatedToolCalls[idx].function.name += tc.function.name;
-                  if (tc.function?.arguments) accumulatedToolCalls[idx].function.arguments += tc.function.arguments;
-                }
-              }
-            }
-
-            // Fallback jika provider mengirimkan tool_calls langsung di object message
-            if (choice?.message?.tool_calls && Array.isArray(choice.message.tool_calls)) {
-              for (const tc of choice.message.tool_calls) {
-                const idx = tc.index ?? accumulatedToolCalls.length;
-                accumulatedToolCalls[idx] = tc;
-              }
-            }
+            applyChunk(JSON.parse(jsonStr));
           } catch {
             // Abaikan potongan baris SSE individual yang tidak valid
           }
@@ -183,18 +289,17 @@ export async function streamChatCompletion({
       }
     }
 
-    // Periksa sisa buffer jika masih ada data yang belum terurai
-    if (buffer.trim().startsWith('data:')) {
-      const jsonStr = buffer.trim().slice(5).trim();
-      if (jsonStr !== '[DONE]') {
+    // Periksa sisa buffer bila stream berakhir tanpa newline/`[DONE]`. Baris
+    // terakhir tetap diurai utuh (termasuk reasoning & tool_calls).
+    const tail = buffer.trim();
+    if (tail.startsWith('data:')) {
+      const jsonStr = tail.slice(5).trim();
+      if (jsonStr && jsonStr !== '[DONE]') {
         try {
-          const parsed = JSON.parse(jsonStr);
-          const delta = parsed.choices?.[0]?.delta;
-          if (delta?.content) {
-            fullContent += delta.content;
-            if (onDelta) onDelta(delta.content);
-          }
-        } catch {}
+          applyChunk(JSON.parse(jsonStr));
+        } catch {
+          // Lewati sisa buffer yang tidak valid
+        }
       }
     }
   } catch (err) {

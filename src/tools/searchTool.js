@@ -1,7 +1,7 @@
 /**
  * Tool `search_files` untuk bAIwor Code.
  *
- * Diadaptasi dari pola `file_operations_search.py` milik Hermes Agent, tapi
+ * Diadaptasi dari pola pencarian berkas pada agen CLI modern, tapi
  * diimplementasikan murni dengan modul bawaan Node (tanpa ripgrep / dependensi baru)
  * supaya `npm install` tetap ringan untuk pengguna pemula.
  *
@@ -29,7 +29,6 @@ const IGNORE_DIRS = new Set([
   'build',
   'out',
   'coverage',
-  '.workbuddy-ai',
   '.baiwor',
   '.venv',
   'venv',

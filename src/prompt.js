@@ -1,7 +1,7 @@
 import { TextPrompt, isCancel } from '@clack/core';
 import chalk from 'chalk';
 import readline from 'node:readline';
-import { renderStatusLine, frameRules } from './statusLine.js';
+import { renderStatusLine, frameRules, terminalWidth } from './statusLine.js';
 
 export const COMMANDS = [
   { name: '/help', desc: 'Menampilkan panduan perintah & bantuan' },
@@ -50,23 +50,44 @@ export function buildPromptFrame({
       const matches = COMMANDS.filter((c) => c.name.startsWith(query));
       const active = matches.length ? Math.min(selectedIndex, matches.length - 1) : 0;
 
-      out += '\n  ' + chalk.gray('╭─ Perintah (↑/↓ pilih, Enter jalankan, Tab lengkapi, Esc tutup)') + '\n';
+      // Seluruh baris dropdown dijaga muat di lebar terminal. Sebelumnya kotak
+      // bawah dipatok 76 kolom dan header 66 kolom, sehingga di terminal sempit
+      // barisnya meluber dan kotak layout ikut patah.
+      const width = terminalWidth();
+      const fit = (text, max = width) => {
+        const s = String(text);
+        if (max <= 0) return '';
+        return s.length > max ? `${s.slice(0, Math.max(0, max - 1))}…` : s;
+      };
+
+      const header =
+        '  ╭─ Perintah (↑/↓ pilih, Enter jalankan, Tab lengkapi, Esc tutup)';
+      const shortHeader = '  ╭─ Perintah';
+      out += '\n' + chalk.gray(fit(header.length <= width ? header : shortHeader)) + '\n';
+
+      // Prefix tiap item selalu 21 kolom tampil (tanpa warna), jadi deskripsi
+      // tinggal memakai sisa lebar yang tersedia.
+      const NAME_LEN = 11;
+      const PREFIX_LEN = 21;
+      const descBudget = width - PREFIX_LEN;
       if (matches.length > 0) {
         matches.forEach((cmd, idx) => {
+          const name = cmd.name.padEnd(NAME_LEN);
+          const desc = fit(cmd.desc, descBudget);
           if (idx === active) {
-            out += `  ${chalk.gray('│')}  ${chalk.cyan.bold('❯')} ${chalk.cyan.bold(cmd.name.padEnd(11))} ${chalk.gray('─')} ${chalk.white.bold(cmd.desc)}\n`;
+            out += `  ${chalk.gray('│')}  ${chalk.cyan.bold('❯')} ${chalk.cyan.bold(name)} ${chalk.gray('─')} ${chalk.white.bold(desc)}\n`;
           } else {
-            out += `  ${chalk.gray('│')}    ${chalk.dim(cmd.name.padEnd(11))} ${chalk.gray('─')} ${chalk.dim(cmd.desc)}\n`;
+            out += `  ${chalk.gray('│')}    ${chalk.dim(name)} ${chalk.gray('─')} ${chalk.dim(desc)}\n`;
           }
         });
       } else {
-        out += `  ${chalk.gray('│')}  ${chalk.red('Tidak ada perintah yang cocok')}\n`;
+        out += `  ${chalk.gray('│')}  ${chalk.red(fit('Tidak ada perintah yang cocok', width - 5))}\n`;
       }
-      out += '  ' + chalk.gray('╰─────────────────────────────────────────────────────────────────────────');
+      out += '  ' + chalk.gray(`╰${'─'.repeat(Math.max(0, width - 3))}`);
     }
   }
 
-  // Garis bawah dan baris status mengikuti area input, sama seperti MCode —
+  // Garis bawah dan baris status mengikuti area input —
   // sehingga angka konteks ikut ter-update di setiap pengetikan.
   out += `\n${rules.bottom}`;
   out += `\n\n${renderStatusLine()}`;

@@ -4,7 +4,7 @@
  * Latar belakang (temuan audit A5): sandbox pada tool berkas (F1) dapat ditembus
  * sepenuhnya lewat `run_command`, karena mengunci `cwd` tidak mengunci isi perintah.
  * Contoh nyata yang sebelumnya lolos:
- *   - run_command 'type C:\Users\<user>\hermes_providers.txt'   -> bocor
+ *   - run_command 'type C:\Users\<user>\catatan_penting.txt'      -> bocor
  *   - run_command 'cd .. && cd .. && dir /b'                    -> keluar workspace
  *
  * Modul ini menutup celah tersebut dengan memeriksa STRING perintah sebelum eksekusi.
@@ -141,8 +141,14 @@ function extractAbsolutePaths(command) {
   const found = [];
   let m;
 
-  const winRe = /[a-zA-Z]:[\\/][^\s"'`|&;<>()]*/g;
-  while ((m = winRe.exec(command)) !== null) found.push(m[0]);
+  // Path absolut Windows. Batas token di depan (`(?:^|[...])`) penting: tanpa
+  // itu, skema URL seperti `https://github.com` juga cocok — huruf `s` + `:`
+  // + `//` terbaca sebagai drive `s:` absolut sehingga perintah sah seperti
+  // `git clone https://...` atau `curl https://...` ikut ditolak sandbox.
+  // Dengan batas token, `s:` pada `https://` didahului huruf `p` (bukan
+  // pemisah) sehingga tidak lagi dianggap path.
+  const winRe = /(?:^|[\s"'`=(,;|&<>])([a-zA-Z]:[\\/][^\s"'`|&;<>()]*)/g;
+  while ((m = winRe.exec(command)) !== null) found.push(m[1]);
 
   // Pola POSIX hanya relevan di luar Windows; di Windows `/b` adalah flag, bukan path.
   if (process.platform !== 'win32') {
@@ -214,6 +220,31 @@ function deny(category, reason) {
 }
 
 /**
+ * Mencari argumen berisi path relatif yang keluar dari workspace lewat segmen
+ * `..` (mis. `type ..\secret.txt` atau `foo/../../etc`).
+ *
+ * Pemeriksaan `cd`/`pushd` di atas hanya menangkap perintah `cd`. Tanpa ini,
+ * perintah lain bisa menembus sandbox dengan path relatif karena `run_command`
+ * dieksekusi dari dalam workspace, sehingga `..` mengarah ke folder induk nyata.
+ *
+ * Token di-resolve terhadap workspace lebih dulu, jadi path relatif yang tetap
+ * berada di dalam project (mis. `src/../lib`) tidak ikut ditolak.
+ *
+ * @returns {string|null} token pelanggar, atau null bila aman.
+ */
+function findEscapingRelativePath(command, workspace) {
+  const tokenRe = /[^\s"'`|&;<>()]+/g;
+  let m;
+  while ((m = tokenRe.exec(command)) !== null) {
+    const token = m[0];
+    if (token !== '..' && !/\.\.[\\/]/.test(token)) continue;
+    if (path.isAbsolute(token)) continue;
+    if (!isSubPath(workspace, path.resolve(workspace, token))) return token;
+  }
+  return null;
+}
+
+/**
  * Menganalisis perintah terminal sebelum dieksekusi.
  *
  * @param {string} command - Perintah shell yang diminta model.
@@ -282,7 +313,16 @@ export function analyzeCommand(command, options = {}) {
     }
   }
 
-  // 4. Path absolut di luar workspace / tmp / sistem
+  // 4. Path relatif yang keluar workspace lewat segmen `..`
+  const relativeEscape = findEscapingRelativePath(raw, workspace);
+  if (relativeEscape) {
+    return deny(
+      'workspace-escape',
+      `Argumen '${relativeEscape}' menunjuk ke luar workspace (${workspace}) lewat path relatif. Gunakan path relatif di dalam workspace saja.`
+    );
+  }
+
+  // 5. Path absolut di luar workspace / tmp / sistem
   for (const candidate of extractAbsolutePaths(raw)) {
     if (!isPathAllowed(candidate, workspace)) {
       return deny(

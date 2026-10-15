@@ -9,8 +9,11 @@ import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
 import { handleUserChat, resetConversation, conversationSession } from '../src/chat/index.js';
+import { resetTodoStore } from '../src/tools/todoTool.js';
 import { renderStatusLine } from '../src/statusLine.js';
 import { resolveActiveCredentials } from '../src/auth/resolve.js';
+import { applyHelpStyle, helpHeader, helpFooter } from '../src/cliHelp.js';
+import { APP_NAME, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE } from '../src/branding.js';
 
 function stripAnsi(str) {
   return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
@@ -166,11 +169,16 @@ function showBanner() {
 
   console.log();
   printLogoHeader();
-  console.log(chalk.gray('  🎭 "Saka Bawor dadi bAIwor — Jiwa Punakawan, Pikiran AI, Ati Banyumas"'));
+  console.log(chalk.gray(`  🎭 "${TAGLINE}"`));
   console.log();
 
-  const readyBadge = chalk.green('● Ready');
-  const topBar = '  ' + chalk.gray('╭─ v1.0.0 ' + '─'.repeat(54) + ' ') + readyBadge + chalk.gray(' ─╮');
+  const readyText = '● Ready';
+  const readyBadge = chalk.green(readyText);
+  // Lebar dalam kotak atas disamakan dengan garis tengah (targetWidth + 2) agar
+  // ketiga batang sejajar walau panjang nomor versi berubah.
+  const verLabel = `─ v${VERSION} `;
+  const topPad = Math.max(4, targetWidth + 2 - verLabel.length - readyText.length - 3);
+  const topBar = '  ' + chalk.gray(`╭${verLabel}${'─'.repeat(topPad)} `) + readyBadge + chalk.gray(' ─╮');
   const midBar = '  ' + chalk.gray('├' + '─'.repeat(targetWidth + 2) + '┤');
   const botBar = '  ' + chalk.gray('╰' + '─'.repeat(targetWidth + 2) + '╯');
 
@@ -178,7 +186,7 @@ function showBanner() {
   console.log(padBox(chalk.white('Tips for getting started')));
   console.log(padBox(chalk.gray('› ') + 'Gunakan ' + chalk.cyan('/help') + ' untuk melihat semua perintah yang tersedia.'));
   console.log(padBox(chalk.gray('› ') + 'Gunakan ' + chalk.cyan('/clear') + ' untuk menyegarkan layar kerja kapan saja.'));
-  console.log(padBox(chalk.gray('› ') + 'Kunjungi ' + chalk.cyan('https://baiwor.my.id') + ' untuk dokumentasi & update resmi.'));
+  console.log(padBox(chalk.gray('› ') + 'Kunjungi ' + chalk.cyan(WEBSITE) + ' untuk dokumentasi & update resmi.'));
   console.log(midBar);
   console.log(padBox(chalk.white('Workspace & Status')));
   console.log(padBox(chalk.gray('› ') + 'Folder Aktif : ' + chalk.cyan(process.cwd())));
@@ -289,6 +297,7 @@ async function printStatus() {
   console.log(`    ${chalk.dim('Provider Aktif:')} ${chalk.green.bold(config.activeProvider)} ${chalk.dim(`(${config.activeType})`)}`);
   console.log(`    ${chalk.dim('Model Aktif   :')} ${chalk.hex('#F59E0B').bold(config.activeModel)}`);
   console.log(`    ${chalk.dim('Latency       :')} ${latencyBadge}`);
+  console.log(`    ${chalk.dim('Website       :')} ${chalk.cyan(WEBSITE)}`);
   console.log();
 
   console.log(chalk.white.bold('  🔐 Status Sesi OAuth Providers:'));
@@ -314,10 +323,10 @@ async function printStatus() {
 
 function showExitMessage() {
   console.log(chalk.hex('#F59E0B')('\n  Matur nuwun! Sampun nganggo bAIwor Code. 🙏'));
-  console.log(chalk.gray('  🌐 Website official  : ') + chalk.cyan('https://baiwor.my.id'));
+  console.log(chalk.gray('  🌐 Website official  : ') + chalk.cyan(WEBSITE));
   console.log(
     chalk.gray('  🎁 Bonus token/credit: ') +
-      chalk.cyan('https://agentik.my.id') +
+      chalk.cyan(BONUS_WEBSITE) +
       chalk.dim(' (Dapatkan bonus token/credit untuk instalasi bAIwor Code)\n')
   );
   process.exit(0);
@@ -389,6 +398,9 @@ async function startInteractive() {
         break;
       case '/clear':
         conversationSession.clearHistory();
+        // `/clear` menyegarkan layar sekaligus membuka sesi bersih, jadi daftar
+        // tugas dari pekerjaan sebelumnya juga dibuang agar tidak muncul lagi.
+        resetTodoStore();
         console.clear();
         showBanner();
         break;
@@ -413,10 +425,16 @@ async function startInteractive() {
 
 const program = new Command();
 
+// `--help` dibuat berwarna & bermerek: header/footer hanya untuk help utama,
+// sedangkan seluruh subcommand memakai gaya warna yang sama.
+applyHelpStyle(program);
+program.addHelpText('before', helpHeader());
+program.addHelpText('after', helpFooter());
+
 program
   .name('baiworcode')
-  .description('bAIwor Code v1.0.0 — baiwor.my.id')
-  .version('1.0.0')
+  .description(`${APP_NAME} v${VERSION} — ${WEBSITE.replace(/^https?:\/\//, '')}`)
+  .version(VERSION)
   .argument('[prompt...]', 'Pertanyaan atau instruksi coding langsung')
   .action(async (promptParts) => {
     if (promptParts && promptParts.length > 0) {
@@ -466,5 +484,10 @@ program
     await logout(provider);
     process.exit(0);
   });
+
+// Samakan gaya warna help untuk seluruh subcommand yang sudah terdaftar.
+for (const command of program.commands) {
+  applyHelpStyle(command);
+}
 
 program.parse(process.argv);

@@ -1,6 +1,7 @@
 import { exec } from 'node:child_process';
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
+import { USER_AGENT } from '../branding.js';
 
 export function openBrowser(url) {
   try {
@@ -35,7 +36,7 @@ export async function runDeviceFlow(provider, clientId) {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'bAIwor-Code/1.0.0',
+        'User-Agent': USER_AGENT,
       },
       body: bodyParams.toString(),
       signal: AbortSignal.timeout(15000),
@@ -90,7 +91,7 @@ export async function runDeviceFlow(provider, clientId) {
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'bAIwor-Code/1.0.0',
+          'User-Agent': USER_AGENT,
         },
         body: pollParams.toString(),
       });

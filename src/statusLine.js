@@ -4,7 +4,7 @@ import { conversationSession } from './chat/conversation.js';
 import { getContextUsage, formatContextIndicator } from './chat/context.js';
 
 /**
- * Baris status di bawah area input, bergaya MCode:
+ * Baris status di bawah area input:
  *
  *   ~ │ Full access │ ✦ <model> · <provider> │ Context 92% left
  *
@@ -33,7 +33,7 @@ export const STAIR_STEP = 4;
  * Dua garis pemisah yang membingkai area input.
  *
  * Keduanya memakai JUMLAH tanda pisah yang sama supaya terlihat identik —
- * yang berbeda hanya kolom mulainya, memberi kesan undakan ala MCode.
+ * yang berbeda hanya kolom mulainya, memberi kesan undakan.
  * Versi sebelumnya memakai lebar penuh untuk garis atas dan lebar dikurangi
  * indentasi untuk garis bawah, sehingga keduanya tampak tidak sama.
  *
@@ -126,7 +126,7 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
     if (visibleWidth(line) <= budget) return line;
   }
 
-  // Terminal sangat sempit: даже bentuk paling ringkas tidak muat. Pangkas
+  // Terminal sangat sempit: bahkan bentuk paling ringkas tidak muat. Pangkas
   // nama model sedikit demi sedikit daripada membiarkan baris terpotong
   // di tengah — pemotongan sebaris terlihat jauh lebih rapi daripada patah.
   for (const keep of [16, 12, 8, 4]) {

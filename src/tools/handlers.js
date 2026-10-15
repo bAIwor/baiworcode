@@ -65,7 +65,9 @@ export async function handleReadFile({ file_path, offset = 1, limit = 200 }) {
   }
 
   const content = fs.readFileSync(resolved, 'utf8');
-  const lines = content.split('\n');
+  // Pisahkan juga pada CRLF: tanpa ini, tiap baris berkas Windows menyisakan
+  // `\r` di ujungnya sehingga tampil sebagai karakter aneh di keluaran.
+  const lines = content.split(/\r?\n/);
   const totalLines = lines.length;
 
   const startLine = Math.max(1, parseInt(offset, 10) || 1);
@@ -139,6 +141,13 @@ export async function handleEditFile({ file_path, old_content, new_content }) {
   }
 
   const fileText = fs.readFileSync(resolved, 'utf8');
+  const usesCRLF = fileText.includes('\r\n');
+
+  // Selalu kirim pengganti lewat fungsi, bukan string: `String.replace` menafsirkan
+  // `$&`, `$1`, `$'` di dalam string pengganti, sehingga potongan kode yang memuat
+  // karakter itu akan berubah tanpa diminta.
+  const applyReplace = (haystack, needle, replacement) =>
+    haystack.replace(needle, () => replacement);
 
   // Cek kecocokan teks
   if (!fileText.includes(old_content)) {
@@ -161,7 +170,11 @@ export async function handleEditFile({ file_path, old_content, new_content }) {
       };
     }
 
-    const updatedText = normalizedFileText.replace(normalizedOld, new_content.replace(/\r\n/g, '\n'));
+    const normalizedNew = new_content.replace(/\r\n/g, '\n');
+    let updatedText = applyReplace(normalizedFileText, normalizedOld, normalizedNew);
+    // Kembalikan akhir baris asli. Tanpa ini, berkas CRLF (khas Windows)
+    // berubah seluruhnya menjadi LF dan muncul sebagai diff sepanjang berkas.
+    if (usesCRLF) updatedText = updatedText.replace(/\n/g, '\r\n');
     fs.writeFileSync(resolved, updatedText, 'utf8');
 
     return {
@@ -178,7 +191,11 @@ export async function handleEditFile({ file_path, old_content, new_content }) {
     };
   }
 
-  const updatedText = fileText.replace(old_content, new_content);
+  // Selaraskan akhir baris pengganti dengan berkas agar tidak tercipta campuran.
+  const replacement = usesCRLF
+    ? new_content.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
+    : new_content.replace(/\r\n/g, '\n');
+  const updatedText = applyReplace(fileText, old_content, replacement);
   fs.writeFileSync(resolved, updatedText, 'utf8');
 
   return {
@@ -219,13 +236,11 @@ export async function handleListDirectory({ dir_path = '.', recursive = false, m
   const IGNORE_PATTERNS = new Set([
     'node_modules',
     '.git',
+    '.baiwor',
     '.next',
     '.cache',
     'dist',
     'build',
-    '.openclaw',
-    '.qwenwork',
-    '.workbuddy-ai',
   ]);
 
   const results = [];

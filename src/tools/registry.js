@@ -1,5 +1,5 @@
 /**
- * Tool Registry ala Hermes untuk bAIwor Code.
+ * Tool Registry untuk bAIwor Code.
  * Mengelola pendaftaran tool secara modular, pembuatan skema OpenAI-compatible,
  * pemeriksaan ketersediaan (check_fn), pemotongan output budget (A2/F5),
  * serta eksekusi yang aman tanpa switch-case hard-coded (F4).

@@ -18,7 +18,7 @@ import {
   clearRegistry,
 } from './registry.js';
 
-// Inisialisasi registrasi tools bawaan ke dalam Registry ala Hermes
+// Inisialisasi registrasi tools bawaan ke dalam registry
 const handlersMap = {
   read_file: { handler: handleReadFile, toolset: 'file', emoji: '📖' },
   write_file: { handler: handleWriteFile, toolset: 'file', emoji: '✏️' },
@@ -46,7 +46,7 @@ for (const def of TOOL_DEFINITIONS) {
 
 /**
  * Dispatcher untuk mengeksekusi tool berdasarkan nama dan argumen.
- * Menggunakan Hermes-style Tool Registry.
+ * Menggunakan Tool Registry bAIwor Code.
  *
  * @param {string} toolName
  * @param {string|Object} rawArgs

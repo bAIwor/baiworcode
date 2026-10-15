@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
 import { openBrowser } from './device.js';
+import { USER_AGENT } from '../branding.js';
 
 function base64url(buffer) {
   return buffer
@@ -110,7 +111,7 @@ export async function runPkceFlow(provider, clientId) {
           headers: {
             Accept: 'application/json',
             'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'bAIwor-Code/1.0.0',
+            'User-Agent': USER_AGENT,
           },
           body: tokenBody.toString(),
         });

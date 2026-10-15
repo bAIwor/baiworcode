@@ -6,6 +6,7 @@ import os from 'node:os';
 import { handleSearchFiles, globToRegExp } from '../src/tools/searchTool.js';
 import { handleTodoList, resetTodoStore, todoStore } from '../src/tools/todoTool.js';
 import { dispatchTool, listToolsets, getDefinitions } from '../src/tools/index.js';
+import { resetConversation, conversationSession } from '../src/chat/index.js';
 
 describe('Tool search_files: pencarian isi berkas', () => {
   const tmpDir = path.join(os.tmpdir(), `baiwor-search-${Date.now()}`);
@@ -204,6 +205,26 @@ describe('Tool todo_list: manajemen daftar tugas', () => {
       ],
     });
     assert.equal(todoStore.read()[0].status, 'in_progress');
+  });
+});
+
+describe('Integrasi: /reset mengosongkan daftar tugas', () => {
+  it('resetConversation() membersihkan todoStore agar checklist lama tidak muncul kembali', () => {
+    resetTodoStore();
+    todoStore.write([{ id: '1', content: 'Sisa pekerjaan lama', status: 'pending' }]);
+    assert.equal(todoStore.read().length, 1);
+
+    const origLog = console.log;
+    console.log = () => {};
+    try {
+      resetConversation();
+    } finally {
+      console.log = origLog;
+    }
+
+    assert.equal(todoStore.read().length, 0);
+    assert.equal(todoStore.revision, 0);
+    assert.equal(conversationSession.getMessages().length, 1, 'hanya system prompt yang tersisa');
   });
 });
 
