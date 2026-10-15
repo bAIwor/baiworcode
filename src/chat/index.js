@@ -8,7 +8,7 @@ import { renderTimeline, renderTodoChecklist, formatTodoProgress } from './timel
 import { LiveActivity } from './liveActivity.js';
 import { AnswerStyler } from './answerStyle.js';
 import { classifyCommand } from '../tools/sandbox.js';
-import { getContextUsage, formatContextIndicator, formatContextWarning } from './context.js';
+import { getContextUsage, formatContextWarning } from './context.js';
 
 export { conversationSession };
 
@@ -286,12 +286,6 @@ export async function handleUserChat(promptText) {
     if (finalText) {
       conversationSession.addAssistantMessage(finalText);
       process.stdout.write('\n\n');
-      const usage = getContextUsage(conversationSession.getMessages(), {
-        model: credentials.model,
-      });
-      process.stdout.write(
-        `  ${formatContextIndicator(usage, { useColor: Boolean(process.stdout.isTTY) })}\n\n`
-      );
       return;
     }
 
@@ -415,14 +409,6 @@ export async function handleUserChat(promptText) {
       // Jika tidak ada tool calls, berarti respons akhir (final answer) sudah selesai
       conversationSession.addAssistantMessage(result.content || '');
       process.stdout.write('\n\n');
-
-      // Tampilkan sisa konteks sebagai penanda giliran berikutnya.
-      const usage = getContextUsage(conversationSession.getMessages(), {
-        model: credentials.model,
-      });
-      process.stdout.write(
-        `  ${formatContextIndicator(usage, { useColor: Boolean(process.stdout.isTTY) })}\n\n`
-      );
 
       completedNaturally = true;
       break;
