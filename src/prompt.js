@@ -13,9 +13,6 @@ export const COMMANDS = [
   { name: '/clear', desc: 'Bersihkan layar & reset riwayat percakapan' },
   { name: '/reset', desc: 'Reset konteks percakapan AI tanpa clear layar' },
   { name: '/exit', desc: 'Keluar dari bAIwor Code' },
-  { name: '/quit', desc: 'Keluar dari bAIwor Code (alias /exit)' },
-  { name: '/q', desc: 'Keluar dari bAIwor Code (quit / exit)' },
-  { name: '/e', desc: 'Keluar dari bAIwor Code (exit / quit)' },
 ];
 
 /**
@@ -52,8 +49,8 @@ export function buildPromptFrame({
     const width = currentCols - 1;
     const msg =
       width < 65
-        ? 'Tekan Ctrl+C lagi untuk keluar (/q)'
-        : 'Tekan Ctrl+C sekali lagi untuk keluar (atau ketik /exit, /q, /e)';
+        ? 'Tekan Ctrl+C lagi untuk keluar'
+        : 'Tekan Ctrl+C sekali lagi untuk keluar (atau ketik /exit)';
     out += `  ${chalk.yellow.bold('›')}  ${chalk.yellow(msg)}`;
   } else {
     out += `  ${chalk.cyan('›')}  ${shown || chalk.dim(placeholder)}`;
