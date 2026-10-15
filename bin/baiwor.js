@@ -353,6 +353,9 @@ function showExitMessage() {
 }
 
 async function startInteractive() {
+  // Cegah sistem operasi langsung mematikan proses saat Ctrl+C ditekan di terminal
+  process.on('SIGINT', () => {});
+
   showBanner();
 
   while (true) {
