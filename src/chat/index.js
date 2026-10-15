@@ -5,6 +5,8 @@ import { streamChatCompletion } from './client.js';
 import { TOOL_DEFINITIONS, executeTool } from '../tools/index.js';
 import { todoStore, resetTodoStore } from '../tools/todoTool.js';
 import { renderTimeline, renderTodoChecklist, formatTodoProgress } from './timeline.js';
+import { LiveActivity } from './liveActivity.js';
+import { classifyCommand } from '../tools/sandbox.js';
 import { getContextUsage, formatContextIndicator, formatContextWarning } from './context.js';
 
 export { conversationSession };
@@ -129,25 +131,22 @@ export async function handleUserChat(promptText) {
     }
   };
 
+  // Blok aktivitas tool yang digambar ulang di tempat: tiap langkah muncul
+  // begitu selesai, sementara langkah yang sedang berjalan berputar. Di luar
+  // TTY ia nonaktif dan pohon dicetak sekali di akhir sebagai gantinya.
+  const live = new LiveActivity({
+    stream: process.stdout,
+    useColor: Boolean(process.stdout.isTTY),
+  });
+
   /**
-   * Umpan balik langsung ketika sebuah tool sedang berjalan.
-   * Ditulis pada satu baris yang sama lalu dihapus begitu tool selesai,
-   * jadi tidak pernah meninggalkan jejak di keluaran.
-   * Hanya aktif di TTY — di luar itu `\r` tidak menimpa apa pun sehingga
-   * escape code-nya justru mengotori keluaran.
+   * Sebagian `run_command` meminta persetujuan pengguna sebelum dieksekusi.
+   * Prompt itu mencetak ke stdout, jadi blok aktivitas harus disembunyikan
+   * dulu agar hitungan baris tidak melenceng dan tampilan tidak rusak.
    */
-  let liveToolLineActive = false;
-
-  const showLiveTool = (name) => {
-    if (!process.stdout.isTTY) return;
-    process.stdout.write(`\r\x1b[K  ${chalk.hex('#F59E0B')('⠋')} ${chalk.dim(`menjalankan ${name}…`)}`);
-    liveToolLineActive = true;
-  };
-
-  const clearLiveTool = () => {
-    if (!liveToolLineActive) return;
-    process.stdout.write('\r\x1b[K');
-    liveToolLineActive = false;
+  const toolMayPrompt = (fnName, args) => {
+    if (fnName !== 'run_command' || !args || !args.command) return false;
+    return classifyCommand(String(args.command), { workspace: process.cwd() }).decision === 'confirm';
   };
 
   // 4. Inisialisasi AbortController & pasang listener SIGINT
@@ -230,9 +229,9 @@ export async function handleUserChat(promptText) {
 
         process.stdout.write('\n');
 
-        // Kumpulkan aktivitas tool satu putaran ini, lalu render sekaligus
-        // sebagai pohon. Menunda render diperlukan supaya node terakhir bisa
-        // memakai cabang penutup `└` — yang tidak diketahui saat tool berjalan.
+        // Kumpulkan aktivitas tool satu putaran ini. Di TTY blok digambar
+        // ulang secara langsung (langkah muncul satu per satu); di luar TTY
+        // ia dikumpulkan dulu lalu dicetak sekali di akhir.
         const turnEvents = [];
 
         // Eksekusi setiap tool yang diminta oleh model
@@ -247,12 +246,16 @@ export async function handleUserChat(promptText) {
             parsedArgs = { raw: rawArgs };
           }
 
-          showLiveTool(fnName);
+          const shouldSuspend = toolMayPrompt(fnName, parsedArgs);
+          const liveIndex = live.addTool(fnName, parsedArgs);
+          if (shouldSuspend) live.suspend();
 
           // Eksekusi tool handler sambil mengukur durasi
           const startedAt = Date.now();
           const toolResult = await executeTool(fnName, rawArgs, { signal: controller.signal });
           const durationMs = Date.now() - startedAt;
+
+          if (shouldSuspend) live.resume();
 
           // `todo_list` mengembalikan JSON untuk dibaca model, bukan untuk
           // mata pengguna. Di sini ia diganti checklist sungguhan supaya
@@ -262,7 +265,7 @@ export async function handleUserChat(promptText) {
             useColor: Boolean(process.stdout.isTTY),
           });
 
-          turnEvents.push({
+          const event = {
             name: fnName,
             args: parsedArgs,
             durationMs,
@@ -270,17 +273,22 @@ export async function handleUserChat(promptText) {
             success: toolResult.success,
             detail: todoDetail || undefined,
             extraMeta: todoDetail ? formatTodoProgress(todoItems) : undefined,
-          });
+          };
+          turnEvents.push(event);
+          live.settleTool(liveIndex, event);
 
           // Simpan hasil eksekusi tool ke memori sesi dengan role: 'tool'
           conversationSession.addToolResult(tc.id, toolResult.output, fnName);
         }
 
-        // Hapus baris "menjalankan ..." sebelum menggambar pohon final.
-        clearLiveTool();
-
-        const block = renderTimeline(turnEvents, { useColor: Boolean(process.stdout.isTTY) });
-        if (block) process.stdout.write(`${block}\n\n`);
+        if (live.enabled) {
+          // Blok sudah tampil lengkap di layar; cukup beri jarak satu baris.
+          live.commit();
+          process.stdout.write('\n');
+        } else {
+          const block = renderTimeline(turnEvents, { useColor: false });
+          if (block) process.stdout.write(`${block}\n\n`);
+        }
 
         // Lanjut ke giliran berikutnya agar LLM memproses hasil tool
         continue;
@@ -312,7 +320,8 @@ export async function handleUserChat(promptText) {
     }
   } catch (err) {
     stopThinkingSpinner();
-    clearLiveTool();
+    // Hentikan animasi; biarkan blok terakhir tetap terlihat sebagai jejak.
+    live.commit();
 
     if (err.name === 'AbortError') {
       clearSpinnerLine();
@@ -365,7 +374,7 @@ export async function handleUserChat(promptText) {
     }
   } finally {
     stopThinkingSpinner();
-    clearLiveTool();
+    live.stop();
     isStreamingActive = false;
     activeAbortController = null;
     process.removeListener('SIGINT', sigintHandler);

@@ -112,9 +112,12 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Kedua garis memakai jumlah tanda pisah yang sama dan hanya berbeda empat kolom, memberi kesan undakan. Baris status menyesuaikan diri bila terminal sempit: rincian token, nama provider, dan keterangan akses dikorbankan berurutan agar tidak pernah melewati lebar terminal dan merusak kotak layout.
 - **Timeline Aktivitas**:
   - Setiap tool yang dijalankan dicatat sebagai pohon: nama tool, durasi, dan jumlah baris output.
+  - **Nama tool diwarnai per kategori** agar jenis langkah langsung terbaca sekilas — baca `read_file` cyan, jelajah `list_directory` biru, cari `search_files` ungu, buat `write_file` hijau, ubah `edit_file` kuning, jalankan `run_command` oranye, rencana `todo_list` pink. Batang pohon ikut mengambil warna tool-nya.
+  - Pohon digambar **secara langsung**: langkah muncul satu per satu begitu selesai, sementara langkah yang sedang berjalan ditandai penanda berputar (`⠋`) amber dan durasi `…` — jadi progres terlihat mengalir, bukan menunggu semua tool usai.
+  - Prompt persetujuan perintah menyembunyikan blok aktivitas dulu agar tampilan tidak rusak, lalu menggambarnya kembali.
   - Tool yang gagal ditandai merah agar mudah dipindai sekilas, dan keluarannya ikut diringkas.
   - Daftar tugas dari `todo_list` dirender sebagai checklist di bawah node-nya, lengkap dengan progres `3/5 selesai`.
-  - Saat keluaran dialihkan (`baiworcode "prompt" > hasil.txt`), tampilan tetap bebas karakter escape.
+  - Saat keluaran dialihkan (`baiworcode "prompt" > hasil.txt`), animasi dilewati dan pohon dicetak sekali tanpa karakter escape.
 - **Anggun Konteks**:
   - Indikator `Context 92% left` tampil di banner awal dan sekali lagi setelah setiap jawaban.
   - Riwayat dipangkas otomatis berdasarkan perkiraan **token**, bukan jumlah pesan — hasil `read_file` yang berukuran besar tidak lagi membuat request ditolak provider.

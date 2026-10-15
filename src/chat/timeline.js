@@ -3,6 +3,32 @@ import chalk from 'chalk';
 const DEFAULT_SUMMARY_LEN = 80;
 
 /**
+ * Warna nama tool per kategori supaya jenis langkah langsung terbaca sekilas
+ * (baca = cyan, tulis = hijau, ubah = kuning, jalankan = oranye, dst).
+ * Nilai `null`/tidak dikenal jatuh ke abu-abu terang.
+ */
+const TOOL_TINTS = {
+  read_file: '#22D3EE', // cyan — membaca
+  list_directory: '#60A5FA', // biru — menjelajah
+  search_files: '#C084FC', // ungu — mencari
+  write_file: '#4ADE80', // hijau — membuat
+  edit_file: '#FACC15', // kuning — mengubah
+  run_command: '#FB923C', // oranye — menjalankan
+  todo_list: '#F472B6', // pink — merencanakan
+};
+
+const DEFAULT_TOOL_TINT = '#E5E7EB';
+
+/**
+ * Mengembalikan kode warna hex untuk sebuah nama tool.
+ * @param {string} name
+ * @returns {string}
+ */
+export function toolColorHex(name) {
+  return TOOL_TINTS[name] || DEFAULT_TOOL_TINT;
+}
+
+/**
  * Objek pewarna tiruan chalk yang tidak melakukan apa pun.
  * Dipakai saat stdout bukan terminal sungguhan agar tidak ada
  * escape code yang mengotori berkas hasil pipe/redirect.
@@ -228,11 +254,18 @@ export function renderTodoChecklist(items, { useColor = true, maxItem = 70 } = {
  * Merender daftar aktivitas tool sebagai pohon:
  * setiap node membawa nama tool, durasi, jumlah baris output, dan ringkasan.
  *
- * @param {Array<{name:string, args?:object, durationMs:number, output?:string, success?:boolean, detail?:string, extraMeta?:string}>} events
- * @param {{useColor?:boolean, maxSummary?:number}} [options]
+ * Sebuah event boleh bertanda `running: true` — dipakai saat blok digambar
+ * ulang secara langsung (lihat `LiveActivity`). Node yang berjalan memakai
+ * penanda berputar dan durasi `…`, bukan centang/silang.
+ *
+ * @param {Array<{name:string, args?:object, durationMs:number, output?:string, success?:boolean, detail?:string, extraMeta?:string, running?:boolean}>} events
+ * @param {{useColor?:boolean, maxSummary?:number, spinnerFrame?:string}} [options]
  * @returns {string} blok teks siap cetak (tanpa baris kosong di akhir)
  */
-export function renderTimeline(events, { useColor = true, maxSummary = DEFAULT_SUMMARY_LEN } = {}) {
+export function renderTimeline(
+  events,
+  { useColor = true, maxSummary = DEFAULT_SUMMARY_LEN, spinnerFrame = '⠋' } = {}
+) {
   const c = painter(useColor);
   const list = (events || []).filter(Boolean);
   if (!list.length) return '';
@@ -241,18 +274,27 @@ export function renderTimeline(events, { useColor = true, maxSummary = DEFAULT_S
 
   list.forEach((ev, index) => {
     const isLast = index === list.length - 1;
+    const isRunning = ev.running === true;
+    // Warna nama tool mengikuti kategorinya; batang pohon ikut diwarnai tipis
+    // agar satu node terlihat sebagai satu kesatuan saat dipindai.
+    const tint = c.hex(toolColorHex(ev.name));
     const branch = c.gray(isLast ? '└' : '├');
-    const stem = c.gray(isLast ? ' ' : '│');
-    const icon = ev.success === false ? c.red('✗') : c.green('✓');
+    const stem = tint(isLast ? ' ' : '│');
+    const icon = isRunning
+      ? c.hex('#F59E0B')(spinnerFrame)
+      : ev.success === false
+        ? c.red('✗')
+        : c.green('✓');
     const dot = c.gray('·');
 
-    const meta = [c.gray(formatDuration(ev.durationMs))];
-    const lineCount = countOutputLines(ev.output);
+    const meta = [c.gray(isRunning ? '…' : formatDuration(ev.durationMs))];
+    const lineCount = isRunning ? 0 : countOutputLines(ev.output);
     if (lineCount > 0) meta.push(c.gray(`${lineCount} baris`));
     if (ev.extraMeta) meta.push(c.gray(ev.extraMeta));
 
     // Nama tool dicetak tebal; yang gagal ditonjolkan merah agar mudah dipindai.
-    const label = ev.success === false ? c.red(c.bold(ev.name)) : c.bold(c.white(ev.name));
+    const label =
+      !isRunning && ev.success === false ? c.red(c.bold(ev.name)) : tint(c.bold(ev.name));
 
     const head = `  ${branch} ${icon} ${label} ${dot} ${meta.join(` ${dot} `)}`;
     out.push(head);
@@ -268,12 +310,16 @@ export function renderTimeline(events, { useColor = true, maxSummary = DEFAULT_S
     }
 
     const argsText = summarizeArgs(ev.args, maxSummary);
+    if (argsText) out.push(`  ${stem}   ${c.dim(argsText)}`);
+
+    // Saat masih berjalan belum ada keluaran untuk diringkas.
+    if (isRunning) return;
+
     const resultText =
       ev.success === false
         ? summarize(ev.output, maxSummary)
         : summarizeResult(ev.output, maxSummary);
 
-    if (argsText) out.push(`  ${stem}   ${c.dim(argsText)}`);
     if (resultText) out.push(`  ${stem}   ${c.dim(resultText)}`);
   });
 

@@ -9,6 +9,7 @@ import {
   renderTimeline,
   formatTodoProgress,
   renderTodoChecklist,
+  toolColorHex,
 } from '../src/chat/timeline.js';
 
 describe('Timeline: Format Durasi', () => {
@@ -231,6 +232,54 @@ describe('Timeline: Render Pohon', () => {
     const out = renderTimeline([sample[0], null, sample[1]], { useColor: false });
     assert.ok(out.includes('read_file'));
     assert.ok(out.includes('search_files'));
+  });
+
+  it('harus menandai node yang berjalan dengan frame spinner dan durasi …', () => {
+    const out = renderTimeline(
+      [{ name: 'run_command', args: { command: 'echo hai' }, running: true }],
+      { useColor: false, spinnerFrame: '⠹' }
+    );
+    assert.ok(out.includes('⠹'));
+    assert.ok(!out.includes('✓'));
+    assert.ok(!out.includes('✗'));
+    assert.ok(out.includes('…'));
+    // Argumen tetap tampil agar konteks langkah yang berjalan terbaca.
+    assert.ok(out.includes('command: "echo hai"'));
+    // Belum ada hasil, jadi ringkasan default "selesai" tidak boleh muncul.
+    assert.ok(!out.includes('selesai'));
+  });
+
+  it('harus memakai cabang └ pada node berjalan terakhir lalu bergeser saat bertambah', () => {
+    const first = renderTimeline([{ name: 'a', running: true }], { useColor: false }).split('\n')[0];
+    assert.ok(first.includes('└'));
+
+    const two = renderTimeline([{ name: 'a', durationMs: 10, output: 'ok' }, { name: 'b', running: true }], {
+      useColor: false,
+    }).split('\n');
+    assert.ok(two[0].includes('├'), 'node selesai sebelum yang berjalan harus memakai ├');
+    assert.ok(two.find((l) => l.includes('⠋')).includes('└'));
+  });
+});
+
+describe('Timeline: Warna Tool', () => {
+  it('harus memberi warna berbeda per kategori tool', () => {
+    const names = [
+      'read_file',
+      'list_directory',
+      'search_files',
+      'write_file',
+      'edit_file',
+      'run_command',
+      'todo_list',
+    ];
+    const hexes = names.map(toolColorHex);
+    for (const hex of hexes) assert.match(hex, /^#[0-9A-Fa-f]{6}$/);
+    assert.equal(new Set(hexes).size, names.length, 'setiap tool harus punya warna unik');
+  });
+
+  it('harus memakai warna cadangan untuk tool tak dikenal', () => {
+    assert.match(toolColorHex('tool_ajaib'), /^#[0-9A-Fa-f]{6}$/);
+    assert.equal(toolColorHex(undefined), toolColorHex('tool_ajaib'));
   });
 });
 
