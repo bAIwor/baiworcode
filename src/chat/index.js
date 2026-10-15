@@ -6,6 +6,7 @@ import { TOOL_DEFINITIONS, executeTool } from '../tools/index.js';
 import { todoStore, resetTodoStore } from '../tools/todoTool.js';
 import { renderTimeline, renderTodoChecklist, formatTodoProgress } from './timeline.js';
 import { LiveActivity } from './liveActivity.js';
+import { AnswerStyler } from './answerStyle.js';
 import { classifyCommand } from '../tools/sandbox.js';
 import { getContextUsage, formatContextIndicator, formatContextWarning } from './context.js';
 
@@ -117,7 +118,10 @@ export async function handleUserChat(promptText) {
     return;
   }
 
-  // 2. Tambahkan pesan user ke memori sesi
+  // 2. Selaraskan system prompt dengan provider & model aktif
+  conversationSession.refreshSystemPrompt(credentials);
+
+  // 3. Tambahkan pesan user ke memori sesi
   conversationSession.addUserMessage(query);
 
   // 3. Setup Indikator Berpikir (Thinking Spinner)
@@ -206,9 +210,11 @@ export async function handleUserChat(promptText) {
    */
   const runModelTurn = async ({ messages, tools, spinnerText }) => {
     let isReasoningActive = false;
+    // Pewarna markdown hanya untuk tampilan; riwayat percakapan tetap teks mentah.
+    const styler = new AnswerStyler({ useColor: Boolean(process.stdout.isTTY) });
     startThinkingSpinner(spinnerText);
     try {
-      return await streamChatCompletion({
+      const result = await streamChatCompletion({
         credentials,
         messages,
         tools,
@@ -230,9 +236,15 @@ export async function handleUserChat(promptText) {
             isReasoningActive = false;
             process.stdout.write('\n\n');
           }
-          process.stdout.write(chunk);
+          try {
+            process.stdout.write(styler.push(chunk));
+          } catch {
+            process.stdout.write(chunk); // pengaman: jawaban tak boleh hilang
+          }
         },
       });
+      process.stdout.write(styler.flush());
+      return result;
     } finally {
       stopThinkingSpinner();
     }
