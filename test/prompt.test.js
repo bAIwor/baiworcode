@@ -436,3 +436,108 @@ describe('Prompt: Flicker-Free Rendering (Anti-Kedip)', () => {
     assert.ok(writes[0].endsWith('\x1b[?2026l'));
   });
 });
+
+describe('Prompt: Pengamanan Ctrl+C dan Escape (Anti-Exit Tidak Disengaja)', () => {
+  function createMockPrompt() {
+    const writes = [];
+    const fakeOutput = {
+      write(s) {
+        writes.push(s);
+      },
+      on() {},
+      off() {},
+      columns: 80,
+    };
+    const fakeInput = {
+      on() {},
+      off() {},
+      pause() {},
+      resume() {},
+      unpipe() {},
+      removeListener() {},
+    };
+    const prompt = new SlashTextPrompt({
+      placeholder: 'Ask bAIwor Code to do anything...',
+      output: fakeOutput,
+      input: fakeInput,
+    });
+    prompt.state = 'active';
+    return { prompt, writes };
+  }
+
+  it('Ctrl+C saat input terisi harus menghapus teks tanpa keluar', () => {
+    const { prompt } = createMockPrompt();
+    prompt.value = 'sedang mengetik instruksi penting';
+    prompt._cursor = prompt.value.length;
+
+    // Tekan Ctrl+C
+    prompt.onKeypress('\u0003', { name: 'c', ctrl: true, sequence: '\u0003' });
+
+    assert.equal(prompt.value, '', 'teks input harus dibersihkan');
+    assert.equal(prompt._cursor, 0, 'posisi kursor harus kembali ke awal');
+    assert.equal(prompt.state, 'active', 'state harus tetap aktif dan tidak cancel');
+  });
+
+  it('Ctrl+C sekali saat input kosong tidak boleh langsung keluar, melainkan menampilkan peringatan', () => {
+    const { prompt, writes } = createMockPrompt();
+    prompt.value = '';
+    writes.length = 0;
+
+    // Tekan Ctrl+C pertama kali
+    prompt.onKeypress('\u0003', { name: 'c', ctrl: true, sequence: '\u0003' });
+
+    assert.equal(prompt.state, 'active', 'state tidak boleh cancel pada penekanan pertama');
+    assert.ok(writes.length > 0);
+    assert.match(writes[writes.length - 1], /Tekan Ctrl\+C (sekali lagi|lagi) untuk keluar/);
+  });
+
+  it('Ctrl+C dua kali berturut-turut pada input kosong harus mengizinkan pembatalan/keluar', () => {
+    const { prompt } = createMockPrompt();
+    prompt.value = '';
+
+    // Tekan Ctrl+C pertama kali
+    prompt.onKeypress('\u0003', { name: 'c', ctrl: true, sequence: '\u0003' });
+    assert.equal(prompt.state, 'active');
+
+    // Tekan Ctrl+C kedua kali
+    prompt.onKeypress('\u0003', { name: 'c', ctrl: true, sequence: '\u0003' });
+    assert.equal(prompt.state, 'cancel', 'state harus menjadi cancel pada penekanan kedua');
+  });
+
+  it('mengetik tombol lain setelah Ctrl+C pertama harus membatalkan status peringatan keluar', () => {
+    const { prompt, writes } = createMockPrompt();
+    prompt.value = '';
+
+    // Tekan Ctrl+C pertama kali
+    prompt.onKeypress('\u0003', { name: 'c', ctrl: true, sequence: '\u0003' });
+    assert.equal(prompt.state, 'active');
+
+    // Ketik huruf a
+    writes.length = 0;
+    prompt.value = 'a';
+    prompt.onKeypress('a', { name: 'a' });
+
+    assert.equal(prompt.state, 'active');
+    assert.ok(!writes[writes.length - 1].includes('Tekan Ctrl+C'));
+  });
+
+  it('Escape saat baris terisi harus membersihkan teks tanpa keluar', () => {
+    const { prompt } = createMockPrompt();
+    prompt.value = 'perintah salah';
+
+    prompt.onKeypress('', { name: 'escape' });
+
+    assert.equal(prompt.value, '', 'teks input harus dibersihkan');
+    assert.equal(prompt.state, 'active', 'Escape tidak boleh menutup prompt');
+  });
+
+  it('Escape saat baris kosong tidak boleh menutup prompt / keluar', () => {
+    const { prompt } = createMockPrompt();
+    prompt.value = '';
+
+    prompt.onKeypress('', { name: 'escape' });
+
+    assert.equal(prompt.state, 'active', 'Escape pada baris kosong tidak boleh cancel');
+  });
+});
+

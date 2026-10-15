@@ -32,6 +32,7 @@ export function buildPromptFrame({
   displayInput = null,
   dropdownOpen = false,
   selectedIndex = 0,
+  exitPending = false,
 } = {}) {
   const shown = displayInput !== null ? displayInput : value;
 
@@ -42,6 +43,13 @@ export function buildPromptFrame({
     out += `  ${chalk.cyan('›')}  ${chalk.whiteBright(value || placeholder)}`;
   } else if (state === 'cancel') {
     out += `  ${chalk.red('›')}  ${chalk.strikethrough(chalk.gray(value))}`;
+  } else if (exitPending && !value) {
+    const width = terminalWidth() - 1;
+    const msg =
+      width < 65
+        ? 'Tekan Ctrl+C lagi untuk keluar'
+        : 'Tekan Ctrl+C sekali lagi untuk keluar (atau ketik /exit)';
+    out += `  ${chalk.yellow.bold('›')}  ${chalk.yellow(msg)}`;
   } else {
     out += `  ${chalk.cyan('›')}  ${shown || chalk.dim(placeholder)}`;
 
@@ -105,6 +113,8 @@ export class SlashTextPrompt extends TextPrompt {
     let selectedIndex = 0;
     let showDropdown = false;
     let lastVal = '';
+    let ctrlCPending = false;
+    let ctrlCTimer = null;
 
     super({
       ...opts,
@@ -117,6 +127,7 @@ export class SlashTextPrompt extends TextPrompt {
           displayInput: val ? this.valueWithCursor : null,
           dropdownOpen: showDropdown,
           selectedIndex,
+          exitPending: ctrlCPending,
         });
       },
     });
@@ -232,20 +243,102 @@ export class SlashTextPrompt extends TextPrompt {
       }
     };
 
+    const origClose = this.close.bind(this);
+    this.close = () => {
+      if (ctrlCTimer) {
+        clearTimeout(ctrlCTimer);
+        ctrlCTimer = null;
+      }
+      ctrlCPending = false;
+      return origClose();
+    };
+
     const origOnKeypress = this.onKeypress.bind(this);
     this.onKeypress = (u, key) => {
       ensureRlHooked();
 
       const val = this.value || '';
       const isSlash = val.startsWith('/');
+      const isCtrlC =
+        (key?.name === 'c' && Boolean(key?.ctrl)) ||
+        u === '\u0003' ||
+        key?.sequence === '\u0003';
 
-      // Esc: tutup dropdown menu perintah
+      // 1. Proteksi penekanan Ctrl+C
+      if (isCtrlC) {
+        // Jika ada teks yang sedang diketik: hapus teks baris input (seperti shell/REPL)
+        // Pengguna tidak kehilangan sesi atau keluar dari bAIwor Code karena salah pencet
+        if (val.length > 0) {
+          if (ctrlCTimer) {
+            clearTimeout(ctrlCTimer);
+            ctrlCTimer = null;
+          }
+          ctrlCPending = false;
+          this.value = '';
+          this._cursor = 0;
+          if (this.rl) {
+            this.rl.line = '';
+            this.rl.cursor = 0;
+          }
+          showDropdown = false;
+          lastVal = '';
+          this.emit('value', '');
+          this.render();
+          return;
+        }
+
+        // Jika baris input kosong: minta konfirmasi penekanan kedua dalam 2.5 detik
+        if (ctrlCPending) {
+          if (ctrlCTimer) {
+            clearTimeout(ctrlCTimer);
+            ctrlCTimer = null;
+          }
+          ctrlCPending = false;
+          // Penekanan kedua terkonfirmasi: izinkan keluar
+          return origOnKeypress(u, key);
+        }
+
+        // Penekanan pertama pada baris kosong: pasang timer peringatan
+        ctrlCPending = true;
+        ctrlCTimer = setTimeout(() => {
+          ctrlCPending = false;
+          ctrlCTimer = null;
+          this.render();
+        }, 2500);
+        this.render();
+        return;
+      }
+
+      // Jika tombol lain ditekan saat peringatan keluar aktif, batalkan status peringatan
+      if (ctrlCPending) {
+        ctrlCPending = false;
+        if (ctrlCTimer) {
+          clearTimeout(ctrlCTimer);
+          ctrlCTimer = null;
+        }
+      }
+
+      // 2. Tombol Escape: jangan langsung mematikan aplikasi
       if (key?.name === 'escape') {
         if (showDropdown) {
           showDropdown = false;
           this.render();
           return;
         }
+        if (val.length > 0) {
+          this.value = '';
+          this._cursor = 0;
+          if (this.rl) {
+            this.rl.line = '';
+            this.rl.cursor = 0;
+          }
+          lastVal = '';
+          this.emit('value', '');
+          this.render();
+          return;
+        }
+        // Jika baris sudah kosong dan dropdown tertutup, abaikan Escape (tidak keluar)
+        return;
       }
 
       if (isSlash && showDropdown) {
