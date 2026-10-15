@@ -140,7 +140,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Menekan `Ctrl+C` juga menghentikan perintah terminal yang sedang berjalan, termasuk mematikan seluruh pohon proses di Windows.
   - Riwayat percakapan multi-turn dengan pemangkasan otomatis agar tidak melebihi context window.
   - Berkas berakhiran baris CRLF (khas Windows) dibaca dan disunting tanpa menyisakan `\r` atau mengubah akhir baris seluruh berkas.
-  - Loop agentic hingga 10 putaran: model bisa memanggil tool, membaca hasilnya, lalu melanjutkan sendiri.
+  - Loop agentic hingga 12 putaran: model bisa memanggil tool, membaca hasilnya, lalu melanjutkan sendiri.
+  - **Selalu berakhir dengan jawaban**: bila batas putaran tercapai — atau terdeteksi model mengulang rangkaian tool yang sama tiga kali — bAIwor otomatis meminta satu giliran kesimpulan **tanpa tool**, jadi pekerjaan tidak berhenti tanpa keputusan.
 - **🛠️ 7 Tool Bawaan** — bAIwor tidak hanya menjawab, tapi benar-benar mengerjakan:
   - `read_file`, `write_file`, `edit_file`, `list_directory` — baca, tulis, dan sunting berkas proyek.
   - `search_files` — cari fungsi/teks di seluruh proyek tanpa membuka berkas satu per satu, dengan pengaman anti-ReDoS agar pola berat tidak membuat proses menggantung.

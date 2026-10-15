@@ -38,6 +38,29 @@ const TIMEOUT_ERROR_CODES = new Set([
   'UND_ERR_HEADERS_TIMEOUT',
 ]);
 
+/**
+ * Batas putaran model-tool dalam satu permintaan. Cukup lega untuk tugas
+ * bertahap, tapi tetap mencegah loop tak berujung menguras kuota.
+ */
+const MAX_AGENT_TURNS = 12;
+
+/**
+ * Berapa kali rangkaian tool yang persis sama boleh terulang sebelum dianggap
+ * macet. Model yang mengulang panggilan identik terus-menerus tidak akan
+ * menyimpulkan sendiri, jadi lebih baik dihentikan dan ditarik kesimpulannya.
+ */
+const MAX_REPEATED_TOOL_CALLS = 3;
+
+/**
+ * Perintah penutup yang dikirim tanpa definisi tool saat batas putaran
+ * tercapai — memaksa model menuliskan jawaban akhir, bukan memanggil tool lagi.
+ */
+const WRAPUP_INSTRUCTION =
+  '[Sistem] Batas pemanggilan tool sudah tercapai. JANGAN memanggil tool lagi. ' +
+  'Berdasarkan hasil tool yang sudah ada, tuliskan jawaban akhir terbaik untuk ' +
+  'pengguna sekarang — ringkas apa yang sudah kamu kerjakan dan langkah lanjutan ' +
+  'bila perlu. Jawab dalam bahasa yang sama dengan pesan pengguna.';
+
 export function isNetworkError(err) {
   if (!err) return false;
   if (err.name === 'TimeoutError') return true;
@@ -162,44 +185,36 @@ export async function handleUserChat(promptText) {
 
   process.on('SIGINT', sigintHandler);
 
-  // 5. Agentic Loop (Maksimal 10 putaran interaksi model-tool)
-  const MAX_AGENT_TURNS = 10;
+  // 5. Agentic Loop (maksimal MAX_AGENT_TURNS putaran interaksi model-tool)
   let currentTurn = 0;
   let hasFirstTurnSucceeded = false;
   let completedNaturally = false;
+  let stuckLoop = false;
+  const toolSignatureCounts = new Map();
 
-  try {
-    while (currentTurn < MAX_AGENT_TURNS) {
-      currentTurn++;
-      let hasFirstTokenArrived = false;
-      let isReasoningActive = false;
+  /** Sidik jari rangkaian tool satu putaran (nama + argumen), urutan diabaikan. */
+  const toolCallSignature = (calls) =>
+    calls
+      .map((tc) => `${tc.function?.name || '?'}(${tc.function?.arguments || ''})`)
+      .sort()
+      .join('|');
 
-      // Pastikan riwayat muat dalam context window SEBELUM request dikirim.
-      // Pemangkasan lama berbasis jumlah pesan bisa membiarkan permintaan lolos
-      // ke provider padahal isinya jauh melampaui jendela konteks.
-      const trimResult = conversationSession.trimToTokenBudget(undefined, {
-        model: credentials.model,
-      });
-      if (trimResult.trimmed) {
-        const warn = formatContextWarning(
-          getContextUsage(conversationSession.getMessages(), { model: credentials.model }),
-          { useColor: Boolean(process.stdout.isTTY) }
-        );
-        if (warn) process.stdout.write(`\n  ${warn}\n`);
-      }
-
-      const spinnerText =
-        currentTurn === 1 ? 'bAIwor sedang berpikir...' : 'bAIwor sedang menganalisis hasil tool...';
-      startThinkingSpinner(spinnerText);
-
-      const result = await streamChatCompletion({
+  /**
+   * Menjalankan satu giliran streaming ke provider, lengkap dengan spinner dan
+   * penanganan token yang seragam. Dipakai baik untuk giliran normal maupun
+   * giliran kesimpulan akhir (yang dikirim tanpa definisi tool).
+   */
+  const runModelTurn = async ({ messages, tools, spinnerText }) => {
+    let isReasoningActive = false;
+    startThinkingSpinner(spinnerText);
+    try {
+      return await streamChatCompletion({
         credentials,
-        messages: conversationSession.getMessages(),
-        tools: TOOL_DEFINITIONS,
+        messages,
+        tools,
         signal: controller.signal,
         onStart: () => {
           stopThinkingSpinner();
-          hasFirstTokenArrived = true;
           // Bersihkan baris spinner dan buat baris baru untuk output jawaban
           clearSpinnerLine('\n');
         },
@@ -218,8 +233,90 @@ export async function handleUserChat(promptText) {
           process.stdout.write(chunk);
         },
       });
-
+    } finally {
       stopThinkingSpinner();
+    }
+  };
+
+  /**
+   * Giliran penutup: mengirim riwayat tanpa definisi tool agar model menuliskan
+   * kesimpulan, bukan memanggil tool lagi. Hasilnya tetap sebuah jawaban akhir,
+   * jadi kerja yang sudah dilakukan tidak berakhir tanpa keputusan.
+   */
+  const requestFinalAnswer = async () => {
+    const reason = stuckLoop
+      ? 'Model mengulang langkah yang sama tanpa menyimpulkan'
+      : `Batas ${MAX_AGENT_TURNS} putaran tool tercapai`;
+    process.stdout.write(chalk.yellow(`\n  ⚠️  ${reason}. Meminta kesimpulan akhir…\n`));
+
+    // Dikirim sebagai `user` (bukan `system` di tengah riwayat) agar diterima
+    // luas oleh endpoint OpenAI-compatible yang berbeda-beda.
+    const messages = [
+      ...conversationSession.getMessages(),
+      { role: 'user', content: WRAPUP_INSTRUCTION },
+    ];
+
+    let finalText = '';
+    try {
+      const wrap = await runModelTurn({
+        messages,
+        tools: [],
+        spinnerText: 'bAIwor sedang menyusun kesimpulan...',
+      });
+      finalText = (wrap?.content || '').trim();
+    } catch (err) {
+      if (err.name === 'AbortError') throw err; // biarkan catch luar menangani pembatalan
+      // Kegagalan giliran penutup tidak boleh menutupi hasil kerja yang sudah ada.
+      clearSpinnerLine('\n');
+      console.log(chalk.gray(`     (Gagal meminta kesimpulan: ${err.message})\n`));
+    }
+
+    if (finalText) {
+      conversationSession.addAssistantMessage(finalText);
+      process.stdout.write('\n\n');
+      const usage = getContextUsage(conversationSession.getMessages(), {
+        model: credentials.model,
+      });
+      process.stdout.write(
+        `  ${formatContextIndicator(usage, { useColor: Boolean(process.stdout.isTTY) })}\n\n`
+      );
+      return;
+    }
+
+    console.log(
+      chalk.gray('     Model tetap tidak memberi kesimpulan. Coba persempit atau perjelas permintaan Anda.\n')
+    );
+    conversationSession.addAssistantMessage(
+      '[Sistem] Batas putaran tool tercapai sebelum jawaban akhir diberikan.'
+    );
+  };
+
+  try {
+    while (currentTurn < MAX_AGENT_TURNS) {
+      currentTurn++;
+
+      // Pastikan riwayat muat dalam context window SEBELUM request dikirim.
+      // Pemangkasan lama berbasis jumlah pesan bisa membiarkan permintaan lolos
+      // ke provider padahal isinya jauh melampaui jendela konteks.
+      const trimResult = conversationSession.trimToTokenBudget(undefined, {
+        model: credentials.model,
+      });
+      if (trimResult.trimmed) {
+        const warn = formatContextWarning(
+          getContextUsage(conversationSession.getMessages(), { model: credentials.model }),
+          { useColor: Boolean(process.stdout.isTTY) }
+        );
+        if (warn) process.stdout.write(`\n  ${warn}\n`);
+      }
+
+      const result = await runModelTurn({
+        messages: conversationSession.getMessages(),
+        tools: TOOL_DEFINITIONS,
+        spinnerText:
+          currentTurn === 1
+            ? 'bAIwor sedang berpikir...'
+            : 'bAIwor sedang menganalisis hasil tool...',
+      });
       hasFirstTurnSucceeded = true;
 
       // Cek apakah model meminta pemanggilan tool (Function Calling)
@@ -290,6 +387,15 @@ export async function handleUserChat(promptText) {
           if (block) process.stdout.write(`${block}\n\n`);
         }
 
+        // Deteksi rangkaian tool yang persis sama berulang-ulang — tanda model
+        // macet dan tidak akan menyimpulkan sendiri.
+        const signature = toolCallSignature(result.tool_calls);
+        const seen = (toolSignatureCounts.get(signature) || 0) + 1;
+        toolSignatureCounts.set(signature, seen);
+        if (seen >= MAX_REPEATED_TOOL_CALLS) stuckLoop = true;
+
+        if (stuckLoop) break;
+
         // Lanjut ke giliran berikutnya agar LLM memproses hasil tool
         continue;
       }
@@ -310,13 +416,11 @@ export async function handleUserChat(promptText) {
       break;
     }
 
-    // Jika loop keluar karena mencapai batas putaran tanpa final answer (A1)
+    // Loop berhenti tanpa jawaban akhir — entah karena batas putaran tercapai
+    // atau karena rangkaian tool yang sama terulang. Tarik satu giliran
+    // kesimpulan tanpa definisi tool supaya pengguna tetap mendapat jawaban.
     if (!completedNaturally) {
-      console.log(chalk.yellow(`\n  ⚠️  Batas ${MAX_AGENT_TURNS} putaran tool tercapai tanpa jawaban akhir.`));
-      console.log(chalk.gray('     Model terus meminta pemanggilan tool tanpa menyimpulkan. Coba persempit atau perjelas permintaan Anda.\n'));
-      conversationSession.addAssistantMessage(
-        '[Sistem] Batas putaran tool tercapai sebelum jawaban akhir diberikan.'
-      );
+      await requestFinalAnswer();
     }
   } catch (err) {
     stopThinkingSpinner();
