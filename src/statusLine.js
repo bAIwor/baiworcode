@@ -40,8 +40,11 @@ export const STAIR_STEP = 4;
  * @returns {{top:string, bottom:string, dashes:number}}
  */
 export function frameRules() {
-  // Sisakan ruang untuk undakan, lalu bagi dua garis memakai jumlah yang sama.
-  const dashes = Math.max(10, terminalWidth() - STAIR_STEP);
+  // Sisakan ruang untuk undakan DAN satu kolom cadangan: garis yang panjangnya
+  // persis selebar terminal memicu "pending wrap" di Windows — newline
+  // berikutnya pindah dua baris sehingga clack menghitung tinggi frame keliru
+  // dan menggambar ulang seluruh kotak tiap ketikan (efek berkedip).
+  const dashes = Math.max(10, terminalWidth() - STAIR_STEP - 1);
   return {
     dashes,
     top: chalk.gray('─'.repeat(dashes)),
@@ -103,7 +106,7 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
 
   const build = ({ detail, withProvider, withAccess, withPrefix }) => {
     const parts = [chalk.cyan('~')];
-    if (withAccess) parts.push(bar, chalk.white('Full access'));
+    if (withAccess) parts.push(bar, chalk.whiteBright('Full access'));
     if (withPrefix && prefix) parts.push(bar, chalk.cyan(prefix));
     parts.push(bar, chalk.magenta('✦'), chalk.hex('#F59E0B')(model));
     if (withProvider) parts.push(chalk.gray('·'), chalk.cyan(provider));

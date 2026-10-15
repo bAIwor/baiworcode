@@ -15,7 +15,7 @@ import { APP_NAME, APP_SLUG, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE } from './
 const HELP_STYLE = {
   styleTitle: (str) => chalk.hex('#FBBF24').bold(str.replace(/:\s*$/, '').toUpperCase()),
   styleCommandText: (str) => chalk.cyan.bold(str),
-  styleOptionText: (str) => chalk.white(str),
+  styleOptionText: (str) => chalk.whiteBright(str),
   styleSubcommandText: (str) => chalk.greenBright(str),
   styleArgumentText: (str) => chalk.magenta(str),
   styleDescriptionText: (str) => chalk.gray(str),
@@ -39,7 +39,7 @@ export function applyHelpStyle(command) {
 export function helpHeader(version = VERSION) {
   return [
     '',
-    chalk.white.bold(`  🎭 ${APP_NAME} `) + chalk.hex('#F59E0B').bold(`v${version}`),
+    chalk.whiteBright.bold(`  🎭 ${APP_NAME} `) + chalk.hex('#F59E0B').bold(`v${version}`),
     chalk.gray(`  "${TAGLINE}"`),
     '',
   ].join('\n');

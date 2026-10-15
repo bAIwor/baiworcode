@@ -11,13 +11,13 @@ export const BAWOR_LOGO = {
   cols: 19,
   rows: 7,
   color: [
-    chalk.white('     ╭───') + chalk.redBright.bold('▲') + chalk.white('───╮     '),
-    chalk.white('   ▄▀▀   ') + chalk.redBright('│') + chalk.white('   ▀▀▄   '),
-    chalk.white(' ( ') + chalk.redBright('(') + chalk.white.bold('O') + chalk.redBright(')') + ' ' + chalk.yellow('( o )') + ' ' + chalk.redBright('(') + chalk.white.bold('O') + chalk.redBright(')') + chalk.white(' ) '),
+    chalk.whiteBright('     ╭───') + chalk.redBright.bold('▲') + chalk.whiteBright('───╮     '),
+    chalk.whiteBright('   ▄▀▀   ') + chalk.redBright('│') + chalk.whiteBright('   ▀▀▄   '),
+    chalk.whiteBright(' ( ') + chalk.redBright('(') + chalk.whiteBright.bold('O') + chalk.redBright(')') + ' ' + chalk.yellow('( o )') + ' ' + chalk.redBright('(') + chalk.whiteBright.bold('O') + chalk.redBright(')') + chalk.whiteBright(' ) '),
     chalk.redBright(' ▄███████████████▄ '),
-    chalk.redBright(' █ ') + chalk.white.bold('█ █ █ █ █ █ █') + chalk.redBright(' █ '),
+    chalk.redBright(' █ ') + chalk.whiteBright.bold('█ █ █ █ █ █ █') + chalk.redBright(' █ '),
     chalk.redBright('  ▀█████████████▀  '),
-    chalk.white('     ╰───┴───╯     '),
+    chalk.whiteBright('     ╰───┴───╯     '),
   ],
   mono: [
     '     ╭───▲───╮     ',

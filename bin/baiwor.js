@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+// WAJIB paling awal: menyetel level warna chalk sebelum modul lain (mis. logo
+// Bawor) menghitung string berwarnanya saat import. Lihat src/colors.js.
+import '../src/colors.js';
+
 import { Command } from 'commander';
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
@@ -102,9 +106,9 @@ const BAWOR_TEXT_LOGO = [
 /** Logo teks bAIwor: "b" putih, "AI" merah, "wor" putih. */
 function colorizeTextLogoLine(line) {
   return (
-    chalk.white.bold(line.slice(0, 10)) +
+    chalk.whiteBright.bold(line.slice(0, 10)) +
     chalk.redBright.bold(line.slice(10, 21)) +
-    chalk.white.bold(line.slice(21))
+    chalk.whiteBright.bold(line.slice(21))
   );
 }
 
@@ -183,12 +187,12 @@ function showBanner() {
   const botBar = '  ' + chalk.gray('╰' + '─'.repeat(targetWidth + 2) + '╯');
 
   console.log(topBar);
-  console.log(padBox(chalk.white('Tips for getting started')));
+  console.log(padBox(chalk.whiteBright('Tips for getting started')));
   console.log(padBox(chalk.gray('› ') + 'Gunakan ' + chalk.cyan('/help') + ' untuk melihat semua perintah yang tersedia.'));
   console.log(padBox(chalk.gray('› ') + 'Gunakan ' + chalk.cyan('/clear') + ' untuk menyegarkan layar kerja kapan saja.'));
   console.log(padBox(chalk.gray('› ') + 'Kunjungi ' + chalk.cyan(WEBSITE) + ' untuk dokumentasi & update resmi.'));
   console.log(midBar);
-  console.log(padBox(chalk.white('Workspace & Status')));
+  console.log(padBox(chalk.whiteBright('Workspace & Status')));
   console.log(padBox(chalk.gray('› ') + 'Folder Aktif : ' + chalk.cyan(process.cwd())));
   const modelInfo = config.activeModel !== 'Not configured'
     ? chalk.hex('#F59E0B')(config.activeModel) + chalk.gray(` (${config.activeProvider})`)
@@ -298,9 +302,25 @@ async function printStatus() {
   console.log(`    ${chalk.dim('Model Aktif   :')} ${chalk.hex('#F59E0B').bold(config.activeModel)}`);
   console.log(`    ${chalk.dim('Latency       :')} ${latencyBadge}`);
   console.log(`    ${chalk.dim('Website       :')} ${chalk.cyan(WEBSITE)}`);
+
+  // Diagnostik warna: membantu melacak keluaran yang tampil polos di terminal
+  // yang semestinya berwarna (level 0, atau NO_COLOR aktif).
+  const colorState = !process.stdout.isTTY
+    ? 'nonaktif (keluaran bukan TTY)'
+    : chalk.level >= 3
+      ? 'aktif — truecolor'
+      : chalk.level === 2
+        ? 'aktif — 256 warna'
+        : chalk.level === 1
+          ? 'aktif — 16 warna'
+          : process.env.NO_COLOR
+            ? 'nonaktif (NO_COLOR diset)'
+            : 'nonaktif (tidak terdeteksi)';
+  const colorBadge = chalk.level > 0 ? chalk.green(colorState) : chalk.yellow(colorState);
+  console.log(`    ${chalk.dim('Warna         :')} ${colorBadge} ${chalk.dim(`(level ${chalk.level})`)}`);
   console.log();
 
-  console.log(chalk.white.bold('  🔐 Status Sesi OAuth Providers:'));
+  console.log(chalk.whiteBright.bold('  🔐 Status Sesi OAuth Providers:'));
   for (const item of oauthList) {
     const badge = item.loggedIn ? chalk.green('● Logged In ') : chalk.gray('○ Belum Login');
     const tokenInfo = item.loggedIn ? chalk.gray(`[Token: ${item.maskedToken}] (${item.expiryStatus})`) : '';
@@ -310,7 +330,7 @@ async function printStatus() {
   const customList = config.customProviders || [];
   if (customList.length > 0) {
     console.log();
-    console.log(chalk.white.bold('  🌐 Custom Providers Tersimpan:'));
+    console.log(chalk.whiteBright.bold('  🌐 Custom Providers Tersimpan:'));
     for (const cp of customList) {
       const isAct = config.activeType === 'custom' && config.activeProvider === cp.name;
       const marker = isAct ? chalk.green('● ') : chalk.gray('○ ');

@@ -39,7 +39,7 @@ export function buildPromptFrame({
   let out = rules.top + '\n';
 
   if (state === 'submit') {
-    out += `  ${chalk.cyan('›')}  ${chalk.white(value || placeholder)}`;
+    out += `  ${chalk.cyan('›')}  ${chalk.whiteBright(value || placeholder)}`;
   } else if (state === 'cancel') {
     out += `  ${chalk.red('›')}  ${chalk.strikethrough(chalk.gray(value))}`;
   } else {
@@ -52,8 +52,9 @@ export function buildPromptFrame({
 
       // Seluruh baris dropdown dijaga muat di lebar terminal. Sebelumnya kotak
       // bawah dipatok 76 kolom dan header 66 kolom, sehingga di terminal sempit
-      // barisnya meluber dan kotak layout ikut patah.
-      const width = terminalWidth();
+      // barisnya meluber dan kotak layout ikut patah. Satu kolom disisakan
+      // supaya tidak ada baris yang persis selebar terminal (pemicu wrap).
+      const width = terminalWidth() - 1;
       const fit = (text, max = width) => {
         const s = String(text);
         if (max <= 0) return '';
@@ -75,7 +76,7 @@ export function buildPromptFrame({
           const name = cmd.name.padEnd(NAME_LEN);
           const desc = fit(cmd.desc, descBudget);
           if (idx === active) {
-            out += `  ${chalk.gray('│')}  ${chalk.cyan.bold('❯')} ${chalk.cyan.bold(name)} ${chalk.gray('─')} ${chalk.white.bold(desc)}\n`;
+            out += `  ${chalk.gray('│')}  ${chalk.cyan.bold('❯')} ${chalk.cyan.bold(name)} ${chalk.gray('─')} ${chalk.whiteBright.bold(desc)}\n`;
           } else {
             out += `  ${chalk.gray('│')}    ${chalk.dim(name)} ${chalk.gray('─')} ${chalk.dim(desc)}\n`;
           }
