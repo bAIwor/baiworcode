@@ -32,22 +32,24 @@ export const STAIR_STEP = 4;
 /**
  * Dua garis pemisah yang membingkai area input.
  *
- * Keduanya memakai JUMLAH tanda pisah yang sama supaya terlihat identik —
- * yang berbeda hanya kolom mulainya, memberi kesan undakan.
- * Versi sebelumnya memakai lebar penuh untuk garis atas dan lebar dikurangi
- * indentasi untuk garis bawah, sehingga keduanya tampak tidak sama.
+ * Garis bawah di-indentasi {@link STAIR_STEP} kolom sebagai undakan, TETAPI
+ * jumlah tanda pisahnya dikurangi sebanyak indentasi itu sehingga KEDUA garis
+ * berakhir di kolom yang sama. Sebelumnya kedua garis memakai jumlah tanda
+ * pisah yang sama, jadi ujung kanannya berselisih 4 kolom dan terlihat
+ * "menceng" / tidak presisi.
  *
  * @returns {{top:string, bottom:string, dashes:number}}
  */
 export function frameRules() {
-  // Sisakan ruang untuk undakan DAN satu kolom cadangan: garis yang panjangnya
-  // persis selebar terminal memicu "pending wrap" di Windows — newline
-  // berikutnya pindah dua baris sehingga clack menghitung tinggi frame keliru
-  // dan menggambar ulang seluruh kotak tiap ketikan (efek berkedip).
-  const dashes = Math.max(10, terminalWidth() - STAIR_STEP - 1);
+  // `span` = lebar tampil tiap garis. Sisakan beberapa kolom di kanan: garis
+  // yang panjangnya persis selebar terminal memicu "pending wrap" di Windows —
+  // newline berikutnya pindah dua baris sehingga clack menghitung tinggi frame
+  // keliru dan menggambar ulang seluruh kotak tiap ketikan (efek berkedip).
+  const span = Math.max(10 + STAIR_STEP, terminalWidth() - STAIR_STEP - 1);
+  const dashes = Math.max(6, span - STAIR_STEP);
   return {
     dashes,
-    top: chalk.gray('─'.repeat(dashes)),
+    top: chalk.gray('─'.repeat(span)),
     bottom: chalk.gray(`${' '.repeat(STAIR_STEP)}${'─'.repeat(dashes)}`),
   };
 }

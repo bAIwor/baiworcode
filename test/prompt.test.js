@@ -64,14 +64,22 @@ describe('Prompt: Layout Area Input', () => {
     assert.ok(idx > 1, 'garis bawah harus ada setelah baris input');
   });
 
-  it('kedua garis harus punya jumlah tanda pisah yang sama', () => {
-    // Regresi: garis atas dulu selebar penuh sementara garis bawah dikurangi
-    // indentasinya, sehingga keduanya terlihat tidak sama meskipun staircasenya tetap.
+  it('kedua garis harus berakhir di kolom yang sama (ujung kanan sejajar)', () => {
+    // Regresi: dulu kedua garis memakai jumlah tanda pisah yang sama sehingga
+    // ujung kanannya berselisih 4 kolom dan terlihat menceng. Sekarang garis
+    // bawah di-indentasi 4 kolom DAN dikurangi 4 tanda pisah supaya ujung
+    // kanan kedua garis tepat sejajar.
     const lines = render().split('\n');
     const atas = (lines[0].match(/─/g) || []).length;
-    const bawah = (lines.find((l) => /^ {4}─+$/.test(l)).match(/─/g) || []).length;
-    assert.equal(atas, bawah, `garis atas ${atas} tanda, garis bawah ${bawah}`);
+    const bawahLine = lines.find((l) => /^ {4}─+$/.test(l));
+    const bawah = (bawahLine.match(/─/g) || []).length;
     assert.ok(atas > 10, 'garis harus punya tanda pisah yang berarti');
+    assert.equal(
+      atas,
+      bawahLine.length,
+      `panjang garis atas ${atas} harus sama dengan panjang garis bawah ${bawahLine.length}`
+    );
+    assert.equal(bawah + 4, atas, 'garis bawah = 4 spasi + (dashes garis atas - 4)');
   });
 
   it('garis bawah harus bergeser tepat empat kolom ke kanan', () => {
