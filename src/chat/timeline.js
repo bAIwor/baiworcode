@@ -212,11 +212,21 @@ export function summarizeArgs(args, maxLen = DEFAULT_SUMMARY_LEN) {
   // terpotong jadi tidak berguna.
   const perArg = Math.max(12, Math.floor(maxLen / entries.length));
   const parts = entries.map(([key, value]) => {
+    let cleanVal = value;
+    if (typeof cleanVal === 'string' && (key.toLowerCase().includes('path') || key === 'file')) {
+      try {
+        const cwd = process.cwd();
+        if (cleanVal.startsWith(cwd)) {
+          const rel = cleanVal.slice(cwd.length).replace(/^[\\/]+/, '').replace(/\\/g, '/');
+          if (rel) cleanVal = rel;
+        }
+      } catch {}
+    }
     let serialized;
     try {
-      serialized = JSON.stringify(value) ?? String(value);
+      serialized = JSON.stringify(cleanVal) ?? String(cleanVal);
     } catch {
-      serialized = String(value);
+      serialized = String(cleanVal);
     }
     return `${key}: ${summarize(serialized, perArg)}`;
   });
