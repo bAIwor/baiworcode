@@ -116,11 +116,9 @@ const BAWOR_TEXT_LOGO = [
  * - "b" : Putih terang (kolom 0 s/d 9)
  * - "AI" : Merah terang (kolom 10 s/d 20)
  * - "wor" : Putih terang (kolom 21 s/d 51, termasuk spasi pemisah)
- * - "Code" : Nuansa Bendera Indonesia presisi:
- *            - Baris 0 & 1 : MERAH
- *            - Baris 2     : MERAH ditarik ke kiri dari palang tengah E (█████),
- *                            namun mulai sudut belok ke bawah ke kiri (╗) diwarnai PUTIH
- *            - Baris 3, 4, 5 : PUTIH
+ * - "Code" : Bendera Merah Putih seimbang tepat di tengah huruf E:
+ *            - Baris 0, 1, 2 : MERAH (atap, celah atas, dan palang tengah E █████╗ utuh termasuk ╗)
+ *            - Baris 3, 4, 5 : PUTIH (celah bawah E ██╔══╝, palang bawah, dan alas bayangan)
  */
 function colorizeTextLogoLine(line, rowIndex) {
   const bPart = chalk.whiteBright.bold(line.slice(0, 10));
@@ -128,20 +126,9 @@ function colorizeTextLogoLine(line, rowIndex) {
   const worPart = chalk.whiteBright.bold(line.slice(21, 52));
 
   const codeSlice = line.slice(52);
-  let codePart;
-  if (rowIndex < 2) {
-    codePart = chalk.redBright.bold(codeSlice);
-  } else if (rowIndex === 2) {
-    const splitIdx = codeSlice.indexOf('╗');
-    if (splitIdx !== -1) {
-      codePart = chalk.redBright.bold(codeSlice.slice(0, splitIdx)) +
-                 chalk.whiteBright.bold(codeSlice.slice(splitIdx));
-    } else {
-      codePart = chalk.redBright.bold(codeSlice);
-    }
-  } else {
-    codePart = chalk.whiteBright.bold(codeSlice);
-  }
+  const codePart = rowIndex < 3
+    ? chalk.redBright.bold(codeSlice)
+    : chalk.whiteBright.bold(codeSlice);
 
   return bPart + aiPart + worPart + codePart;
 }
