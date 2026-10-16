@@ -1,3 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
+
 /**
  * Tool Registry untuk bAIwor Code.
  * Mengelola pendaftaran tool secara modular, pembuatan skema OpenAI-compatible,
@@ -13,15 +18,28 @@ const tools = new Map(); // name -> { name, toolset, schema, handler, check, max
 export const MAX_TOOL_OUTPUT_CHARS = 40000;
 
 /**
- * Memotong output yang melebihi budget konteks agar tidak membuat context window meluap
+ * Memotong output yang melebihi budget konteks agar tidak membuat context window meluap,
+ * dan menyimpan output lengkap ke disk (.baiwor/reports/tool-outputs/) agar tidak hilang.
  */
 export function capToolOutput(text, maxChars = MAX_TOOL_OUTPUT_CHARS) {
   if (!text || typeof text !== 'string') return String(text || '');
   if (text.length <= maxChars) return text;
   const cutCount = text.length - maxChars;
+
+  let spillPath = '';
+  try {
+    const reportsDir = path.join(os.homedir(), '.baiwor', 'reports', 'tool-outputs');
+    fs.mkdirSync(reportsDir, { recursive: true });
+    const id = crypto.randomBytes(8).toString('hex');
+    const fileName = `output-${Date.now()}-${id}.txt`;
+    spillPath = path.join(reportsDir, fileName);
+    fs.writeFileSync(spillPath, text, 'utf8');
+  } catch {}
+
+  const spillNotice = spillPath ? ` Disimpan lengkap di: ${spillPath}.` : '';
   return (
     text.slice(0, maxChars) +
-    `\n\n… [Output dipotong: ${cutCount} karakter melebihi budget context. Gunakan offset/limit atau persempit perintah jika perlu]`
+    `\n\n… [Output dipotong: ${cutCount} karakter melebihi budget context.${spillNotice} Gunakan offset/limit atau persempit perintah jika perlu]`
   );
 }
 

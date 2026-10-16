@@ -34,8 +34,11 @@ async function configureAgentikFlow(existingCp, customList, config) {
   const currentModel = existingCp?.model || 'gemini-3.8-flash-high';
 
   console.log();
-  console.log(chalk.hex('#FBBF24').bold('  👑 Konfigurasi Agentik AI (Sponsor Resmi bAIwor Code):'));
-  console.log(chalk.gray('  🎁 Dapatkan bonus token/credit gratis di: ') + chalk.cyan('https://agentik.my.id'));
+  console.log(
+    chalk.gray('  🎁 Dapatkan bonus token/credit di: ') +
+      chalk.cyan('https://agentik.my.id') +
+      chalk.dim(' (kode kupon "baiworcode")')
+  );
   console.log();
 
   // 1. Base URL

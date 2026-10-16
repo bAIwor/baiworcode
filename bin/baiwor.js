@@ -13,6 +13,10 @@ import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
 import { handleUserChat, resetConversation, conversationSession } from '../src/chat/index.js';
+import { buildPlanUserPrompt } from '../src/chat/planMode.js';
+import { compactConversation } from '../src/chat/compact.js';
+import { listSessions, deleteSession, deleteAllSessions } from '../src/chat/sessionManager.js';
+import { discoverSkills, getSkill } from '../src/skills/skillManager.js';
 import { resetTodoStore } from '../src/tools/todoTool.js';
 import { renderStatusLine } from '../src/statusLine.js';
 import { resolveActiveCredentials } from '../src/auth/resolve.js';
@@ -98,21 +102,32 @@ function padBox(content) {
 }
 
 const BAWOR_TEXT_LOGO = [
-  '  ██████╗  █████╗ ██╗██╗    ██╗ ██████╗ ██████╗ ',
-  '  ██╔══██╗██╔══██╗██║██║    ██║██╔═══██╗██╔══██╗',
-  '  ██████╔╝███████║██║██║ █╗ ██║██║   ██║██████╔╝',
-  '  ██╔══██╗██╔══██║██║██║███╗██║██║   ██║██╔══██╗',
-  '  ██████╔╝██║  ██║██║╚███╔███╔╝╚██████╔╝██║  ██║',
-  '  ╚═════╝ ╚═╝  ╚═╝╚═╝ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝',
+  '  ██████╗  █████╗ ██╗██╗    ██╗ ██████╗ ██████╗     ██████╗ ██████╗ ██████╗ ███████╗',
+  '  ██╔══██╗██╔══██╗██║██║    ██║██╔═══██╗██╔══██╗    ██╔════╝██╔═══██╗██╔══██╗██╔════╝',
+  '  ██████╔╝███████║██║██║ █╗ ██║██║   ██║██████╔╝    ██║     ██║   ██║██║  ██║█████╗  ',
+  '  ██╔══██╗██╔══██║██║██║███╗██║██║   ██║██╔══██╗    ██║     ██║   ██║██║  ██║██╔══╝  ',
+  '  ██████╔╝██║  ██║██║╚███╔███╔╝╚██████╔╝██║  ██║    ╚██████╗╚██████╔╝██████╔╝███████╗',
+  '  ╚═════╝ ╚═╝  ╚═╝╚═╝ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝',
 ];
 
-/** Logo teks bAIwor: "b" putih, "AI" merah, "wor" putih. */
-function colorizeTextLogoLine(line) {
-  return (
-    chalk.whiteBright.bold(line.slice(0, 10)) +
-    chalk.redBright.bold(line.slice(10, 21)) +
-    chalk.whiteBright.bold(line.slice(21))
-  );
+/**
+ * Logo teks bAIwor Code:
+ * - "b" : Putih terang (kolom 0 s/d 9)
+ * - "AI" : Merah terang (kolom 10 s/d 20)
+ * - "wor" : Putih terang (kolom 21 s/d 51, termasuk spasi pemisah)
+ * - "Code" : Nuansa Bendera Indonesia (kolom 52 ke atas: 3 baris atas MERAH, 3 baris bawah PUTIH)
+ */
+function colorizeTextLogoLine(line, rowIndex) {
+  const bPart = chalk.whiteBright.bold(line.slice(0, 10));
+  const aiPart = chalk.redBright.bold(line.slice(10, 21));
+  const worPart = chalk.whiteBright.bold(line.slice(21, 52));
+
+  const codeSlice = line.slice(52);
+  const codePart = rowIndex < 3
+    ? chalk.redBright.bold(codeSlice)
+    : chalk.whiteBright.bold(codeSlice);
+
+  return bPart + aiPart + worPart + codePart;
 }
 
 const LOGO_INDENT = '  ';
@@ -128,7 +143,7 @@ function printLogoHeader() {
     (chalk.level > 0 && BAWOR_LOGO.color)
       ? BAWOR_LOGO.color
       : (BAWOR_LOGO.mono || BAWOR_LOGO.lines || []);
-  const textLines = BAWOR_TEXT_LOGO.map(colorizeTextLogoLine);
+  const textLines = BAWOR_TEXT_LOGO.map((line, idx) => colorizeTextLogoLine(line, idx));
   const columns = process.stdout.columns || 80;
 
   const sideBySideWidth =
@@ -193,6 +208,7 @@ function showBanner() {
   console.log(padBox(chalk.whiteBright('Tips for getting started')));
   console.log(padBox(chalk.gray('› ') + 'Gunakan ' + chalk.cyan('/help') + ' untuk melihat semua perintah yang tersedia.'));
   console.log(padBox(chalk.gray('› ') + 'Gunakan ' + chalk.cyan('/clear') + ' untuk menyegarkan layar kerja kapan saja.'));
+  console.log(padBox(chalk.gray('› ') + 'Bonus token  : ' + chalk.cyan(BONUS_WEBSITE) + chalk.dim(' (kode kupon "baiworcode")')));
   console.log(padBox(chalk.gray('› ') + 'Kunjungi ' + chalk.cyan(WEBSITE) + ' untuk dokumentasi & update resmi.'));
   console.log(midBar);
   console.log(padBox(chalk.whiteBright('Workspace & Status')));
@@ -240,22 +256,25 @@ function showHelp() {
   console.log();
   console.log(gold.bold('  🚀 Mulai dari sini (Contoh untuk Pemula):'));
   console.log(`    ${chalk.cyan('baiworcode "jelaskan struktur proyek ini"')}`);
+  console.log(`    ${chalk.cyan('baiworcode plan "rancang fitur baru"')}`);
   console.log(`    ${chalk.cyan('baiworcode "perbaiki error di src/index.js"')}`);
-  console.log(`    ${chalk.cyan('baiworcode "buatkan test untuk fungsi hitungTotal"')}`);
   console.log();
-  console.log(gold.bold('  🧭 Cara Membaca Aktivitas bAIwor:'));
-  console.log(`    ${dim('├')} ✓ read_file ${dim('· 0.1s · 42 baris')}`);
-  console.log(`    ${dim('├')} ✓ todo_list ${dim('· 2ms · 3/5 selesai')}`);
-  console.log(`    ${dim('│')}   ✓ Baca struktur proyek`);
-  console.log(`    ${dim('│')}   ○ Tambah unit test`);
-  console.log(`    ${dim('└')} ✗ run_command ${dim('· 1.2s · 1 baris')}`);
-  console.log(`    ${dim('Setiap tool dicatat lengkap dengan durasi dan jumlah baris keluaran.')}`);
-  console.log(`    ${dim('Daftar tugas dari todo_list tampil sebagai checklist di bawah node-nya.')}`);
+  console.log(gold.bold('  🧭 Cara Membaca Aktivitas Tim Punakawan:'));
+  console.log(`    ${dim('├──')} ✓ ${chalk.cyan.bold('pAItruk')} · read_file ${dim('· 0.1s · 42 baris')}`);
+  console.log(`    ${dim('├──')} ✓ ${chalk.hex('#7fd88f').bold('bAIwor')} · edit_file ${dim('· 50ms · 12 baris')}`);
+  console.log(`    ${dim('├──')} ✗ ${chalk.hex('#e06c75').bold('gAIreng')} · run_command ${dim('· 1.2s · gagal')}`);
+  console.log(`    ${dim('└──')} ✓ ${chalk.hex('#9d7cd8').bold('semAIr')} · todo_list ${dim('· 2ms · 3/5 selesai')}`);
+  console.log(`    ${dim('        ✓ Baca struktur proyek')}`);
+  console.log(`    ${dim('        ○ Tambah unit test')}`);
+  console.log(`    ${dim('Setiap tool dijalankan oleh karakter Punakawan yang sesuai dan dicatat durasinya.')}`);
+  console.log(`    ${dim('Daftar tugas dari todo_list (semAIr) tampil sebagai checklist di bawah node-nya.')}`);
   console.log(`    ${dim('Baris "Context X% left" muncul setelah setiap jawaban. Angka itu perkiraan,')}`);
-  console.log(`    ${dim('dan riwayat dipangkas otomatis bila mulai penuh — pakai /clear bila perlu.')}`);
+  console.log(`    ${dim('dan riwayat dipangkas otomatis bila mulai penuh — pakai /compact atau /clear.')}`);
   console.log();
   console.log(chalk.gray('  💡 Ketik langsung pertanyaan atau instruksi coding apa saja untuk chat dengan bAIwor!'));
   console.log();
+  console.log(chalk.gray('  🌐 Website official  : ') + chalk.cyan(WEBSITE));
+  console.log(chalk.gray('  🎁 Bonus token/credit: ') + chalk.cyan(BONUS_WEBSITE) + chalk.dim(' (kode kupon "baiworcode")\n'));
 }
 
 /**
@@ -350,7 +369,7 @@ function showExitMessage() {
   console.log(
     chalk.gray('  🎁 Bonus token/credit: ') +
       chalk.cyan(BONUS_WEBSITE) +
-      chalk.dim(' (Dapatkan bonus token/credit untuk instalasi bAIwor Code)\n')
+      chalk.dim(' (kode kupon "baiworcode")\n')
   );
   process.exit(0);
 }
@@ -362,6 +381,7 @@ async function startInteractive() {
   showBanner();
 
   while (true) {
+    const config = getConfig();
     const input = await askBaiworInput({
       placeholder: 'Ask bAIwor Code to do anything...',
     });
@@ -406,6 +426,177 @@ async function startInteractive() {
       case '/help':
         showHelp();
         break;
+      case '/plan':
+        if (!arg) {
+          console.log(chalk.cyan.bold('\n  👑 Mode Perencanaan semAIr (/plan)'));
+          console.log(chalk.gray('     Format : ') + chalk.white('/plan <instruksi atau fitur yang ingin dirancang>'));
+          console.log(chalk.gray('     Contoh : ') + chalk.green('/plan buatkan sistem autentikasi JWT dan middleware\n'));
+        } else {
+          await handleUserChat(buildPlanUserPrompt(arg));
+          try {
+            conversationSession.saveToDisk({
+              model: config.activeModel,
+              provider: config.activeProvider,
+            });
+          } catch {}
+        }
+        break;
+      case '/compact': {
+        const res = await compactConversation(conversationSession);
+        if (!res.compacted) {
+          console.log(chalk.yellow(`\n  ℹ️  ${res.reason || 'Konteks percakapan belum perlu dirangkum.'}\n`));
+        } else {
+          console.log(chalk.green.bold('\n  ✨ Konteks percakapan berhasil dirangkum oleh semAIr!'));
+          console.log(chalk.gray(`     Token sebelum : ~${res.tokensBefore} token`));
+          console.log(chalk.gray(`     Token sesudah : ~${res.tokensAfter} token`));
+          console.log(chalk.gray(`     Hemat ruang   : ~${res.savedTokens} token\n`));
+          try {
+            conversationSession.saveToDisk({
+              model: config.activeModel,
+              provider: config.activeProvider,
+            });
+          } catch {}
+        }
+        break;
+      }
+      case '/session': {
+        const subParts = arg ? arg.split(/\s+/) : [];
+        const action = subParts[0] || 'list';
+        if (action === 'list') {
+          const list = listSessions();
+          if (list.length === 0) {
+            console.log(chalk.yellow('\n  Belum ada sesi percakapan tersimpan untuk proyek ini.\n'));
+          } else {
+            console.log(chalk.cyan.bold(`\n  📁 Sesi Percakapan Proyek (${list.length} sesi):\n`));
+            list.slice(0, 15).forEach((s, i) => {
+              const dt = s.updatedAt ? new Date(s.updatedAt).toLocaleString('id-ID') : '-';
+              console.log(chalk.white(`  ${i + 1}. `) + chalk.green.bold(s.title || s.id));
+              console.log(chalk.gray(`     ID: ${s.id} · Terakhir: ${dt} · ${s.stats?.turnCount || 0} turn`));
+            });
+            console.log(chalk.gray('\n  Perintah: /session resume [id] · /session delete <id> · /session delete all\n'));
+          }
+        } else if (action === 'resume') {
+          const targetId = subParts[1];
+          if (targetId) {
+            const ok = conversationSession.loadFromDisk(targetId);
+            if (ok) {
+              console.log(chalk.green.bold(`\n  ✅ Berhasil memuat sesi: ${conversationSession.sessionTitle || targetId}\n`));
+            } else {
+              console.log(chalk.red.bold(`\n  ❌ Sesi "${targetId}" tidak ditemukan.\n`));
+            }
+          } else {
+            const ok = conversationSession.resumeLatest();
+            if (ok) {
+              console.log(chalk.green.bold(`\n  ✅ Berhasil memuat sesi terakhir: ${conversationSession.sessionTitle || conversationSession.sessionId}\n`));
+            } else {
+              console.log(chalk.yellow('\n  Tidak ada sesi sebelumnya untuk di-resume.\n'));
+            }
+          }
+        } else if (action === 'delete' || action === 'rm') {
+          const target = subParts[1];
+          if (!target) {
+            console.log(chalk.yellow('\n  ⚠️  Tentukan sesi yang ingin dihapus:'));
+            console.log(chalk.gray('  - ') + chalk.cyan('/session delete <id>') + chalk.gray('   : Hapus sesi tertentu'));
+            console.log(chalk.gray('  - ') + chalk.cyan('/session delete all') + chalk.gray('    : Hapus seluruh sesi proyek'));
+            const list = listSessions();
+            if (list.length > 0) {
+              console.log(chalk.gray('\n  Daftar ID sesi yang tersedia:'));
+              list.slice(0, 5).forEach((s) => {
+                console.log(chalk.gray('  • ') + chalk.white(s.id) + chalk.dim(` (${s.title || 'Tanpa judul'})`));
+              });
+            }
+            console.log();
+          } else if (target === 'all' || target === '--all') {
+            const count = deleteAllSessions();
+            if (count > 0) {
+              console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi untuk proyek ini.\n`));
+              conversationSession.reset();
+            } else {
+              console.log(chalk.yellow('\n  Tidak ada sesi yang perlu dihapus.\n'));
+            }
+          } else {
+            const ok = deleteSession(target);
+            if (ok) {
+              console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus sesi: ${target}\n`));
+              if (conversationSession.sessionId === target) {
+                conversationSession.reset();
+              }
+            } else {
+              console.log(chalk.red.bold(`\n  ❌ Sesi "${target}" tidak ditemukan.\n`));
+            }
+          }
+        } else if (action === 'clear') {
+          const count = deleteAllSessions();
+          if (count > 0) {
+            console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi untuk proyek ini.\n`));
+            conversationSession.reset();
+          } else {
+            console.log(chalk.yellow('\n  Tidak ada sesi yang perlu dibersihkan.\n'));
+          }
+        } else {
+          console.log(chalk.gray('\n  Penggunaan perintah /session:'));
+          console.log(chalk.gray('  - ') + chalk.cyan('/session list') + chalk.gray('         : Tampilkan daftar sesi proyek'));
+          console.log(chalk.gray('  - ') + chalk.cyan('/session resume [id]') + chalk.gray('   : Lanjutkan sesi (terakhir atau sesuai id)'));
+          console.log(chalk.gray('  - ') + chalk.cyan('/session delete <id>') + chalk.gray('   : Hapus satu sesi tertentu'));
+          console.log(chalk.gray('  - ') + chalk.cyan('/session delete all') + chalk.gray('    : Hapus seluruh sesi proyek'));
+          console.log(chalk.gray('  - ') + chalk.cyan('/session clear') + chalk.gray('        : Bersihkan seluruh riwayat sesi proyek\n'));
+        }
+        break;
+      }
+      case '/skill':
+      case '/skills': {
+        const subParts = (arg || '').split(/\s+/).filter(Boolean);
+        const action = subParts[0] || 'list';
+        const targetSkill = subParts[1] || null;
+
+        if (action === 'list') {
+          const skills = discoverSkills();
+          if (skills.size === 0) {
+            console.log(chalk.yellow('\n  Belum ada skill yang terpasang.'));
+            console.log(chalk.gray('  Tambahkan modul skill di: ') + chalk.cyan('.baiwor/skills/<nama>/SKILL.md'));
+            console.log(chalk.gray('  atau global di: ') + chalk.cyan('~/.baiwor/skills/<nama>/SKILL.md\n'));
+          } else {
+            console.log(chalk.hex('#FBBF24').bold('\n  🧩 Keahlian & Plugin bAIwor Code (.baiwor/skills):'));
+            for (const [name, s] of skills.entries()) {
+              const scopeBadge = s.scope === 'project' ? chalk.green('[proyek]') : chalk.cyan('[global]');
+              console.log(`    ${chalk.white.bold(name)} ${scopeBadge} ${chalk.gray(`v${s.version || '1.0.0'}`)}`);
+              console.log(`      ${chalk.dim(s.description)}`);
+            }
+            console.log(chalk.gray('\n  Gunakan: /skill <nama> untuk memuat instruksi skill ke sesi aktif.\n'));
+          }
+        } else if (action === 'info') {
+          if (!targetSkill) {
+            console.log(chalk.yellow('\n  ⚠️  Sebutkan nama skill: /skill info <nama>\n'));
+          } else {
+            const skill = getSkill(targetSkill);
+            if (!skill) {
+              console.log(chalk.red(`\n  ❌ Skill "${targetSkill}" tidak ditemukan.\n`));
+            } else {
+              console.log(chalk.hex('#FBBF24').bold(`\n  🧩 Detail Skill: ${skill.name}`));
+              console.log(`    ${chalk.dim('Scope        :')} ${skill.scope}`);
+              console.log(`    ${chalk.dim('Versi        :')} ${skill.version}`);
+              console.log(`    ${chalk.dim('Deskripsi    :')} ${skill.description}`);
+              console.log(`    ${chalk.dim('Lokasi Berkas:')} ${chalk.cyan(skill.path)}`);
+              console.log(chalk.gray('\n  Instruksi Singkat:'));
+              const preview = skill.instructions.slice(0, 300);
+              console.log(chalk.dim(preview + (skill.instructions.length > 300 ? '…' : '')));
+              console.log();
+            }
+          }
+        } else {
+          const skillName = action;
+          const skill = getSkill(skillName);
+          if (!skill) {
+            console.log(chalk.red(`\n  ❌ Skill "${skillName}" tidak ditemukan.`));
+            console.log(chalk.gray('  Ketik ') + chalk.cyan('/skill list') + chalk.gray(' untuk melihat daftar skill yang tersedia.\n'));
+          } else {
+            conversationSession.addUserMessage(`[Instruksi Skill "${skill.name}"]:\n${skill.instructions}`);
+            console.log(chalk.green.bold(`\n  ✓ Berhasil mengaktifkan skill "${skill.name}" ke dalam sesi aktif!`));
+            console.log(chalk.gray(`    ${skill.description}\n`));
+          }
+        }
+        break;
+      }
       case '/status':
         await printStatus();
         break;
@@ -448,6 +639,12 @@ async function startInteractive() {
           );
         } else {
           await handleUserChat(command);
+          try {
+            conversationSession.saveToDisk({
+              model: config.activeModel,
+              provider: config.activeProvider,
+            });
+          } catch {}
         }
         break;
     }
@@ -471,9 +668,157 @@ program
     if (promptParts && promptParts.length > 0) {
       const fullPrompt = promptParts.join(' ');
       await handleUserChat(fullPrompt);
+      try {
+        const config = getConfig();
+        conversationSession.saveToDisk({
+          model: config?.activeModel,
+          provider: config?.activeProvider,
+        });
+      } catch {}
       process.exit(0);
     }
     await startInteractive();
+  });
+
+program
+  .command('plan [prompt...]')
+  .description('Mode arsitek semAIr: susun rencana & analisis tanpa ubah kode')
+  .action(async (promptParts) => {
+    const prompt = (promptParts || []).join(' ').trim();
+    if (!prompt) {
+      console.log(chalk.cyan.bold('\n  👑 Mode Perencanaan semAIr (/plan)'));
+      console.log(chalk.gray('     Format : ') + chalk.white('baiworcode plan <instruksi atau fitur>'));
+      console.log(chalk.gray('     Contoh : ') + chalk.green('baiworcode plan "buatkan sistem auth JWT"\n'));
+      process.exit(0);
+    }
+    await handleUserChat(buildPlanUserPrompt(prompt));
+    try {
+      const config = getConfig();
+      conversationSession.saveToDisk({
+        model: config?.activeModel,
+        provider: config?.activeProvider,
+      });
+    } catch {}
+    process.exit(0);
+  });
+
+program
+  .command('session [action] [target]')
+  .description('Kelola sesi percakapan proyek (list, resume, delete, clear)')
+  .action(async (action = 'list', target) => {
+    if (action === 'list') {
+      const list = listSessions();
+      if (list.length === 0) {
+        console.log(chalk.yellow('\n  Belum ada sesi percakapan tersimpan untuk proyek ini.\n'));
+      } else {
+        console.log(chalk.cyan.bold(`\n  📁 Sesi Percakapan Proyek (${list.length} sesi):\n`));
+        list.slice(0, 15).forEach((s, i) => {
+          const dt = s.updatedAt ? new Date(s.updatedAt).toLocaleString('id-ID') : '-';
+          console.log(chalk.white(`  ${i + 1}. `) + chalk.green.bold(s.title || s.id));
+          console.log(chalk.gray(`     ID: ${s.id} · Terakhir: ${dt} · ${s.stats?.turnCount || 0} turn`));
+        });
+        console.log();
+      }
+    } else if (action === 'resume') {
+      const targetId = target;
+      if (targetId) {
+        const ok = conversationSession.loadFromDisk(targetId);
+        if (ok) {
+          console.log(chalk.green.bold(`\n  ✅ Berhasil memuat sesi: ${conversationSession.sessionTitle || targetId}\n`));
+          await startInteractive();
+        } else {
+          console.log(chalk.red.bold(`\n  ❌ Sesi "${targetId}" tidak ditemukan.\n`));
+        }
+      } else {
+        const ok = conversationSession.resumeLatest();
+        if (ok) {
+          console.log(chalk.green.bold(`\n  ✅ Berhasil memuat sesi terakhir: ${conversationSession.sessionTitle || conversationSession.sessionId}\n`));
+          await startInteractive();
+        } else {
+          console.log(chalk.yellow('\n  Tidak ada sesi sebelumnya untuk di-resume.\n'));
+        }
+      }
+    } else if (action === 'delete' || action === 'rm') {
+      if (!target) {
+        console.log(chalk.yellow('\n  ⚠️  Tentukan sesi yang ingin dihapus:'));
+        console.log(chalk.gray('  - ') + chalk.white('baiworcode session delete <id>') + chalk.gray(' : Hapus satu sesi'));
+        console.log(chalk.gray('  - ') + chalk.white('baiworcode session delete all') + chalk.gray('  : Hapus seluruh sesi proyek\n'));
+      } else if (target === 'all' || target === '--all') {
+        const count = deleteAllSessions();
+        if (count > 0) {
+          console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi untuk proyek ini.\n`));
+        } else {
+          console.log(chalk.yellow('\n  Tidak ada sesi yang perlu dihapus.\n'));
+        }
+      } else {
+        const ok = deleteSession(target);
+        if (ok) {
+          console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus sesi: ${target}\n`));
+        } else {
+          console.log(chalk.red.bold(`\n  ❌ Sesi "${target}" tidak ditemukan.\n`));
+        }
+      }
+    } else if (action === 'clear') {
+      const count = deleteAllSessions();
+      if (count > 0) {
+        console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi untuk proyek ini.\n`));
+      } else {
+        console.log(chalk.yellow('\n  Tidak ada sesi yang perlu dibersihkan.\n'));
+      }
+    } else {
+      console.log(chalk.gray('\n  Penggunaan perintah session:'));
+      console.log(chalk.gray('  - ') + chalk.cyan('baiworcode session list') + chalk.gray('         : Tampilkan daftar sesi proyek'));
+      console.log(chalk.gray('  - ') + chalk.cyan('baiworcode session resume [id]') + chalk.gray('   : Lanjutkan sesi (terakhir atau sesuai id)'));
+      console.log(chalk.gray('  - ') + chalk.cyan('baiworcode session delete <id>') + chalk.gray('   : Hapus satu sesi tertentu'));
+      console.log(chalk.gray('  - ') + chalk.cyan('baiworcode session delete all') + chalk.gray('    : Hapus seluruh sesi proyek'));
+      console.log(chalk.gray('  - ') + chalk.cyan('baiworcode session clear') + chalk.gray('        : Bersihkan seluruh riwayat sesi proyek\n'));
+    }
+    process.exit(0);
+  });
+
+program
+  .command('skill [action] [target]')
+  .description('Kelola modul keahlian & plugin (.baiwor/skills)')
+  .action(async (action = 'list', target = null) => {
+    if (action === 'list') {
+      const skills = discoverSkills();
+      if (skills.size === 0) {
+        console.log(chalk.yellow('\n  Belum ada skill yang terpasang.'));
+        console.log(chalk.gray('  Tambahkan modul skill di: ') + chalk.cyan('.baiwor/skills/<nama>/SKILL.md'));
+        console.log(chalk.gray('  atau global di: ') + chalk.cyan('~/.baiwor/skills/<nama>/SKILL.md\n'));
+      } else {
+        console.log(chalk.hex('#FBBF24').bold('\n  🧩 Keahlian & Plugin bAIwor Code (.baiwor/skills):'));
+        for (const [name, s] of skills.entries()) {
+          const scopeBadge = s.scope === 'project' ? chalk.green('[proyek]') : chalk.cyan('[global]');
+          console.log(`    ${chalk.white.bold(name)} ${scopeBadge} ${chalk.gray(`v${s.version || '1.0.0'}`)}`);
+          console.log(`      ${chalk.dim(s.description)}`);
+        }
+        console.log();
+      }
+    } else if (action === 'info') {
+      if (!target) {
+        console.log(chalk.yellow('\n  ⚠️  Sebutkan nama skill: baiworcode skill info <nama>\n'));
+      } else {
+        const skill = getSkill(target);
+        if (!skill) {
+          console.log(chalk.red(`\n  ❌ Skill "${target}" tidak ditemukan.\n`));
+        } else {
+          console.log(chalk.hex('#FBBF24').bold(`\n  🧩 Detail Skill: ${skill.name}`));
+          console.log(`    ${chalk.dim('Scope        :')} ${skill.scope}`);
+          console.log(`    ${chalk.dim('Versi        :')} ${skill.version}`);
+          console.log(`    ${chalk.dim('Deskripsi    :')} ${skill.description}`);
+          console.log(`    ${chalk.dim('Lokasi Berkas:')} ${chalk.cyan(skill.path)}`);
+          console.log(chalk.gray('\n  Instruksi:'));
+          console.log(chalk.dim(skill.instructions));
+          console.log();
+        }
+      }
+    } else {
+      console.log(chalk.gray('\n  Penggunaan perintah skill:'));
+      console.log(chalk.gray('  - ') + chalk.cyan('baiworcode skill list') + chalk.gray('         : Tampilkan seluruh skill proyek & global'));
+      console.log(chalk.gray('  - ') + chalk.cyan('baiworcode skill info <nama>') + chalk.gray('  : Tampilkan detail & instruksi skill\n'));
+    }
+    process.exit(0);
   });
 
 program

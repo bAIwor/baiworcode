@@ -1,23 +1,108 @@
 import chalk from 'chalk';
+import { palette } from '../theme.js';
 
 const DEFAULT_SUMMARY_LEN = 80;
 
 /**
- * Warna nama tool per kategori supaya jenis langkah langsung terbaca sekilas
- * (baca = cyan, tulis = hijau, ubah = kuning, jalankan = oranye, dst).
- * Nilai `null`/tidak dikenal jatuh ke abu-abu terang.
+ * Warna nama tool per kategori, memakai token palet opencode (lihat
+ * `src/theme.js`):
+ *   - baca (`read_file`)            → info (cyan)
+ *   - telusur (`list`/`search`)     → secondary (biru)
+ *   - tulis & ubah (`write`/`edit`) → success (hijau)
+ *   - jalankan (`run_command`)      → error (merah)
+ *   - rencana (`todo_list`)         → warning (oranye tua)
+ *
+ * Kategori yang sama memakai warna yang sama, sejalan dengan opencode yang
+ * memetakan `edit`/`write` ke satu warna sukses dan `glob`/`grep`/`list`
+ * ke satu warna info.
  */
 const TOOL_TINTS = {
-  read_file: '#22D3EE', // cyan — membaca
-  list_directory: '#60A5FA', // biru — menjelajah
-  search_files: '#C084FC', // ungu — mencari
-  write_file: '#4ADE80', // hijau — membuat
-  edit_file: '#FACC15', // kuning — mengubah
-  run_command: '#FB923C', // oranye — menjalankan
-  todo_list: '#F472B6', // pink — merencanakan
+  read_file: palette.info, // cyan — membaca
+  list_directory: palette.secondary, // biru — menjelajah
+  search_files: palette.secondary, // biru — mencari (sama seperti list)
+  write_file: palette.success, // hijau — membuat
+  edit_file: palette.success, // hijau — mengubah (sama seperti write)
+  patch_file: palette.success, // hijau — menempel patch (sama seperti edit)
+  run_command: palette.error, // merah — menjalankan
+  todo_list: palette.warning, // oranye tua — merencanakan
+  webfetch: palette.info, // cyan — membaca halaman web
+  websearch: palette.secondary, // biru — menelusuri web
+  diagnostics: palette.warning, // oranye tua — memeriksa mutu
+  delegate_task: palette.primary, // oranye aksen — mendelegasikan subagent
+  ask_user: palette.warning, // oranye tua — menanyakan keputusan ke pengguna
 };
 
-const DEFAULT_TOOL_TINT = '#E5E7EB';
+/**
+ * Pemetaan peran Tim Punakawan AI untuk setiap kategori tool:
+ * - pAItruk : Riset & Penelusuran berkas (read_file, list_directory, search_files)
+ * - bAIwor  : Master Builder eksekutor kode (write_file, edit_file)
+ * - gAIreng : Quality Gate & Auditor penguji perintah (run_command)
+ * - semAIr  : Arsitek & Pamomong strategi (todo_list, delegate_task, ask_user)
+ */
+export const PUNAKAWAN_ROLES = {
+  read_file: 'pAItruk',
+  list_directory: 'pAItruk',
+  search_files: 'pAItruk',
+  webfetch: 'pAItruk',
+  websearch: 'pAItruk',
+  write_file: 'bAIwor',
+  edit_file: 'bAIwor',
+  patch_file: 'bAIwor',
+  run_command: 'gAIreng',
+  diagnostics: 'gAIreng',
+  todo_list: 'semAIr',
+  delegate_task: 'semAIr',
+  ask_user: 'semAIr',
+};
+
+/**
+ * Palet warna representasi karakter Tim Punakawan AI.
+ *
+ * Semua anggota memakai SATU warna yang sama — kuning emas — supaya identitas
+ * "siapa yang bertindak" seragam dan langsung terbaca. Kategori aksi sudah
+ * dibedakan lewat warna nama tool (lihat TOOL_TINTS), jadi peran dan jenis
+ * aksi tidak saling berebut perhatian.
+ */
+export const PUNAKAWAN_COLORS = {
+  semAIr: palette.gold, // kuning emas — Arsitek & Pamomong
+  bAIwor: palette.gold, // kuning emas — Master Builder
+  pAItruk: palette.gold, // kuning emas — Penelusur & Periset
+  gAIreng: palette.gold, // kuning emas — Auditor & Quality Gate
+};
+
+const DEFAULT_TOOL_TINT = palette.textMuted;
+
+/**
+ * Nama tampilan ramah (bahasa Indonesia) untuk tiap tool. Nama teknis
+ * (`read_file`, `run_command`, …) tetap dipakai saat memanggil fungsi ke model —
+ * alias ini murni kosmetik agar timeline tidak terkesan kaku.
+ */
+export const TOOL_LABELS = {
+  read_file: 'Baca berkas',
+  write_file: 'Tulis berkas',
+  edit_file: 'Ubah berkas',
+  patch_file: 'Terapkan patch',
+  list_directory: 'Lihat folder',
+  search_files: 'Cari berkas',
+  run_command: 'Jalankan perintah',
+  todo_list: 'Daftar tugas',
+  webfetch: 'Ambil halaman',
+  websearch: 'Cari di web',
+  diagnostics: 'Periksa mutu',
+  delegate_task: 'Delegasi tugas',
+  ask_user: 'Tanya pengguna',
+};
+
+/**
+ * Mengembalikan nama tampilan sebuah tool. Tool yang tak dikenal jatuh ke nama
+ * teknisnya supaya tetap informatif.
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+export function toolLabel(name) {
+  return TOOL_LABELS[name] || name;
+}
 
 /**
  * Mengembalikan kode warna hex untuk sebuah nama tool.
@@ -35,6 +120,10 @@ export function toolColorHex(name) {
  */
 const NO_COLOR = (() => {
   const identity = (v) => String(v);
+  identity.bold = identity;
+  identity.dim = identity;
+  identity.italic = identity;
+  identity.hex = () => identity;
   return {
     dim: identity,
     gray: identity,
@@ -231,11 +320,11 @@ export function renderTodoChecklist(items, { useColor = true, maxItem = 70 } = {
       const status = TODO_ICONS[item.status] ? item.status : 'pending';
       const tint =
         status === 'completed'
-          ? c.green
+          ? c.hex(palette.success)
           : status === 'in_progress'
-            ? c.cyan
+            ? c.hex(palette.info)
             : status === 'cancelled'
-              ? c.gray
+              ? c.hex(palette.textMuted)
               : c.dim;
 
       const icon = tint(TODO_ICONS[status]);
@@ -243,7 +332,7 @@ export function renderTodoChecklist(items, { useColor = true, maxItem = 70 } = {
       // Content bisa sampai 4000 karakter (batas TodoStore) — tanpa dipotong,
       // satu item saja sudah cukup untuk memenuhi layar.
       const text = summarize(item.content ?? '', maxItem);
-      const label = status === 'cancelled' ? c.gray(text) : text;
+      const label = status === 'cancelled' ? c.hex(palette.textMuted)(text) : text;
 
       return `${indent}${icon} ${label}`;
     })
@@ -278,13 +367,19 @@ export function renderTimeline(
     // Warna nama tool mengikuti kategorinya; batang pohon ikut diwarnai tipis
     // agar satu node terlihat sebagai satu kesatuan saat dipindai.
     const tint = c.hex(toolColorHex(ev.name));
-    const branch = c.gray(isLast ? '└' : '├');
+    //Cabang pohon pakai gaya pohon standar (├── / └──) sehingga struktur
+    // hierarki terbaca jelas dan tidak terlihat terlalu tipis.
+    const branch = c.gray(isLast ? '└──' : '├──');
     const stem = tint(isLast ? ' ' : '│');
+    // Jarakkan baris anak agar selaras dengan label di cabang induk.
+    // Dengan cabang '├── ' (4 karakter) + spasi, label dimulai di kolom ke-8.
+    // Stem '│' + 5 spasi juga mencapai kolom ke-8.
+    const childIndent = '     ';
     const icon = isRunning
-      ? c.hex('#F59E0B')(spinnerFrame)
+      ? c.hex(palette.warning)(spinnerFrame)
       : ev.success === false
-        ? c.red('✗')
-        : c.green('✓');
+        ? c.hex(palette.error)('✗')
+        : c.hex(palette.success)('✓');
     const dot = c.gray('·');
 
     const meta = [c.gray(isRunning ? '…' : formatDuration(ev.durationMs))];
@@ -292,9 +387,18 @@ export function renderTimeline(
     if (lineCount > 0) meta.push(c.gray(`${lineCount} baris`));
     if (ev.extraMeta) meta.push(c.gray(ev.extraMeta));
 
-    // Nama tool dicetak tebal; yang gagal ditonjolkan merah agar mudah dipindai.
-    const label =
-      !isRunning && ev.success === false ? c.red(c.bold(ev.name)) : tint(c.bold(ev.name));
+    const punakawan = PUNAKAWAN_ROLES[ev.name];
+    // Nama karakter Punakawan selalu kuning emas (seragam) agar identitas aktor
+    // langsung terbaca; warna kategori tetap dipegang oleh nama tool di
+    // sampingnya.
+    const actorTint = c.hex(PUNAKAWAN_COLORS[punakawan] || palette.gold);
+    const actorPrefix = punakawan ? `${actorTint(c.bold(punakawan))} ${c.gray('·')} ` : '';
+
+    // Nama tool memakai warna kategorinya; saat gagal ditonjolkan merah agar
+    // mudah dipindai — nama Punakawan tetap emas, hanya aksinya yang menyala.
+    const failed = !isRunning && ev.success === false;
+    const toolName = (failed ? c.hex(palette.error) : tint)(c.bold(toolLabel(ev.name)));
+    const label = `${actorPrefix}${toolName}`;
 
     const head = `  ${branch} ${icon} ${label} ${dot} ${meta.join(` ${dot} `)}`;
     out.push(head);
@@ -304,13 +408,13 @@ export function renderTimeline(
     // argumen/hasil, bukan menambahkannya.
     if (ev.detail) {
       for (const line of String(ev.detail).split('\n')) {
-        out.push(`  ${stem}   ${line}`);
+        out.push(`  ${stem}${childIndent}${line}`);
       }
       return;
     }
 
     const argsText = summarizeArgs(ev.args, maxSummary);
-    if (argsText) out.push(`  ${stem}   ${c.dim(argsText)}`);
+    if (argsText) out.push(`  ${stem}${childIndent}${c.dim(argsText)}`);
 
     // Saat masih berjalan belum ada keluaran untuk diringkas.
     if (isRunning) return;
@@ -320,7 +424,7 @@ export function renderTimeline(
         ? summarize(ev.output, maxSummary)
         : summarizeResult(ev.output, maxSummary);
 
-    if (resultText) out.push(`  ${stem}   ${c.dim(resultText)}`);
+    if (resultText) out.push(`  ${stem}${childIndent}${c.dim(resultText)}`);
   });
 
   return out.join('\n');

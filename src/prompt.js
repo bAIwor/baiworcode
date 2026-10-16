@@ -1,10 +1,17 @@
 import { TextPrompt, isCancel } from '@clack/core';
 import chalk from 'chalk';
 import readline from 'node:readline';
+import { theme } from './theme.js';
 import { renderStatusLine, frameRules, terminalWidth } from './statusLine.js';
+import { todoStore } from './tools/todoTool.js';
+import { renderTodoWidget, toggleTodoCompactMode, getTodoCompactMode } from './chat/planMode.js';
 
 export const COMMANDS = [
   { name: '/help', desc: 'Menampilkan panduan perintah & bantuan' },
+  { name: '/plan', desc: 'Mode arsitek semAIr: susun rencana & analisis tanpa ubah kode' },
+  { name: '/compact', desc: 'Ringkas konteks percakapan untuk menghemat token' },
+  { name: '/session', desc: 'Kelola sesi percakapan (list, resume, delete, clear)' },
+  { name: '/skill', desc: 'Kelola modul keahlian & plugin (.baiwor/skills)' },
   { name: '/status', desc: 'Status konfigurasi & model AI aktif' },
   { name: '/model', desc: 'Pilih model Agentik, Google Gemini, atau Custom' },
   { name: '/provider', desc: 'Alias untuk perintah /model' },
@@ -12,7 +19,8 @@ export const COMMANDS = [
   { name: '/logout', desc: 'Logout dari sesi Google Gemini OAuth' },
   { name: '/clear', desc: 'Bersihkan layar & reset riwayat percakapan' },
   { name: '/reset', desc: 'Reset konteks percakapan AI tanpa clear layar' },
-  { name: '/exit', desc: 'Keluar dari bAIwor Code' },
+  { name: '/exit', desc: 'Keluar dari bAIwor Code (alias: /q, /quit)' },
+  { name: '/q', desc: 'Keluar dari bAIwor Code (alias /exit)' },
 ];
 
 /**
@@ -34,26 +42,37 @@ export function buildPromptFrame({
   selectedIndex = 0,
   exitPending = false,
   columns = null,
+  todoItems = null,
+  isCompact = false,
 } = {}) {
   const shown = displayInput !== null ? displayInput : value;
 
   const currentCols = columns ?? terminalWidth();
   const rules = frameRules(currentCols);
-  let out = rules.top + '\n';
+  let out = '';
+
+  if (Array.isArray(todoItems) && todoItems.length > 0) {
+    const widget = renderTodoWidget(todoItems, { useColor: true, isCompact });
+    if (widget) {
+      out += `${widget}\n\n`;
+    }
+  }
+
+  out += rules.top + '\n';
 
   if (state === 'submit') {
-    out += `  ${chalk.cyan('›')}  ${chalk.whiteBright(value || placeholder)}`;
+    out += `  ${theme.input('›')}  ${theme.input(value || placeholder)}`;
   } else if (state === 'cancel') {
-    out += `  ${chalk.red('›')}  ${chalk.strikethrough(chalk.gray(value))}`;
+    out += `  ${theme.error('›')}  ${chalk.strikethrough(chalk.gray(value))}`;
   } else if (exitPending && !value) {
     const width = currentCols - 1;
     const msg =
       width < 65
         ? 'Tekan Ctrl+C lagi untuk keluar'
         : 'Tekan Ctrl+C sekali lagi untuk keluar (atau ketik /exit)';
-    out += `  ${chalk.yellow.bold('›')}  ${chalk.yellow(msg)}`;
+    out += `  ${theme.warning.bold('›')}  ${theme.warning(msg)}`;
   } else {
-    out += `  ${chalk.cyan('›')}  ${shown || chalk.dim(placeholder)}`;
+    out += `  ${theme.input('›')}  ${shown ? theme.input(shown) : chalk.dim(placeholder)}`;
 
     if (dropdownOpen && value.startsWith('/')) {
       const query = value.toLowerCase();
@@ -132,6 +151,8 @@ export class SlashTextPrompt extends TextPrompt {
           selectedIndex,
           exitPending: lastCtrlCTime > 0,
           columns: currentCols,
+          todoItems: todoStore.read(),
+          isCompact: getTodoCompactMode(),
         });
       },
     });
@@ -422,6 +443,17 @@ export class SlashTextPrompt extends TextPrompt {
           return;
         }
         // Jika baris sudah kosong dan dropdown tertutup, abaikan Escape (tidak keluar)
+        return;
+      }
+
+      // 3. Tombol Ctrl+T: toggle mode compact / expand untuk Todo widget
+      const isCtrlT =
+        (key?.name === 't' && Boolean(key?.ctrl)) ||
+        u === '\u0014' ||
+        key?.sequence === '\u0014';
+      if (isCtrlT) {
+        toggleTodoCompactMode();
+        this.render();
         return;
       }
 

@@ -25,18 +25,24 @@ import { detectRiskyRegex } from '../src/tools/searchTool.js';
 import { setApprovalHandler, resetApprovalHandler } from '../src/tools/approval.js';
 
 describe('Tahap 3B: Tool Definitions & Schemas', () => {
-  it('harus memuat 7 tools utama dengan format OpenAI Function Calling', () => {
+  it('harus memuat 13 tools utama dengan format OpenAI Function Calling', () => {
     assert.equal(Array.isArray(TOOL_DEFINITIONS), true);
-    assert.equal(TOOL_DEFINITIONS.length, 7);
+    assert.equal(TOOL_DEFINITIONS.length, 13);
 
     const names = TOOL_DEFINITIONS.map((t) => t.function.name);
     assert.ok(names.includes('read_file'));
     assert.ok(names.includes('write_file'));
     assert.ok(names.includes('edit_file'));
+    assert.ok(names.includes('patch_file'));
     assert.ok(names.includes('list_directory'));
     assert.ok(names.includes('run_command'));
     assert.ok(names.includes('search_files'));
     assert.ok(names.includes('todo_list'));
+    assert.ok(names.includes('webfetch'));
+    assert.ok(names.includes('websearch'));
+    assert.ok(names.includes('diagnostics'));
+    assert.ok(names.includes('delegate_task'));
+    assert.ok(names.includes('ask_user'));
   });
 });
 

@@ -1,8 +1,16 @@
 import chalk from 'chalk';
+import { theme, palette } from '../theme.js';
 
 /**
- * Pewarna jawaban asisten bergaya markdown (rasa opencode): judul, **tebal**,
- * *miring*, `kode` sebaris, blok kode, daftar berbutir, dan kutipan.
+ * Pewarna jawaban asisten bergaya markdown, memakai palet resmi tema
+ * `opencode` (lihat `src/theme.js`):
+ *   - Judul: ungu (accent) tebal
+ *   - Bullet list: oranye (primary), numbered: cyan (info)
+ *   - Blockquote: kuning (yellow)
+ *   - Kode inline & string: hijau (green)
+ *   - Komentar: abu-abu redup italic
+ *   - Angka: oranye tua (warning)
+ *   - Kata kunci: ungu (accent)
  *
  * - Hanya menambah kode ANSI; teks tak pernah rusak (kecuali penanda markdown
  *   yang memang disembunyikan seperti `**` dan `#`).
@@ -10,19 +18,21 @@ import chalk from 'chalk';
  * - Saat useColor=false (output dipipa) jadi pass-through murni.
  */
 
-const HEADINGS = [
-  chalk.hex('#FBBF24').bold, chalk.hex('#38BDF8').bold, chalk.hex('#A78BFA').bold,
-  chalk.hex('#22D3EE').bold, chalk.hex('#2DD4BF').bold, chalk.hex('#2DD4BF').bold,
-];
-const BULLET = chalk.hex('#22D3EE');
-const NUMBERED = chalk.hex('#34D399');
-const QUOTE = chalk.gray.italic;
-const FENCE = chalk.gray;
-const CODE = chalk.hex('#F472B6');
-const COMMENT = chalk.hex('#94A3B8').italic;
-const STRING = chalk.hex('#86EFAC');
-const NUMBER = chalk.hex('#FDBA74');
-const KEYWORD = chalk.hex('#C084FC');
+// Warna dasar per jenis baris. Dipakai BERSAMA pemformatan inline, sehingga
+// **tebal** / *miring* / `kode` di dalam judul, kutipan, dan daftar tetap
+// diproses (bukan tampil sebagai karakter literal).
+const HEADING_BASE = { colorHex: palette.mdHeading, bold: true };
+const QUOTE_BASE = { colorHex: palette.mdBlockQuote, italic: true };
+const LIST_BASE = { colorHex: palette.mdListItem };
+const BULLET = theme.bullet;
+const NUMBERED = theme.numbered;
+const QUOTE = theme.quote;
+const FENCE = theme.rule;
+const CODE = theme.code;
+const COMMENT = theme.comment;
+const STRING = theme.string;
+const NUMBER = theme.number;
+const KEYWORD = theme.keyword;
 
 const KEYWORDS = new Set([
   'const','let','var','function','return','if','else','for','while','do','switch','case','break',
@@ -87,7 +97,7 @@ export class AnswerStyler {
     this.prefixBuf = '';
     this.pending = '';
     this.run = '';
-    this.lineStyle = null;
+    this.lineBase = null;
     this.inline = { bold: false, italic: false, strike: false, code: false };
     this.lastChar = '';
     this.codeBuf = '';
@@ -157,6 +167,17 @@ export class AnswerStyler {
     return out.join('');
   }
 
+  /**
+   * True bila parser sedang berada di dalam blok kode berbatas (fence).
+   *
+   * Dipakai pemanggil untuk mematikan pembungkusan baris: kode harus tetap
+   * utuh apa adanya — memotong sebuah pernyataan panjang atau menambahkan
+   * indentasi lanjutan bisa membuat potongan kode yang disalin jadi rusak.
+   */
+  get inCodeBlock() {
+    return this.mode === 'code';
+  }
+
   // ---- internal ----
 
   resetLine() {
@@ -164,20 +185,26 @@ export class AnswerStyler {
     this.prefixBuf = '';
     this.pending = '';
     this.run = '';
-    this.lineStyle = null;
+    this.lineBase = null;
     this.inline = { bold: false, italic: false, strike: false, code: false };
     this.lastChar = '';
   }
 
   styleRun() {
-    if (this.lineStyle) return this.lineStyle;
     if (this.inline.code) return CODE;
-    if (!this.inline.bold && !this.inline.italic && !this.inline.strike) return null;
-    let c = chalk;
-    if (this.inline.bold) c = c.bold;
-    if (this.inline.italic) c = c.italic;
-    if (this.inline.strike) c = c.strikethrough;
-    return (t) => c(t);
+    const base = this.lineBase;
+    const bold = this.inline.bold || Boolean(base && base.bold);
+    const italic = this.inline.italic || Boolean(base && base.italic);
+    const strike = this.inline.strike || Boolean(base && base.strike);
+    const colorHex = base ? base.colorHex : null;
+    if (!bold && !italic && !strike && !colorHex) return null;
+    return (t) => {
+      let c = colorHex ? chalk.hex(colorHex) : chalk;
+      if (bold) c = c.bold;
+      if (italic) c = c.italic;
+      if (strike) c = c.strikethrough;
+      return c(t);
+    };
   }
 
   flushRun(out) {
@@ -198,24 +225,25 @@ export class AnswerStyler {
     this.atLineStart = false;
 
     if (verdict === 'heading') {
-      const level = Math.min((buf.match(/^#{1,6}/) || ['#'])[0].length, 6);
-      this.lineStyle = HEADINGS[level - 1];
+      this.lineBase = HEADING_BASE;
       return;
     }
     if (verdict === 'quote') {
       const m = buf.match(/^(\s*)>/);
       out.push(`${m ? m[1] : ''}${QUOTE('│')}`);
-      this.lineStyle = QUOTE;
+      this.lineBase = QUOTE_BASE;
       return;
     }
     if (verdict === 'bullet') {
       const m = buf.match(/^(\s*)([-*+])\s/);
       out.push(`${m[1]}${BULLET('•')} `);
+      this.lineBase = LIST_BASE;
       return;
     }
     if (verdict === 'numbered') {
       const m = buf.match(/^(\s*)(\d+\.)\s/);
       out.push(`${m[1]}${NUMBERED(m[2])} `);
+      this.lineBase = LIST_BASE;
       return;
     }
     if (verdict === 'fence') {
@@ -234,13 +262,6 @@ export class AnswerStyler {
     for (;;) {
       const p = this.pending;
       if (!p.length) return;
-
-      if (this.lineStyle) {
-        this.run += p;
-        this.lastChar = p[p.length - 1];
-        this.pending = '';
-        return;
-      }
 
       // Di dalam `kode` sebaris: semua karakter literal kecuali backtick penutup.
       if (this.inline.code) {

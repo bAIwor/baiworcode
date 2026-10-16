@@ -3,11 +3,24 @@ import {
   handleReadFile,
   handleWriteFile,
   handleEditFile,
+  handlePatchFile,
   handleListDirectory,
   handleRunCommand,
+  getBackgroundTask,
+  stopBackgroundTask,
+  listBackgroundTasks,
+  clearBackgroundTasks,
 } from './handlers.js';
 import { handleSearchFiles } from './searchTool.js';
 import { handleTodoList } from './todoTool.js';
+import { handleWebFetch, handleWebSearch } from './webTool.js';
+import { handleDiagnostics } from './diagnosticsTool.js';
+import { handleDelegateTask, SUBAGENT_ROLES } from './subagentTool.js';
+import {
+  handleAskUser,
+  setQuestionnaireHandler,
+  resetQuestionnaireHandler,
+} from './questionnaireTool.js';
 import {
   registerTool,
   getDefinitions,
@@ -23,10 +36,16 @@ const handlersMap = {
   read_file: { handler: handleReadFile, toolset: 'file', emoji: '📖' },
   write_file: { handler: handleWriteFile, toolset: 'file', emoji: '✏️' },
   edit_file: { handler: handleEditFile, toolset: 'file', emoji: '✂️' },
+  patch_file: { handler: handlePatchFile, toolset: 'file', emoji: '🩹' },
   list_directory: { handler: handleListDirectory, toolset: 'file', emoji: '📁' },
   run_command: { handler: handleRunCommand, toolset: 'terminal', emoji: '⚡' },
   search_files: { handler: handleSearchFiles, toolset: 'file', emoji: '🔎' },
   todo_list: { handler: handleTodoList, toolset: 'todo', emoji: '📋' },
+  webfetch: { handler: handleWebFetch, toolset: 'web', emoji: '🌐' },
+  websearch: { handler: handleWebSearch, toolset: 'web', emoji: '🔍' },
+  diagnostics: { handler: handleDiagnostics, toolset: 'quality', emoji: '🩺' },
+  delegate_task: { handler: handleDelegateTask, toolset: 'agent', emoji: '🎭' },
+  ask_user: { handler: handleAskUser, toolset: 'interactive', emoji: '❓' },
 };
 
 for (const def of TOOL_DEFINITIONS) {
@@ -68,4 +87,16 @@ export {
   clearRegistry,
   handleSearchFiles,
   handleTodoList,
+  handleWebFetch,
+  handleWebSearch,
+  handleDiagnostics,
+  handleDelegateTask,
+  SUBAGENT_ROLES,
+  handleAskUser,
+  setQuestionnaireHandler,
+  resetQuestionnaireHandler,
+  getBackgroundTask,
+  stopBackgroundTask,
+  listBackgroundTasks,
+  clearBackgroundTasks,
 };

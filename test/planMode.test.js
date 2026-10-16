@@ -1,0 +1,166 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  isPlanCommand,
+  extractPlanPrompt,
+  getPlanAllowedTools,
+  buildPlanUserPrompt,
+  PLAN_ALLOWED_TOOLS,
+  renderTodoWidget,
+  getTodoCompactMode,
+  setTodoCompactMode,
+  toggleTodoCompactMode,
+  PUNAKAWAN_ROLES,
+  getPunakawanRole,
+  formatPunakawanBadge,
+} from '../src/chat/planMode.js';
+
+describe('PlanMode: Mode Perencanaan & Dry-Run (/plan)', () => {
+  describe('isPlanCommand', () => {
+    it('harus mengenali perintah /plan tunggal maupun dengan argumen', () => {
+      assert.equal(isPlanCommand('/plan'), true);
+      assert.equal(isPlanCommand('/plan buatkan modul payment'), true);
+      assert.equal(isPlanCommand('  /plan migrasi database   '), true);
+    });
+
+    it('harus menolak input yang bukan /plan', () => {
+      assert.equal(isPlanCommand('plan'), false);
+      assert.equal(isPlanCommand('/planner'), false);
+      assert.equal(isPlanCommand('/plane'), false);
+      assert.equal(isPlanCommand(''), false);
+      assert.equal(isPlanCommand(null), false);
+    });
+  });
+
+  describe('extractPlanPrompt', () => {
+    it('harus mengekstrak instruksi setelah kata kunci /plan', () => {
+      assert.equal(extractPlanPrompt('/plan refactor modul auth'), 'refactor modul auth');
+      assert.equal(extractPlanPrompt('  /plan   perbaiki bug memory leak  '), 'perbaiki bug memory leak');
+    });
+
+    it('harus mengembalikan string kosong jika hanya mengetik /plan tanpa instruksi', () => {
+      assert.equal(extractPlanPrompt('/plan'), '');
+      assert.equal(extractPlanPrompt('  /plan  '), '');
+    });
+  });
+
+  describe('getPlanAllowedTools', () => {
+    it('hanya boleh mengizinkan tool read-only dan todo_list', () => {
+      const allowed = getPlanAllowedTools();
+      assert.ok(allowed.includes('read_file'));
+      assert.ok(allowed.includes('list_directory'));
+      assert.ok(allowed.includes('search_files'));
+      assert.ok(allowed.includes('todo_list'));
+
+      // Harus melarang keras tool pembuat & pengubah file
+      assert.ok(!allowed.includes('write_file'));
+      assert.ok(!allowed.includes('edit_file'));
+    });
+  });
+
+  describe('buildPlanUserPrompt', () => {
+    it('harus menyisipkan arahan arsitektur ke dalam prompt', () => {
+      const result = buildPlanUserPrompt('desain sistem caching redis');
+      assert.ok(result.includes('MODE PERENCANAAN AKTIF'));
+      assert.ok(result.includes('desain sistem caching redis'));
+      assert.ok(result.includes('DILARANG membuat file baru'));
+    });
+  });
+
+  describe('Todo Widget: compact state helpers', () => {
+    it('harus dapat membaca dan mengubah status compact mode', () => {
+      setTodoCompactMode(false);
+      assert.equal(getTodoCompactMode(), false);
+
+      setTodoCompactMode(true);
+      assert.equal(getTodoCompactMode(), true);
+
+      const toggled = toggleTodoCompactMode();
+      assert.equal(toggled, false);
+      assert.equal(getTodoCompactMode(), false);
+    });
+  });
+
+  describe('renderTodoWidget: format tampilan tugas', () => {
+    const sampleTodos = [
+      { id: '1', content: 'Desain skema DB', status: 'completed' },
+      { id: '2', content: 'Implementasi endpoint', status: 'in_progress' },
+      { id: '3', content: 'Tulis unit tests', status: 'pending' },
+      { id: '4', content: 'Dokumentasi API', status: 'pending' },
+      { id: '5', content: 'Fitur legacy dibatalkan', status: 'cancelled' },
+    ];
+
+    it('harus mengembalikan string kosong jika list kosong atau null', () => {
+      assert.equal(renderTodoWidget([]), '');
+      assert.equal(renderTodoWidget(null), '');
+    });
+
+    it('harus menghasilkan header format lengkap: Todo list 1/5 · 4 remaining · Ctrl+T compact', () => {
+      const out = renderTodoWidget(sampleTodos, { useColor: false, isCompact: false });
+      assert.ok(out.includes('Todo list 1/5 · 4 remaining · Ctrl+T compact'));
+      assert.ok(out.includes('✓ Desain skema DB'));
+      assert.ok(out.includes('● Implementasi endpoint'));
+      assert.ok(out.includes('○ Tulis unit tests'));
+      assert.ok(out.includes('✗ Fitur legacy dibatalkan'));
+    });
+
+    it('harus mendukung format ringkas: Todo list 3/5 saat showDetails false', () => {
+      const threeOfFive = [
+        { id: '1', content: 'A', status: 'completed' },
+        { id: '2', content: 'B', status: 'completed' },
+        { id: '3', content: 'C', status: 'completed' },
+        { id: '4', content: 'D', status: 'pending' },
+        { id: '5', content: 'E', status: 'pending' },
+      ];
+      const out = renderTodoWidget(threeOfFive, { useColor: false, showDetails: false });
+      assert.ok(out.includes('Todo list 3/5'));
+      assert.ok(!out.includes('remaining'));
+      assert.ok(!out.includes('Ctrl+T'));
+    });
+
+    it('harus merender mode compact hanya dengan item in_progress dan prompt Ctrl+T expand', () => {
+      const out = renderTodoWidget(sampleTodos, { useColor: false, isCompact: true });
+      assert.ok(out.includes('Ctrl+T expand'));
+      assert.ok(out.includes('● Implementasi endpoint'));
+      assert.ok(!out.includes('✓ Desain skema DB'));
+      assert.ok(!out.includes('○ Tulis unit tests'));
+    });
+  });
+
+  describe('Punakawan Roles: Spesialisasi Peran Tim AI', () => {
+    it('harus memuat 4 peran Punakawan utama dengan boundary peran yang jelas', () => {
+      assert.ok(PUNAKAWAN_ROLES.semAIr);
+      assert.ok(PUNAKAWAN_ROLES.pAItruk);
+      assert.ok(PUNAKAWAN_ROLES.bAIwor);
+      assert.ok(PUNAKAWAN_ROLES.gAIreng);
+
+      assert.equal(PUNAKAWAN_ROLES.semAIr.role, 'architect');
+      assert.equal(PUNAKAWAN_ROLES.pAItruk.role, 'explore');
+      assert.equal(PUNAKAWAN_ROLES.bAIwor.role, 'worker');
+      assert.equal(PUNAKAWAN_ROLES.gAIreng.role, 'verifier');
+    });
+
+    it('pAItruk (explore) tidak boleh memiliki tool pengubah berkas (write_file/edit_file)', () => {
+      const allowed = PUNAKAWAN_ROLES.pAItruk.allowedTools;
+      assert.ok(!allowed.includes('write_file'));
+      assert.ok(!allowed.includes('edit_file'));
+      assert.ok(allowed.includes('read_file'));
+      assert.ok(allowed.includes('search_files'));
+    });
+
+    it('harus dapat mengambil peran dengan getPunakawanRole baik nama Punakawan maupun nama generic', () => {
+      assert.equal(getPunakawanRole('pAItruk').role, 'explore');
+      assert.equal(getPunakawanRole('explore').name, 'pAItruk');
+      assert.equal(getPunakawanRole('bAIwor').role, 'worker');
+      assert.equal(getPunakawanRole('verifier').name, 'gAIreng');
+      assert.equal(getPunakawanRole('semAIr').role, 'architect');
+      assert.equal(getPunakawanRole('tidak_ada'), null);
+    });
+
+    it('harus memformat badge peran dengan formatPunakawanBadge', () => {
+      const badge = formatPunakawanBadge('bAIwor');
+      assert.ok(badge.includes('bAIwor'));
+      assert.ok(badge.includes('🔨'));
+    });
+  });
+});

@@ -2,11 +2,66 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exec, spawn } from 'node:child_process';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { isSubPath, isSensitivePath, analyzeCommand, classifyCommand } from './sandbox.js';
 import { requestCommandApproval } from './approval.js';
+import { applyEdit, applyEditList, applyUnifiedDiff } from './editUtil.js';
 
 // Helper path tetap diekspor dari modul ini agar kontrak lama tidak berubah.
 export { isSubPath, isSensitivePath };
+
+// Penyimpanan background tasks aktif di memori
+const backgroundTasks = new Map();
+
+/**
+ * Mengambil record background task berdasarkan ID
+ */
+export function getBackgroundTask(taskId) {
+  return backgroundTasks.get(taskId) || null;
+}
+
+/**
+ * Mengambil daftar seluruh background tasks
+ */
+export function listBackgroundTasks() {
+  return Array.from(backgroundTasks.values()).map((t) => ({
+    id: t.id,
+    command: t.command,
+    status: t.status,
+    exitCode: t.exitCode,
+    startedAt: t.startedAt,
+    completedAt: t.completedAt,
+    outputLength: (t.output || '').length,
+  }));
+}
+
+/**
+ * Menghentikan background task secara paksa
+ */
+export function stopBackgroundTask(taskId) {
+  const task = backgroundTasks.get(taskId);
+  if (!task) return false;
+  task.status = 'stopped';
+  task.completedAt = Date.now();
+  if (task.process) {
+    try {
+      terminateProcessTree(task.process);
+    } catch {}
+  }
+  return true;
+}
+
+/**
+ * Mengosongkan registry background tasks dan membunuh proses yang masih berjalan
+ */
+export function clearBackgroundTasks() {
+  for (const task of backgroundTasks.values()) {
+    if (task.status === 'running' && task.process) {
+      terminateProcessTree(task.process);
+    }
+  }
+  backgroundTasks.clear();
+}
 
 /**
  * Menormalkan path berkas berdasarkan CWD aktif dengan perlindungan Sandbox (F1)
@@ -120,87 +175,138 @@ export async function handleWriteFile({ file_path, content }) {
 }
 
 /**
- * Handler untuk mengedit berkas (search and replace)
+ * Menerjemahkan alasan kegagalan edit menjadi pesan yang bisa ditindaklanjuti.
  */
-export async function handleEditFile({ file_path, old_content, new_content }) {
+function describeEditFailure(reason, filePath, count, lines = []) {
+  if (reason === 'not-found') {
+    return `Error: old_content tidak ditemukan di dalam berkas ${filePath} (sudah dicoba pencocokan persis maupun toleran spasi/indentasi). Pastikan potongan itu benar-benar ada.`;
+  }
+  if (reason === 'identical') {
+    return `Error: new_content identik dengan old_content, tidak ada perubahan yang dilakukan pada ${filePath}.`;
+  }
+  if (reason === 'ambiguous') {
+    const lineInfo = Array.isArray(lines) && lines.length ? ` (ditemukan pada baris ${lines.join(', ')})` : '';
+    return `Error: old_content ditemukan ${count} kali di dalam berkas ${filePath}${lineInfo}. Persempit potongan kode dengan menyertakan baris konteks sebelum/sesudahnya agar unik, atau set "replace_all": true untuk mengganti semuanya.`;
+  }
+  if (reason === 'missing-old') {
+    return 'Error: setiap item pada "edits" wajib memiliki old_content.';
+  }
+  return `Error: gagal mengedit berkas (${reason}).`;
+}
+
+/**
+ * Handler untuk mengedit berkas (search and replace) — versi toleran.
+ *
+ * Mendukung:
+ *   - `replace_all` : ganti SEMUA kemunculan, bukan hanya yang unik.
+ *   - `edits`       : banyak edit sekaligus, diterapkan atomik (semua atau tidak sama sekali).
+ *   - pencocokan    : persis → toleran indentasi/spasi ujung → toleran spasi dalam.
+ *
+ * @param {{file_path:string, old_content?:string, new_content?:string,
+ *          replace_all?:boolean, edits?:Array}} args
+ */
+export async function handleEditFile({
+  file_path,
+  old_content,
+  new_content,
+  replace_all = false,
+  edits = null,
+}) {
   let resolved;
   try {
     resolved = resolveSafePath(file_path);
   } catch (err) {
-    return {
-      success: false,
-      output: err.message,
-    };
+    return { success: false, output: err.message };
   }
 
   if (!fs.existsSync(resolved)) {
-    return {
-      success: false,
-      output: `Error: Berkas tidak ditemukan: ${file_path}`,
-    };
+    return { success: false, output: `Error: Berkas tidak ditemukan: ${file_path}` };
+  }
+  if (!fs.statSync(resolved).isFile()) {
+    return { success: false, output: `Error: Jalur tersebut bukan sebuah berkas: ${file_path}` };
   }
 
   const fileText = fs.readFileSync(resolved, 'utf8');
-  const usesCRLF = fileText.includes('\r\n');
 
-  // Selalu kirim pengganti lewat fungsi, bukan string: `String.replace` menafsirkan
-  // `$&`, `$1`, `$'` di dalam string pengganti, sehingga potongan kode yang memuat
-  // karakter itu akan berubah tanpa diminta.
-  const applyReplace = (haystack, needle, replacement) =>
-    haystack.replace(needle, () => replacement);
-
-  // Cek kecocokan teks
-  if (!fileText.includes(old_content)) {
-    // Coba normalisasi newline CRLF vs LF jika tidak cocok
-    const normalizedFileText = fileText.replace(/\r\n/g, '\n');
-    const normalizedOld = old_content.replace(/\r\n/g, '\n');
-
-    if (!normalizedFileText.includes(normalizedOld)) {
+  // Mode multi-edit (atomik).
+  if (Array.isArray(edits) && edits.length) {
+    const res = applyEditList(fileText, edits);
+    if (!res.ok) {
       return {
         success: false,
-        output: `Error: old_content tidak ditemukan di dalam berkas ${file_path}. Pastikan teks yang ingin diganti persis sama.`,
+        output: `Error pada edit ke-${res.index + 1}: ${describeEditFailure(res.reason, file_path, res.count, res.lines)}`,
       };
     }
-
-    const occurrences = normalizedFileText.split(normalizedOld).length - 1;
-    if (occurrences > 1) {
-      return {
-        success: false,
-        output: `Error: old_content ditemukan ${occurrences} kali di dalam berkas. Berikan potongan kode yang lebih spesifik/unik.`,
-      };
-    }
-
-    const normalizedNew = new_content.replace(/\r\n/g, '\n');
-    let updatedText = applyReplace(normalizedFileText, normalizedOld, normalizedNew);
-    // Kembalikan akhir baris asli. Tanpa ini, berkas CRLF (khas Windows)
-    // berubah seluruhnya menjadi LF dan muncul sebagai diff sepanjang berkas.
-    if (usesCRLF) updatedText = updatedText.replace(/\n/g, '\r\n');
-    fs.writeFileSync(resolved, updatedText, 'utf8');
-
+    fs.writeFileSync(resolved, res.text, 'utf8');
     return {
       success: true,
-      output: `Berhasil mengedit berkas ${file_path}`,
+      output: `Berhasil menerapkan ${edits.length} edit pada ${file_path} (${res.count} penggantian).`,
     };
   }
 
-  const occurrences = fileText.split(old_content).length - 1;
-  if (occurrences > 1) {
+  if (typeof old_content !== 'string' || old_content === '') {
     return {
       success: false,
-      output: `Error: old_content ditemukan ${occurrences} kali di dalam berkas. Berikan potongan kode yang lebih spesifik/unik.`,
+      output: 'Error: parameter "old_content" wajib diisi (atau gunakan "edits" untuk banyak perubahan).',
     };
   }
 
-  // Selaraskan akhir baris pengganti dengan berkas agar tidak tercipta campuran.
-  const replacement = usesCRLF
-    ? new_content.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
-    : new_content.replace(/\r\n/g, '\n');
-  const updatedText = applyReplace(fileText, old_content, replacement);
-  fs.writeFileSync(resolved, updatedText, 'utf8');
+  const res = applyEdit(fileText, old_content, new_content ?? '', {
+    replaceAll: Boolean(replace_all),
+  });
+  if (!res.ok) {
+    return { success: false, output: describeEditFailure(res.reason, file_path, res.count, res.lines) };
+  }
 
+  fs.writeFileSync(resolved, res.text, 'utf8');
+  const countNote = res.count > 1 ? ` — ${res.count} kemunculan diganti` : '';
+  const fuzzyNote = res.strategy === 'exact' ? '' : ' (dicocokkan toleran spasi/indentasi)';
+  return { success: true, output: `Berhasil mengedit berkas ${file_path}${countNote}${fuzzyNote}.` };
+}
+
+/**
+ * Handler untuk menerapkan unified diff ke sebuah berkas (tool `patch_file`).
+ * Blok konteks dicari ulang di berkas, sehingga patch tetap berlaku walau nomor
+ * baris bergeser.
+ *
+ * @param {{file_path:string, patch:string}} args
+ */
+export async function handlePatchFile({ file_path, patch }) {
+  let resolved;
+  try {
+    resolved = resolveSafePath(file_path);
+  } catch (err) {
+    return { success: false, output: err.message };
+  }
+
+  if (!fs.existsSync(resolved)) {
+    return { success: false, output: `Error: Berkas tidak ditemukan: ${file_path}` };
+  }
+  if (!fs.statSync(resolved).isFile()) {
+    return { success: false, output: `Error: Jalur tersebut bukan sebuah berkas: ${file_path}` };
+  }
+  if (typeof patch !== 'string' || !patch.trim()) {
+    return { success: false, output: 'Error: parameter "patch" wajib diisi (unified diff).' };
+  }
+
+  const fileText = fs.readFileSync(resolved, 'utf8');
+  const res = applyUnifiedDiff(fileText, patch);
+  if (!res.ok) {
+    const map = {
+      'no-hunks': 'tidak ada hunk yang dikenali — pastikan format unified diff (baris "@@ ... @@").',
+      'insert-only-hunk': 'hunk tanpa baris konteks/tanda "-" belum didukung; sertakan minimal satu baris konteks.',
+      'hunk-not-found': 'blok konteks salah satu hunk tidak ditemukan (isi berkas mungkin sudah berbeda).',
+    };
+    return {
+      success: false,
+      output: `Error: gagal menerapkan patch ke ${file_path}: ${map[res.reason] || res.reason}`,
+    };
+  }
+
+  fs.writeFileSync(resolved, res.text, 'utf8');
   return {
     success: true,
-    output: `Berhasil mengedit berkas ${file_path}`,
+    output: `Berhasil menerapkan patch (${res.applied} hunk) pada ${file_path}.`,
   };
 }
 
@@ -331,12 +437,68 @@ function terminateProcessTree(child) {
 }
 
 /**
- * Handler untuk menjalankan perintah terminal
+ * Handler untuk menjalankan perintah terminal.
+ * Mendukung eksekusi foreground (standar) maupun background task runner (asinkron).
  *
- * @param {{command:string, cwd?:string}} args
+ * @param {{command?:string, cwd?:string, run_in_background?:boolean, is_background?:boolean, action?:string, task_id?:string}} args
  * @param {{signal?:AbortSignal}} [options] - Signal pembatalan dari sesi chat.
  */
-export async function handleRunCommand({ command, cwd }, options = {}) {
+export async function handleRunCommand({
+  command,
+  cwd,
+  run_in_background = false,
+  is_background = false,
+  action = 'run',
+  task_id = null,
+} = {}, options = {}) {
+  // 1. Aksi stop / batalkan task latar belakang
+  if (action === 'stop') {
+    if (!task_id) {
+      return { success: false, output: 'Error: parameter "task_id" wajib diisi untuk menghentikan task.' };
+    }
+    const task = backgroundTasks.get(task_id);
+    if (!task) {
+      return { success: false, output: `Error: Task dengan id "${task_id}" tidak ditemukan.` };
+    }
+    stopBackgroundTask(task_id);
+    return {
+      success: true,
+      task_id,
+      status: 'stopped',
+      output: `Task ${task_id} (${task.command}) berhasil dihentikan.`,
+    };
+  }
+
+  // 2. Aksi status / query task latar belakang
+  if (action === 'status' || (!command && task_id)) {
+    const targetId = task_id;
+    if (!targetId) {
+      return { success: false, output: 'Error: parameter "task_id" wajib diisi untuk memeriksa status task.' };
+    }
+    const task = backgroundTasks.get(targetId);
+    if (!task) {
+      return { success: false, output: `Error: Task dengan id "${targetId}" tidak ditemukan.` };
+    }
+    const elapsed = Math.round(((task.completedAt || Date.now()) - task.startedAt) / 1000);
+    return {
+      success: true,
+      task_id: targetId,
+      status: task.status,
+      exitCode: task.exitCode,
+      output: `[Task ${targetId}] Status: ${task.status} (${elapsed}s, exit code: ${task.exitCode ?? 'running'})\nPerintah: ${task.command}\n\nOUTPUT:\n${task.output || '(belum ada output)'}`.trim(),
+    };
+  }
+
+  // 3. Aksi list background tasks
+  if (action === 'list') {
+    const list = listBackgroundTasks();
+    if (!list.length) {
+      return { success: true, output: 'Tidak ada background task yang sedang berjalan atau tersimpan.' };
+    }
+    const lines = list.map((t) => `• [${t.id}] (${t.status}) ${t.command}`);
+    return { success: true, output: `Daftar Background Task (${list.length}):\n${lines.join('\n')}` };
+  }
+
   if (!command || !command.trim()) {
     return {
       success: false,
@@ -375,6 +537,67 @@ export async function handleRunCommand({ command, cwd }, options = {}) {
         output: approval.message || `Perintah '${command}' dibatalkan oleh pengguna (butuh konfirmasi).`,
       };
     }
+  }
+
+  // Eksekusi di latar belakang jika diminta
+  const shouldBackground = Boolean(run_in_background || is_background);
+  if (shouldBackground) {
+    const taskId = `task_${Date.now().toString(36)}_${crypto.randomBytes(2).toString('hex')}`;
+    const isWindows = os.platform() === 'win32';
+    const shellOpt = isWindows ? (process.env.ComSpec || 'cmd.exe') : '/bin/bash';
+
+    const child = spawn(command, {
+      cwd: executionCwd,
+      shell: shellOpt,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    const taskRecord = {
+      id: taskId,
+      command,
+      cwd: executionCwd,
+      process: child,
+      status: 'running',
+      exitCode: null,
+      startedAt: Date.now(),
+      completedAt: null,
+      output: '',
+    };
+
+    backgroundTasks.set(taskId, taskRecord);
+
+    const appendOut = (chunk) => {
+      taskRecord.output += chunk.toString();
+      if (taskRecord.output.length > 5 * 1024 * 1024) {
+        taskRecord.output = taskRecord.output.slice(-4 * 1024 * 1024);
+      }
+    };
+
+    if (child.stdout) child.stdout.on('data', appendOut);
+    if (child.stderr) child.stderr.on('data', appendOut);
+
+    child.on('close', (code) => {
+      if (taskRecord.status === 'stopped') return;
+      taskRecord.status = code === 0 ? 'completed' : 'failed';
+      taskRecord.exitCode = code;
+      taskRecord.completedAt = Date.now();
+    });
+
+    child.on('error', (err) => {
+      if (taskRecord.status === 'stopped') return;
+      taskRecord.status = 'failed';
+      taskRecord.exitCode = 1;
+      taskRecord.output += `\nError: ${err.message}`;
+      taskRecord.completedAt = Date.now();
+    });
+
+    return {
+      success: true,
+      task_id: taskId,
+      status: 'running',
+      output: `Perintah dijalankan di latar belakang (task_id: ${taskId}).\nGunakan run_command dengan action="status" dan task_id="${taskId}" untuk memeriksa output.`,
+    };
   }
 
   return new Promise((resolve) => {

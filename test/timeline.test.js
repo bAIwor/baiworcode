@@ -10,6 +10,10 @@ import {
   formatTodoProgress,
   renderTodoChecklist,
   toolColorHex,
+  toolLabel,
+  TOOL_LABELS,
+  PUNAKAWAN_ROLES,
+  PUNAKAWAN_COLORS,
 } from '../src/chat/timeline.js';
 
 describe('Timeline: Format Durasi', () => {
@@ -181,7 +185,7 @@ describe('Timeline: Render Pohon', () => {
 
   it('harus menampilkan nama tool, durasi, dan jumlah baris output', () => {
     const out = renderTimeline(sample, { useColor: false });
-    assert.match(out, /read_file/);
+    assert.match(out, /Baca berkas/);
     assert.match(out, /120ms/);
     assert.match(out, /3 baris/);
     assert.match(out, /1\.5s/);
@@ -207,7 +211,7 @@ describe('Timeline: Render Pohon', () => {
   it('harus memakai stem │ pada baris lanjutan node non-terakhir', () => {
     const out = renderTimeline(sample, { useColor: false });
     const lines = out.split('\n');
-    const idx = lines.findIndex((l) => l.includes('read_file'));
+    const idx = lines.findIndex((l) => l.includes('Baca berkas'));
     assert.ok(lines[idx + 1].includes('│'), 'baris lanjutan node pertama harus memakai │');
   });
 
@@ -222,7 +226,7 @@ describe('Timeline: Render Pohon', () => {
       [{ name: 'todo_list', args: undefined, durationMs: 3, output: '', success: true }],
       { useColor: false }
     );
-    assert.ok(out.includes('todo_list'));
+    assert.ok(out.includes('Daftar tugas'));
     assert.ok(out.includes('selesai'));
     // Baris kosong di ekor tidak boleh muncul.
     assert.equal(out.endsWith('\n'), false);
@@ -230,8 +234,8 @@ describe('Timeline: Render Pohon', () => {
 
   it('harus menyaring event null di tengah daftar', () => {
     const out = renderTimeline([sample[0], null, sample[1]], { useColor: false });
-    assert.ok(out.includes('read_file'));
-    assert.ok(out.includes('search_files'));
+    assert.ok(out.includes('Baca berkas'));
+    assert.ok(out.includes('Cari berkas'));
   });
 
   it('harus menandai node yang berjalan dengan frame spinner dan durasi …', () => {
@@ -262,19 +266,20 @@ describe('Timeline: Render Pohon', () => {
 });
 
 describe('Timeline: Warna Tool', () => {
-  it('harus memberi warna berbeda per kategori tool', () => {
-    const names = [
-      'read_file',
-      'list_directory',
-      'search_files',
-      'write_file',
-      'edit_file',
-      'run_command',
-      'todo_list',
-    ];
-    const hexes = names.map(toolColorHex);
-    for (const hex of hexes) assert.match(hex, /^#[0-9A-Fa-f]{6}$/);
-    assert.equal(new Set(hexes).size, names.length, 'setiap tool harus punya warna unik');
+  it('harus memetakan tool ke warna kategori opencode CLI', () => {
+    // read = info (cyan), write/edit = success (hijau), run = error (merah),
+    // list/search = secondary (biru), todo = warning (oranye tua).
+    assert.equal(toolColorHex('read_file'), '#56b6c2');
+    assert.equal(toolColorHex('write_file'), '#7fd88f');
+    assert.equal(toolColorHex('edit_file'), '#7fd88f');
+    assert.equal(toolColorHex('run_command'), '#e06c75');
+    assert.equal(toolColorHex('list_directory'), '#5c9cf5');
+    assert.equal(toolColorHex('search_files'), '#5c9cf5');
+    assert.equal(toolColorHex('todo_list'), '#f5a742');
+    assert.equal(toolColorHex('patch_file'), '#7fd88f');
+    assert.equal(toolColorHex('webfetch'), '#56b6c2');
+    assert.equal(toolColorHex('websearch'), '#5c9cf5');
+    assert.equal(toolColorHex('diagnostics'), '#f5a742');
   });
 
   it('harus memakai warna cadangan untuk tool tak dikenal', () => {
@@ -421,9 +426,9 @@ describe('Timeline: Integrasi Detail ke Pohon', () => {
 
   it('harus menjorok seluruh baris detail selaras dengan batang pohon', () => {
     const out = renderTimeline([event], { useColor: false }).split('\n');
-    assert.ok(out[1].startsWith('      ✓ Satu'), `baris: ${JSON.stringify(out[1])}`);
-    assert.ok(out[2].startsWith('      ◐ Dua'));
-    assert.ok(out[3].startsWith('      ○ Tiga'));
+    assert.ok(out[1].startsWith('        ✓ Satu'), `baris: ${JSON.stringify(out[1])}`);
+    assert.ok(out[2].startsWith('        ◐ Dua'));
+    assert.ok(out[3].startsWith('        ○ Tiga'));
   });
 
   it('harus tetap memakai ringkasan biasa bila detail kosong', () => {
@@ -438,3 +443,89 @@ describe('Timeline: Integrasi Detail ke Pohon', () => {
     assert.ok(out.includes('todos: "(3 item)"'));
   });
 });
+
+describe('Timeline: Tim Punakawan AI (Aktor & Penamaan)', () => {
+  it('harus memetakan peran tool ke karakter Punakawan yang tepat', () => {
+    assert.equal(PUNAKAWAN_ROLES.read_file, 'pAItruk');
+    assert.equal(PUNAKAWAN_ROLES.list_directory, 'pAItruk');
+    assert.equal(PUNAKAWAN_ROLES.search_files, 'pAItruk');
+    assert.equal(PUNAKAWAN_ROLES.write_file, 'bAIwor');
+    assert.equal(PUNAKAWAN_ROLES.edit_file, 'bAIwor');
+    assert.equal(PUNAKAWAN_ROLES.run_command, 'gAIreng');
+    assert.equal(PUNAKAWAN_ROLES.todo_list, 'semAIr');
+    assert.equal(PUNAKAWAN_ROLES.patch_file, 'bAIwor');
+    assert.equal(PUNAKAWAN_ROLES.webfetch, 'pAItruk');
+    assert.equal(PUNAKAWAN_ROLES.websearch, 'pAItruk');
+    assert.equal(PUNAKAWAN_ROLES.diagnostics, 'gAIreng');
+  });
+
+  it('harus memuat warna khas untuk setiap anggota Punakawan', () => {
+    assert.ok(PUNAKAWAN_COLORS.semAIr);
+    assert.ok(PUNAKAWAN_COLORS.bAIwor);
+    assert.ok(PUNAKAWAN_COLORS.pAItruk);
+    assert.ok(PUNAKAWAN_COLORS.gAIreng);
+  });
+
+  it('harus menampilkan nama karakter Punakawan di samping nama tool pada timeline', () => {
+    const sample = [
+      { name: 'read_file', args: { path: 'a.js' }, durationMs: 10, success: true },
+      { name: 'write_file', args: { path: 'b.js' }, durationMs: 20, success: true },
+      { name: 'run_command', args: { command: 'npm test' }, durationMs: 30, success: true },
+      { name: 'todo_list', args: {}, durationMs: 5, success: true },
+    ];
+    const out = renderTimeline(sample, { useColor: false });
+    assert.ok(out.includes('pAItruk · Baca berkas'));
+    assert.ok(out.includes('bAIwor · Tulis berkas'));
+    assert.ok(out.includes('gAIreng · Jalankan perintah'));
+    assert.ok(out.includes('semAIr · Daftar tugas'));
+  });
+
+  it('harus tetap menyertakan nama karakter Punakawan saat tool gagal', () => {
+    const out = renderTimeline(
+      [{ name: 'run_command', args: {}, durationMs: 5, output: 'gagal', success: false }],
+      { useColor: false }
+    );
+    assert.ok(out.includes('gAIreng · Jalankan perintah'));
+    assert.ok(out.includes('✗'));
+  });
+
+  it('harus tetap menyertakan nama karakter Punakawan saat tool sedang berjalan', () => {
+    const out = renderTimeline(
+      [{ name: 'search_files', args: { pattern: 'test' }, running: true }],
+      { useColor: false }
+    );
+    assert.ok(out.includes('pAItruk · Cari berkas'));
+    assert.ok(out.includes('…'));
+  });
+});
+
+describe('Timeline: Nama Tampilan Tool (Indonesia ramah)', () => {
+  it('harus memetakan tiap tool ke label yang ramah', () => {
+    assert.equal(toolLabel('read_file'), 'Baca berkas');
+    assert.equal(toolLabel('write_file'), 'Tulis berkas');
+    assert.equal(toolLabel('edit_file'), 'Ubah berkas');
+    assert.equal(toolLabel('list_directory'), 'Lihat folder');
+    assert.equal(toolLabel('search_files'), 'Cari berkas');
+    assert.equal(toolLabel('run_command'), 'Jalankan perintah');
+    assert.equal(toolLabel('todo_list'), 'Daftar tugas');
+    assert.equal(toolLabel('patch_file'), 'Terapkan patch');
+    assert.equal(toolLabel('webfetch'), 'Ambil halaman');
+    assert.equal(toolLabel('websearch'), 'Cari di web');
+    assert.equal(toolLabel('diagnostics'), 'Periksa mutu');
+  });
+
+  it('harus jatuh ke nama teknis untuk tool yang tak dikenal', () => {
+    assert.equal(toolLabel('tool_ajaib'), 'tool_ajaib');
+    assert.equal(TOOL_LABELS.tool_ajaib, undefined);
+  });
+
+  it('harus menampilkan label ramah, bukan nama teknis, di timeline', () => {
+    const out = renderTimeline(
+      [{ name: 'read_file', args: { path: 'a.js' }, durationMs: 10, success: true, output: 'ok' }],
+      { useColor: false }
+    );
+    assert.ok(out.includes('Baca berkas'));
+    assert.ok(!out.includes('read_file'));
+  });
+});
+

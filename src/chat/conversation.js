@@ -1,5 +1,12 @@
 import { getSystemPrompt } from './systemPrompt.js';
 import { estimateMessagesTokens, resolveContextWindow } from './context.js';
+import {
+  generateSessionId,
+  deriveSessionTitle,
+  saveSession,
+  loadSession,
+  getLatestSession,
+} from './sessionManager.js';
 
 /**
  * Pengelola riwayat percakapan (Conversation History) multi-turn.
@@ -9,6 +16,8 @@ import { estimateMessagesTokens, resolveContextWindow } from './context.js';
 export class Conversation {
   constructor() {
     this.messages = [];
+    this.sessionId = null;
+    this.sessionTitle = null;
     this.reset();
   }
 
@@ -16,6 +25,8 @@ export class Conversation {
    * Mengosongkan riwayat percakapan dan menginisialisasi ulang dengan System Prompt.
    */
   reset() {
+    this.sessionId = generateSessionId();
+    this.sessionTitle = null;
     this.messages = [
       {
         role: 'system',
@@ -198,6 +209,66 @@ export class Conversation {
       removed: before - this.messages.length,
       stillOverBudget: estimateMessagesTokens(this.messages) > budget,
     };
+  }
+
+  /**
+   * Menyimpan sesi aktif ke disk.
+   * Hanya menyimpan jika sudah ada interaksi user (tidak menyimpan sesi kosong).
+   *
+   * @param {object} [options]
+   * @param {string} [options.model]
+   * @param {string} [options.provider]
+   * @param {string} [options.projectPath]
+   * @param {string} [options.baseConfigDir]
+   * @returns {object|null}
+   */
+  saveToDisk({ model = null, provider = null, projectPath = process.cwd(), baseConfigDir } = {}) {
+    if (this.getUserTurnCount() === 0) return null;
+    return saveSession(
+      {
+        id: this.sessionId,
+        title: this.sessionTitle || deriveSessionTitle(this.messages),
+        model,
+        provider,
+        messages: this.messages,
+      },
+      { projectPath, baseConfigDir }
+    );
+  }
+
+  /**
+   * Memuat sesi dari disk berdasarkan ID sesi.
+   *
+   * @param {string} sessionId
+   * @param {object} [options]
+   * @param {string} [options.projectPath]
+   * @param {string} [options.baseConfigDir]
+   * @returns {boolean}
+   */
+  loadFromDisk(sessionId, { projectPath = process.cwd(), baseConfigDir } = {}) {
+    const data = loadSession(sessionId, { projectPath, baseConfigDir });
+    if (!data || !Array.isArray(data.messages)) return false;
+    this.sessionId = data.id;
+    this.sessionTitle = data.title || null;
+    this.messages = data.messages;
+    return true;
+  }
+
+  /**
+   * Melanjutkan sesi terakhir yang paling baru diupdate untuk proyek ini.
+   *
+   * @param {object} [options]
+   * @param {string} [options.projectPath]
+   * @param {string} [options.baseConfigDir]
+   * @returns {boolean}
+   */
+  resumeLatest({ projectPath = process.cwd(), baseConfigDir } = {}) {
+    const data = getLatestSession({ projectPath, baseConfigDir });
+    if (!data || !Array.isArray(data.messages)) return false;
+    this.sessionId = data.id;
+    this.sessionTitle = data.title || null;
+    this.messages = data.messages;
+    return true;
   }
 }
 

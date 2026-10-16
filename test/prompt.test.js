@@ -332,7 +332,7 @@ describe('Prompt: Perilaku CLI Saat Dipipe', () => {
 describe('Prompt: Daftar Perintah', () => {
   it('harus memuat perintah inti yang dipakai README', () => {
     const names = COMMANDS.map((c) => c.name);
-    for (const wajib of ['/help', '/status', '/model', '/clear', '/exit']) {
+    for (const wajib of ['/help', '/status', '/model', '/clear', '/exit', '/q']) {
       assert.ok(names.includes(wajib), `perintah ${wajib} hilang`);
     }
   });
@@ -341,6 +341,17 @@ describe('Prompt: Daftar Perintah', () => {
     for (const cmd of COMMANDS) {
       assert.ok(cmd.desc && cmd.desc.length > 0, `${cmd.name} tidak punya deskripsi`);
     }
+  });
+
+  it('harus keluar dengan bersih saat menerima input /q', () => {
+    const out = polos(
+      execFileSync(process.execPath, [BIN], {
+        input: '/q\n',
+        encoding: 'utf8',
+        timeout: 30_000,
+      })
+    );
+    assert.match(out, /Matur nuwun! Sampun nganggo bAIwor Code/);
   });
 });
 

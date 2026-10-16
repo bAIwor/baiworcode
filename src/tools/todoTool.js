@@ -60,6 +60,7 @@ export class TodoStore {
 
     this.items = this.items.slice(0, MAX_TODO_ITEMS);
     TodoStore.#sanitizeParents(this.items);
+    TodoStore.#enforceSingleActive(this.items);
 
     if (JSON.stringify(this.items) !== JSON.stringify(before)) {
       this.revision += 1;
@@ -152,6 +153,19 @@ export class TodoStore {
         }
         seen.add(node.parent);
         node = byId.get(node.parent);
+      }
+    }
+  }
+
+  static #enforceSingleActive(items) {
+    let seenActive = false;
+    for (const item of items) {
+      if (item.status === 'in_progress') {
+        if (!seenActive) {
+          seenActive = true;
+        } else {
+          item.status = 'pending';
+        }
       }
     }
   }

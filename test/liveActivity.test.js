@@ -51,7 +51,7 @@ describe('LiveActivity: Menggambar Blok', () => {
 
     const last = stream.last();
     assert.ok(last.startsWith('\x1b[J'), 'gambar pertama tidak boleh memindah kursor ke atas');
-    assert.ok(last.includes('read_file'));
+    assert.ok(last.includes('Baca berkas'));
     assert.ok(last.includes('⠋'), 'frame pertama harus tampil');
     assert.ok(last.includes('…'));
     live.stop();
@@ -108,7 +108,7 @@ describe('LiveActivity: Suspend/Resume', () => {
     assert.equal(stream.last(), `\x1b[${drawn}A\x1b[J`, 'suspend hanya menghapus blok');
 
     live.resume();
-    assert.ok(stream.last().includes('run_command'), 'resume menggambar ulang isi blok');
+    assert.ok(stream.last().includes('Jalankan perintah'), 'resume menggambar ulang isi blok');
     live.stop();
   });
 
@@ -138,7 +138,7 @@ describe('LiveActivity: Commit', () => {
     assert.equal(live.events.length, 0);
     assert.equal(live.renderedLines, 0);
     assert.equal(stream.chunks.length, before, 'commit tidak mencetak apa pun lagi');
-    assert.ok(stream.last().includes('read_file'));
+    assert.ok(stream.last().includes('Baca berkas'));
   });
 });
 

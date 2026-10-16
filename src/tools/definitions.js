@@ -54,7 +54,7 @@ export const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'edit_file',
-      description: 'Mengganti potongan kode atau teks tertentu dalam file yang sudah ada (search and replace). Sangat efisien untuk refactoring atau bug-fixing tanpa menulis ulang seluruh file.',
+      description: 'Mengganti potongan kode atau teks tertentu dalam file yang sudah ada (search and replace). Sangat efisien untuk refactoring atau bug-fixing tanpa menulis ulang seluruh file. Pencocokan toleran terhadap perbedaan indentasi/spasi ujung. Untuk banyak perubahan sekaligus, gunakan parameter "edits".',
       parameters: {
         type: 'object',
         properties: {
@@ -64,14 +64,49 @@ export const TOOL_DEFINITIONS = [
           },
           old_content: {
             type: 'string',
-            description: 'Potongan teks atau kode asli yang persis ingin diganti (harus unik di dalam file).',
+            description: 'Potongan teks atau kode asli yang ingin diganti. Tidak wajib unik bila replace_all=true.',
           },
           new_content: {
             type: 'string',
             description: 'Potongan kode atau teks baru penggantinya.',
           },
+          replace_all: {
+            type: 'boolean',
+            description: 'true: ganti SEMUA kemunculan old_content, bukan hanya yang unik. Default: false.',
+          },
+          edits: {
+            type: 'array',
+            description: 'Banyak perubahan sekaligus, diterapkan berurutan secara atomik (semua berhasil atau tidak ada yang ditulis). Bila diisi, old_content/new_content tingkat atas diabaikan.',
+            items: {
+              type: 'object',
+              properties: {
+                old_content: { type: 'string', description: 'Teks asli yang diganti.' },
+                new_content: { type: 'string', description: 'Teks pengganti.' },
+                replace_all: { type: 'boolean', description: 'Ganti semua kemunculan untuk edit ini.' },
+              },
+              required: ['old_content', 'new_content'],
+            },
+          },
         },
-        required: ['file_path', 'old_content', 'new_content'],
+        required: ['file_path'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'patch_file',
+      description: 'Menerapkan unified diff (format patch "git diff") ke sebuah file. Blok konteks dicari ulang sehingga patch tetap berlaku walau nomor baris bergeser. Cocok untuk menerapkan beberapa perubahan sekaligus dari sebuah diff.',
+      parameters: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string', description: 'Jalur file yang akan dipatch.' },
+          patch: {
+            type: 'string',
+            description: 'Isi unified diff. Contoh:\n@@ -1,3 +1,3 @@\n baris konteks\n-baris lama\n+baris baru\n baris konteks lain',
+          },
+        },
+        required: ['file_path', 'patch'],
       },
     },
   },
@@ -103,7 +138,7 @@ export const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'run_command',
-      description: 'Mengeksekusi perintah shell / terminal di komputer pengguna (misal: "npm test", "git status", "node script.js").',
+      description: 'Mengeksekusi perintah shell / terminal di komputer pengguna (misal: "npm test", "git status", "node script.js"). Mendukung eksekusi asinkron di latar belakang (run_in_background: true) dan pemantauan status tugas via task_id.',
       parameters: {
         type: 'object',
         properties: {
@@ -114,6 +149,19 @@ export const TOOL_DEFINITIONS = [
           cwd: {
             type: 'string',
             description: 'Direktori kerja tempat perintah dijalankan (opsional, default ke folder aktif pengguna).',
+          },
+          run_in_background: {
+            type: 'boolean',
+            description: 'Jalankan perintah di latar belakang secara asinkron tanpa memblokir giliran, mengembalikan task_id. Default: false.',
+          },
+          task_id: {
+            type: 'string',
+            description: 'ID task latar belakang yang ingin diperiksa atau dihentikan.',
+          },
+          action: {
+            type: 'string',
+            enum: ['run', 'status', 'stop', 'list'],
+            description: 'Aksi task: "run" (default), "status" (cek output task), "stop" (batalkan task), atau "list" (daftar semua task).',
           },
         },
         required: ['command'],
@@ -177,6 +225,133 @@ export const TOOL_DEFINITIONS = [
             description: 'true: perbarui item yang sudah ada berdasarkan id dan tambahkan yang baru. false (default): ganti seluruh daftar dengan rencana baru.',
           },
         },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'webfetch',
+      description: 'Mengambil isi sebuah URL (http/https) dan mengembalikannya sebagai teks yang sudah dibersihkan. Gunakan untuk membaca dokumentasi, catatan rilis, pesan galat dari forum, atau halaman API — tanpa perlu perintah curl.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: 'URL lengkap yang ingin diambil (misal: "https://nodejs.org/api/fs.html").',
+          },
+          max_chars: {
+            type: 'integer',
+            description: 'Batas maksimum karakter yang dikembalikan. Default: 20000.',
+          },
+          raw: {
+            type: 'boolean',
+            description: 'true: kembalikan isi mentah apa adanya (tanpa mengubah HTML jadi teks). Default: false.',
+          },
+        },
+        required: ['url'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'websearch',
+      description: 'Mencari informasi terbaru di web (mesin DuckDuckGo, tanpa API key) dan mengembalikan daftar judul, URL, dan ringkasan. Pakai untuk menemukan dokumentasi, solusi galat, atau rilis paket terbaru.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Kata kunci pencarian (misal: "nodejs fetch timeout abortcontroller").',
+          },
+          max_results: {
+            type: 'integer',
+            description: 'Jumlah maksimum hasil (1-10). Default: 5.',
+          },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'diagnostics',
+      description: 'Menjalankan pemeriksaan mutu proyek (script lint/typecheck/check pada package.json, atau tsc/eslint bila terdeteksi) dan mengembalikan hasilnya. Panggil SEBELUM menyatakan tugas selesai untuk memastikan tidak ada galat tipe atau pelanggaran lint.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Direktori proyek yang diperiksa (default: "." untuk direktori aktif).',
+          },
+          commands: {
+            type: 'array',
+            description: 'Override: daftar perintah yang dijalankan berurutan. Bila kosong, perintah dideteksi otomatis.',
+            items: { type: 'string' },
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delegate_task',
+      description: 'Mendelegasikan investigasi atau verifikasi ke subagent Punakawan terisolasi (pAItruk untuk eksplorasi/pencarian read-only, gAIreng untuk audit/uji/lint). Subagent berjalan di loop konteks terpisah dan hanya mengembalikan laporan sintesis sehingga konteks utama tetap bersih.',
+      parameters: {
+        type: 'object',
+        properties: {
+          role: {
+            type: 'string',
+            enum: ['pAItruk', 'gAIreng', 'bAIwor'],
+            description: 'Peran subagent: "pAItruk" (Scout/Read-only: read_file, search_files, list_directory, webfetch, websearch), "gAIreng" (Auditor: test, lint, diagnostics, read_file), atau "bAIwor" (Worker: sub-tugas kode terarah).',
+          },
+          task: {
+            type: 'string',
+            description: 'Instruksi spesifik yang harus dikerjakan oleh subagent.',
+          },
+          context: {
+            type: 'string',
+            description: 'Informasi atau konteks tambahan yang relevan untuk membantu subagent.',
+          },
+          max_turns: {
+            type: 'integer',
+            description: 'Batas maksimum putaran LLM-tool subagent (default: 8, max: 20).',
+          },
+        },
+        required: ['role', 'task'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'ask_user',
+      description: 'Mengajukan pertanyaan interaktif dengan pilihan jawaban kepada pengguna ketika membutuhkan konfirmasi arsitektur, pemilihan library, preferensi teknis, atau klarifikasi sebelum melanjutkan pekerjaan.',
+      parameters: {
+        type: 'object',
+        properties: {
+          question: {
+            type: 'string',
+            description: 'Teks pertanyaan yang diajukan ke pengguna (misal: "Pilih skema state management yang diinginkan:").',
+          },
+          options: {
+            type: 'array',
+            description: 'Daftar pilihan jawaban yang dapat dipilih oleh pengguna.',
+            items: { type: 'string' },
+          },
+          multi_select: {
+            type: 'boolean',
+            description: 'true: izinkan pengguna memilih lebih dari satu opsi (checkbox). Default: false.',
+          },
+          default_option: {
+            type: 'string',
+            description: 'Pilihan default yang direkomendasikan sistem.',
+          },
+        },
+        required: ['question', 'options'],
       },
     },
   },

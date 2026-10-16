@@ -7,8 +7,11 @@ import { todoStore, resetTodoStore } from '../tools/todoTool.js';
 import { renderTimeline, renderTodoChecklist, formatTodoProgress } from './timeline.js';
 import { LiveActivity } from './liveActivity.js';
 import { AnswerStyler } from './answerStyle.js';
+import { createOutputWriter } from './outputWriter.js';
 import { classifyCommand } from '../tools/sandbox.js';
 import { getContextUsage, formatContextWarning } from './context.js';
+import { autoCompactConversation } from './compact.js';
+import { parseDeliverAssetsContent, renderDeliverableCard } from './deliverables.js';
 
 export { conversationSession };
 
@@ -40,10 +43,11 @@ const TIMEOUT_ERROR_CODES = new Set([
 ]);
 
 /**
- * Batas putaran model-tool dalam satu permintaan. Cukup lega untuk tugas
- * bertahap, tapi tetap mencegah loop tak berujung menguras kuota.
+ * Batas putaran model-tool dalam satu permintaan. Dibuat sangat lega (100)
+ * agar bAIwor bebas menuntaskan tugas besar tanpa dipotong paksa di tengah jalan.
+ * Pengaman utama adalah deteksi perulangan macet (stuckLoop).
  */
-const MAX_AGENT_TURNS = 12;
+const MAX_AGENT_TURNS = 100;
 
 /**
  * Berapa kali rangkaian tool yang persis sama boleh terulang sebelum dianggap
@@ -172,6 +176,7 @@ export async function handleUserChat(promptText) {
    * dulu agar hitungan baris tidak melenceng dan tampilan tidak rusak.
    */
   const toolMayPrompt = (fnName, args) => {
+    if (fnName === 'ask_user') return true;
     if (fnName !== 'run_command' || !args || !args.command) return false;
     return classifyCommand(String(args.command), { workspace: process.cwd() }).decision === 'confirm';
   };
@@ -209,9 +214,49 @@ export async function handleUserChat(promptText) {
    * giliran kesimpulan akhir (yang dikirim tanpa definisi tool).
    */
   const runModelTurn = async ({ messages, tools, spinnerText }) => {
+    const isTTY = Boolean(process.stdout.isTTY);
+    // Indentasi 2 spasi pada keluaran AI agar selaras dengan elemen UI lain
+    // (banner, status line, timeline tool) yang semuanya memakai indentasi 2 spasi.
+    // Hanya diterapkan di TTY; di luar TTY (pipe/redirect) tidak ada indentasi agar
+    // keluaran berkas tetap bersih.
+    const INDENT = isTTY ? '  ' : '';
+    const columns = process.stdout.columns || 80;
+
+    /**
+     * Penulis keluaran yang membungkus baris panjang secara sadar.
+     *
+     * Dulu cukup menambahkan indent pada newline eksplisit. Itu bekerja untuk
+     * baris pendek, tapi begitu sebuah baris melewati lebar terminal, terminal
+     * membungkusnya sendiri ke kolom 0 — tanpa indentasi. Hasilnya baris kedua
+     * (dan seterusnya) mepet kiri sementara baris pertama terindentasi rapi.
+     *
+     * Penulis ini memotong baris di batas kata dan memberi setiap baris
+     * lanjutan *hanging indent* sejajar dengan isi baris pertama, sehingga
+     * seluruh blok jawaban tetap berkolom.
+     *
+     * Blok kode sengaja dilewati: isinya harus tetap utuh apa adanya.
+     */
+    const writer = createOutputWriter({
+      out: process.stdout,
+      indent: INDENT,
+      width: Math.max(20, columns - INDENT.length),
+    });
+
+    const writeStyled = (text) => {
+      if (!text) return;
+      if (styler.inCodeBlock) {
+        writer.writeVerbatim(text);
+        return;
+      }
+      writer.write(text);
+    };
     let isReasoningActive = false;
+    // Menandai apakah giliran ini benar-benar mencetak sesuatu (thinking atau
+    // teks jawaban) ke layar. Dipakai pemanggil untuk memutuskan perlu-tidaknya
+    // memberi newline pemisah sebelum blok tool berikutnya.
+    let printed = false;
     // Pewarna markdown hanya untuk tampilan; riwayat percakapan tetap teks mentah.
-    const styler = new AnswerStyler({ useColor: Boolean(process.stdout.isTTY) });
+    const styler = new AnswerStyler({ useColor: isTTY });
     startThinkingSpinner(spinnerText);
     try {
       const result = await streamChatCompletion({
@@ -221,30 +266,54 @@ export async function handleUserChat(promptText) {
         signal: controller.signal,
         onStart: () => {
           stopThinkingSpinner();
-          // Bersihkan baris spinner dan buat baris baru untuk output jawaban
-          clearSpinnerLine('\n');
+          // Bersihkan baris spinner TANPA pindah baris: keluaran berikutnya
+          // (thinking/jawaban) langsung ditulis di baris spinner tadi, sehingga
+          // tidak menyisakan baris kosong ekstra. Dulu di sini diberi '\n'
+          // sehingga menambah satu baris kosong lagi sebelum jawaban.
+          //
+          // Indentasi awal TIDAK dicetak di sini: writer sudah menambahkan
+          // indentasi sendiri pada setiap baris.
+          clearSpinnerLine();
+          writer.reset();
         },
         onReasoning: (chunk) => {
           if (!isReasoningActive) {
             isReasoningActive = true;
-            process.stdout.write(chalk.dim.gray('💭 Thinking: '));
+            process.stdout.write(chalk.dim.gray('💭 Thinking:'));
           }
-          process.stdout.write(chalk.dim.gray(chunk));
+          process.stdout.write(chalk.dim.gray(writer.wrapReasoning(chunk)));
+          printed = true;
         },
         onDelta: (chunk) => {
           if (isReasoningActive) {
             isReasoningActive = false;
-            process.stdout.write('\n\n');
+            // Tuntaskan sisa baris reasoning yang masih tertahan di buffer
+            // (dengan warna redup yang sama), lalu beri TEPAT satu baris kosong
+            // sebelum jawaban. Dulu di sini ditulis dua newline ('\n\n')
+            // padahal baris reasoning terakhir sudah berakhir newline, sehingga
+            // muncul dua baris kosong dan jarak thinking→jawaban terlihat
+            // terlalu jauh. Satu newline sudah cukup.
+            process.stdout.write(chalk.dim.gray(writer.wrapReasoning('\n')));
+            process.stdout.write('\n');
           }
           try {
-            process.stdout.write(styler.push(chunk));
+            const styled = styler.push(chunk);
+            if (styled) {
+              writeStyled(styled);
+              printed = true;
+            }
           } catch {
-            process.stdout.write(chunk); // pengaman: jawaban tak boleh hilang
+            writeStyled(chunk);
+            printed = true;
           }
         },
       });
-      process.stdout.write(styler.flush());
-      return result;
+      const flushed = styler.flush();
+      if (flushed) {
+        writeStyled(flushed);
+      }
+      writer.flush();
+      return { ...(result || {}), printed };
     } finally {
       stopThinkingSpinner();
     }
@@ -273,7 +342,7 @@ export async function handleUserChat(promptText) {
       const wrap = await runModelTurn({
         messages,
         tools: [],
-        spinnerText: 'bAIwor sedang menyusun kesimpulan...',
+        spinnerText: 'semAIr sedang menyusun kesimpulan akhir...',
       });
       finalText = (wrap?.content || '').trim();
     } catch (err) {
@@ -301,6 +370,18 @@ export async function handleUserChat(promptText) {
     while (currentTurn < MAX_AGENT_TURNS) {
       currentTurn++;
 
+      // Pemadatan otomatis (auto-compact) jika konteks mencapai ambang batas (>= 80%)
+      try {
+        const autoCompactRes = await autoCompactConversation(conversationSession, {
+          model: credentials.model,
+        });
+        if (autoCompactRes.triggered) {
+          process.stdout.write(
+            chalk.cyan(`\n  ⚡ [Auto-Compact] Konteks percakapan mencapai ${autoCompactRes.percentBefore}% (~${autoCompactRes.tokensBefore} token).\n     Rangkuman dibuat otomatis (hemat ${autoCompactRes.savedTokens} token). Snapshot tersimpan.\n\n`)
+          );
+        }
+      } catch {}
+
       // Pastikan riwayat muat dalam context window SEBELUM request dikirim.
       // Pemangkasan lama berbasis jumlah pesan bisa membiarkan permintaan lolos
       // ke provider padahal isinya jauh melampaui jendela konteks.
@@ -320,8 +401,8 @@ export async function handleUserChat(promptText) {
         tools: TOOL_DEFINITIONS,
         spinnerText:
           currentTurn === 1
-            ? 'bAIwor sedang berpikir...'
-            : 'bAIwor sedang menganalisis hasil tool...',
+            ? 'semAIr sedang merancang strategi...'
+            : 'bAIwor sedang menimbang & mengolah hasil tool...',
       });
       hasFirstTurnSucceeded = true;
 
@@ -330,7 +411,12 @@ export async function handleUserChat(promptText) {
         // Simpan pesan asisten beserta tool_calls ke histori
         conversationSession.addAssistantMessage(result.content || '', result.tool_calls);
 
-        process.stdout.write('\n');
+        // Jarak antara uraian naratif dan blok tool. Di TTY, bila giliran ini
+        // tidak mencetak teks/thinking sama sekali, baris spinner tadi sudah
+        // dipakai ulang sebagai baris pertama blok — newline tambahan justru
+        // menyisakan baris kosong ganda. Di luar TTY (tanpa spinner) newline
+        // tetap diperlukan agar blok tidak menempel pada keluaran sebelumnya.
+        if (result.printed || !live.enabled) process.stdout.write('\n');
 
         // Kumpulkan aktivitas tool satu putaran ini. Di TTY blok digambar
         // ulang secara langsung (langkah muncul satu per satu); di luar TTY
@@ -385,9 +471,11 @@ export async function handleUserChat(promptText) {
         }
 
         if (live.enabled) {
-          // Blok sudah tampil lengkap di layar; cukup beri jarak satu baris.
+          // Blok sudah tampil lengkap di layar. Jarak satu baris sebelum giliran
+          // berikutnya disediakan oleh spinner (newline pembuka di
+          // startThinkingSpinner) — jadi JANGAN tambah newline di sini agar
+          // tidak muncul baris kosong ganda antara blok tool dan thinking.
           live.commit();
-          process.stdout.write('\n');
         } else {
           const block = renderTimeline(turnEvents, { useColor: false });
           if (block) process.stdout.write(`${block}\n\n`);
@@ -408,6 +496,17 @@ export async function handleUserChat(promptText) {
 
       // Jika tidak ada tool calls, berarti respons akhir (final answer) sudah selesai
       conversationSession.addAssistantMessage(result.content || '');
+
+      // Jika model menyertakan penanda <deliver-assets>, render kartu deliverable terminal
+      if (result.content && /<deliver-assets>[\s\S]*?<\/deliver-assets>/i.test(result.content)) {
+        const match = result.content.match(/<deliver-assets>([\s\S]*?)<\/deliver-assets>/i);
+        const items = parseDeliverAssetsContent(match ? match[1] : '');
+        if (items.length > 0) {
+          const card = renderDeliverableCard(items, { useColor: Boolean(process.stdout.isTTY) });
+          process.stdout.write(`\n${card}\n`);
+        }
+      }
+
       process.stdout.write('\n\n');
 
       completedNaturally = true;

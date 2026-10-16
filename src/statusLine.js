@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { getConfig } from './config.js';
+import { theme } from './theme.js';
 import { conversationSession } from './chat/conversation.js';
 import { getContextUsage, formatContextIndicator } from './chat/context.js';
 
@@ -107,11 +108,11 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
   const bar = chalk.gray('│');
 
   const build = ({ detail, withProvider, withAccess, withPrefix }) => {
-    const parts = [chalk.cyan('~')];
-    if (withAccess) parts.push(bar, chalk.whiteBright('Full access'));
-    if (withPrefix && prefix) parts.push(bar, chalk.cyan(prefix));
-    parts.push(bar, chalk.magenta('✦'), chalk.hex('#F59E0B')(model));
-    if (withProvider) parts.push(chalk.gray('·'), chalk.cyan(provider));
+    const parts = [theme.info('~')];
+    if (withAccess) parts.push(bar, theme.text('Full access'));
+    if (withPrefix && prefix) parts.push(bar, theme.info(prefix));
+    parts.push(bar, theme.accent('✦'), theme.primary(model));
+    if (withProvider) parts.push(chalk.gray('·'), theme.info(provider));
     parts.push(bar, formatContextIndicator(usage, { detail }));
     return indent + parts.join(' ');
   };
@@ -139,14 +140,14 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
     const line =
       indent +
       [
-        chalk.cyan('~'),
+        theme.info('~'),
         bar,
-        chalk.magenta('✦'),
-        chalk.hex('#F59E0B')(shortModel),
+        theme.accent('✦'),
+        theme.primary(shortModel),
         bar,
         formatContextIndicator(usage, { detail: false }),
       ].join(' ');
     if (visibleWidth(line) <= budget) return line;
   }
-  return indent + chalk.cyan('~') + ' ' + formatContextIndicator(usage, { detail: false });
+  return indent + theme.info('~') + ' ' + formatContextIndicator(usage, { detail: false });
 }

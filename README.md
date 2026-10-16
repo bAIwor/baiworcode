@@ -112,7 +112,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Kedua garis memakai jumlah tanda pisah yang sama dan hanya berbeda empat kolom, memberi kesan undakan. Baris status menyesuaikan diri bila terminal sempit: rincian token, nama provider, dan keterangan akses dikorbankan berurutan agar tidak pernah melewati lebar terminal dan merusak kotak layout.
 - **Timeline Aktivitas**:
   - Setiap tool yang dijalankan dicatat sebagai pohon: nama tool, durasi, dan jumlah baris output.
-  - **Nama tool diwarnai per kategori** agar jenis langkah langsung terbaca sekilas — baca `read_file` cyan, jelajah `list_directory` biru, cari `search_files` ungu, buat `write_file` hijau, ubah `edit_file` kuning, jalankan `run_command` oranye, rencana `todo_list` pink. Batang pohon ikut mengambil warna tool-nya.
+  - **Nama tool diwarnai per kategori** agar jenis langkah langsung terbaca sekilas — baca (cyan) untuk `read_file`/`webfetch`, jelajah (biru) untuk `list_directory`/`search_files`/`websearch`, tulis & ubah (hijau) untuk `write_file`/`edit_file`/`patch_file`, jalankan `run_command` (merah), rencana `todo_list` dan pemeriksaan `diagnostics` (oranye tua). Batang pohon ikut mengambil warna tool-nya.
+  - Setiap langkah juga menampilkan **nama Punakawan** pelakunya (semAIr, bAIwor, pAItruk, gAIreng) dengan satu warna kuning emas yang seragam — jadi jelas "siapa" yang bertindak, sementara warna nama tool menunjukkan "aksi apa" yang dilakukan.
   - Pohon digambar **secara langsung**: langkah muncul satu per satu begitu selesai, sementara langkah yang sedang berjalan ditandai penanda berputar (`⠋`) amber dan durasi `…` — jadi progres terlihat mengalir, bukan menunggu semua tool usai.
   - Prompt persetujuan perintah menyembunyikan blok aktivitas dulu agar tampilan tidak rusak, lalu menggambarnya kembali.
   - Tool yang gagal ditandai merah agar mudah dipindai sekilas, dan keluarannya ikut diringkas.
@@ -142,10 +143,14 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Berkas berakhiran baris CRLF (khas Windows) dibaca dan disunting tanpa menyisakan `\r` atau mengubah akhir baris seluruh berkas.
   - Loop agentic hingga 12 putaran: model bisa memanggil tool, membaca hasilnya, lalu melanjutkan sendiri.
   - **Selalu berakhir dengan jawaban**: bila batas putaran tercapai — atau terdeteksi model mengulang rangkaian tool yang sama tiga kali — bAIwor otomatis meminta satu giliran kesimpulan **tanpa tool**, jadi pekerjaan tidak berhenti tanpa keputusan.
-- **🛠️ 7 Tool Bawaan** — bAIwor tidak hanya menjawab, tapi benar-benar mengerjakan:
-  - `read_file`, `write_file`, `edit_file`, `list_directory` — baca, tulis, dan sunting berkas proyek.
+- **🛠️ 11 Tool Bawaan** — bAIwor tidak hanya menjawab, tapi benar-benar mengerjakan:
+  - `read_file`, `write_file`, `edit_file`, `patch_file`, `list_directory` — baca, tulis, dan sunting berkas proyek.
+  - `edit_file` **tahan banting** — pencocokannya toleran terhadap perbedaan indentasi, spasi ujung baris, dan CRLF/LF, jadi refactor tidak gagal hanya karena spasi. Ada `replace_all` untuk mengganti semua kemunculan, dan `edits` untuk banyak perubahan sekaligus secara **atomik** (semua berhasil atau tidak ada yang ditulis).
+  - `patch_file` — menerapkan unified diff (format `git diff`); blok konteksnya dicari ulang sehingga patch tetap kena walau nomor baris bergeser.
   - `search_files` — cari fungsi/teks di seluruh proyek tanpa membuka berkas satu per satu, dengan pengaman anti-ReDoS agar pola berat tidak membuat proses menggantung.
   - `run_command` — jalankan `npm test`, linter, git, dan perintah terminal lain.
+  - `webfetch` & `websearch` — baca dokumentasi/halaman web dan cari solusi galat di internet tanpa perlu `curl`. Halaman HTML dibersihkan menjadi teks agar hemat konteks.
+  - `diagnostics` — deteksi & jalankan pemeriksaan mutu proyek (script `lint`/`typecheck`/`check`, atau `tsc`/`eslint`) supaya bAIwor memverifikasi pekerjaannya sebelum menyatakan selesai.
   - `todo_list` — susun rencana tugas untuk pekerjaan besar dan lacak progresnya.
 - **🔒 Keamanan Berlapis**:
   - **Sandbox workspace** — akses berkas dibatasi pada folder proyek; area kredensial seperti `.ssh` dan `~/.baiwor` selalu ditolak.
@@ -157,6 +162,9 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 
 ### Di Dalam Mode Interaktif (`baiworcode` / `baiwor`)
 - `/help` — Panduan bantuan & daftar perintah
+- `/plan [instruksi]` — Mode arsitek semAIr: susun rencana & analisis tanpa ubah kode (read-only + checklist)
+- `/compact` — Ringkas konteks percakapan untuk menghemat ruang token
+- `/session [list|resume|delete|clear]` — Kelola sesi percakapan proyek (daftar sesi, lanjutkan, hapus satu, atau hapus semua)
 - `/status` — Status konfigurasi, provider aktif, **latency**, dan sesi login
 - `/model` — Ganti model AI & provider tanpa keluar aplikasi
 - `/provider` — Alias untuk perintah `/model`
@@ -168,6 +176,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 
 ### Perintah Langsung CLI
 - `baiworcode [prompt...]` — Kirim satu prompt langsung lalu keluar (non-interaktif)
+- `baiworcode plan [prompt...]` — Rancang rencana arsitektur & solusi langsung dari terminal luar
+- `baiworcode session [list|resume|delete|clear]` — Kelola riwayat sesi proyek (lihat, lanjut, hapus satu, atau hapus semua)
 - `baiworcode status` — Status konfigurasi dan sesi login
 - `baiworcode model` — Buka menu kelola model dan endpoint
 - `baiworcode login [provider]` — Login langsung ke provider OAuth
@@ -181,11 +191,28 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 |---|---|
 | `read_file` | Membaca isi berkas beserta nomor baris |
 | `write_file` | Membuat berkas baru atau menimpa berkas yang ada |
-| `edit_file` | Mengganti potongan kode tertentu (search & replace presisi) |
+| `edit_file` | Mengganti potongan kode (toleran indentasi/spasi; mendukung `replace_all` & `edits` sekaligus) |
+| `patch_file` | Menerapkan unified diff (`git diff`) ke sebuah berkas |
 | `list_directory` | Melihat daftar berkas & folder (mengabaikan `node_modules`) |
 | `search_files` | Mencari teks/fungsi di seluruh proyek, atau mencari nama berkas |
 | `run_command` | Menjalankan perintah terminal di dalam workspace |
+| `webfetch` | Mengambil isi sebuah URL dan mengembalikannya sebagai teks bersih |
+| `websearch` | Mencari di web (tanpa API key) untuk dokumentasi/solusi galat |
+| `diagnostics` | Menjalankan pemeriksaan mutu proyek (lint/typecheck) |
 | `todo_list` | Menyusun dan memperbarui daftar tugas multi-langkah, ditampilkan sebagai checklist |
+
+### Contoh Pemakaian Tool Baru
+
+Cukup tulis dalam bahasa sehari-hari — bAIwor memilih tool-nya sendiri:
+
+| Mau apa | Tulis apa |
+|---|---|
+| Baca dokumentasi | `"buka https://nodejs.org/api/fs.html lalu ringkas bagian promises"` |
+| Cari solusi galat | `"cari di web kenapa fetch gagal dengan 'ECONNRESET' di Node.js"` |
+| Ganti semua sekaligus | `"ganti semua console.log di src/ menjadi logger.info"` |
+| Terapkan patch/diff | `"terapkan patch berikut ke src/utils.js: <tempel unified diff>"` |
+| Periksa sebelum selesai | `"jalankan diagnostics dan perbaiki semua yang gagal"` |
+| Cek tipe & lint | `"cek lint dan tipe proyek ini, lalu rapikan"` |
 
 ---
 
@@ -201,7 +228,7 @@ bAIwor Code dapat membaca, menulis, dan menjalankan perintah di komputermu. Kare
 ---
 
 ## 🎁 Bonus Kredit & Komunitas
-Pengguna dan instalasi bAIwor Code berkesempatan mendapatkan bonus token/kredit API melalui partner resmi di [agentik.my.id](https://agentik.my.id).
+Pengguna dan instalasi bAIwor Code berkesempatan mendapatkan bonus token/kredit API melalui partner resmi di [agentik.my.id](https://agentik.my.id) dengan kode kupon **"baiworcode"**.
 
 ---
 

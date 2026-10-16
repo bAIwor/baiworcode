@@ -66,6 +66,24 @@ export class LiveActivity {
     this.frame = 0;
     this.timer = null;
     this.paused = false;
+    this.#attachResize();
+  }
+
+  #attachResize() {
+    if (!this.enabled || typeof this.stream?.on !== 'function') return;
+    this.resizeHandler = () => {
+      if (this.enabled && !this.paused && this.renderedLines > 0) {
+        this.#draw();
+      }
+    };
+    this.stream.on('resize', this.resizeHandler);
+  }
+
+  #detachResize() {
+    if (this.resizeHandler && typeof this.stream?.off === 'function') {
+      this.stream.off('resize', this.resizeHandler);
+      this.resizeHandler = null;
+    }
   }
 
   /** Menandai tool mulai berjalan, menggambar ulang blok, dan memutar frame. */
@@ -115,6 +133,7 @@ export class LiveActivity {
    */
   commit() {
     this.#stopTimer();
+    this.#detachResize();
     this.renderedLines = 0;
     this.events = [];
   }
@@ -122,6 +141,7 @@ export class LiveActivity {
   /** Menghentikan animasi tanpa mengubah tampilan. */
   stop() {
     this.#stopTimer();
+    this.#detachResize();
   }
 
   #draw() {

@@ -206,6 +206,23 @@ describe('Tool todo_list: manajemen daftar tugas', () => {
     });
     assert.equal(todoStore.read()[0].status, 'in_progress');
   });
+
+  it('hanya memperbolehkan satu item in_progress pada satu waktu dan menurunkan sisanya ke pending', async () => {
+    const res = await handleTodoList({
+      todos: [
+        { id: '1', content: 'Tugas satu', status: 'in_progress' },
+        { id: '2', content: 'Tugas dua', status: 'in_progress' },
+      ],
+    });
+    const data = JSON.parse(res.output);
+    assert.equal(data.summary.in_progress, 1);
+    const active = data.todos.filter((t) => t.status === 'in_progress');
+    assert.equal(active.length, 1);
+    assert.equal(active[0].id, '1');
+    const pending = data.todos.filter((t) => t.status === 'pending');
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].id, '2');
+  });
 });
 
 describe('Integrasi: /reset mengosongkan daftar tugas', () => {

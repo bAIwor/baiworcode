@@ -56,11 +56,12 @@ export function helpFooter() {
     '',
     chalk.hex('#FBBF24').bold('  CONTOH CEPAT'),
     `    ${chalk.cyan(`${APP_SLUG} "jelaskan struktur proyek ini"`)}`,
-    `    ${chalk.cyan(`${APP_SLUG} "perbaiki error di src/index.js"`)}`,
+    `    ${chalk.cyan(`${APP_SLUG} plan "rancang sistem auth JWT"`)}`,
     `    ${cmd(`${APP_SLUG} model`)}${chalk.gray('→ pilih provider & model')}`,
+    `    ${cmd(`${APP_SLUG} session`)}${chalk.gray('→ kelola riwayat sesi proyek')}`,
     `    ${cmd(`${APP_SLUG} status`)}${chalk.gray('→ cek kredensial & latency')}`,
     '',
-    `  ${chalk.gray(`🌐 ${WEBSITE.replace(/^https?:\/\//, '')}`)}${chalk.gray('   ·   ')}${chalk.gray('🎁 bonus token: ')}${chalk.cyan(BONUS_WEBSITE.replace(/^https?:\/\//, ''))}`,
+    `  ${chalk.gray(`🌐 ${WEBSITE.replace(/^https?:\/\//, '')}`)}${chalk.gray('   ·   ')}${chalk.gray('🎁 bonus token: ')}${chalk.cyan(BONUS_WEBSITE.replace(/^https?:\/\//, ''))}${chalk.dim(' (kode kupon "baiworcode")')}`,
     '',
   ].join('\n');
 }
