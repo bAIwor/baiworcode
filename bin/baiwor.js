@@ -116,7 +116,7 @@ const BAWOR_TEXT_LOGO = [
  * - "b" : Putih terang (kolom 0 s/d 9)
  * - "AI" : Merah terang (kolom 10 s/d 20)
  * - "wor" : Putih terang (kolom 21 s/d 51, termasuk spasi pemisah)
- * - "Code" : Nuansa Bendera Indonesia (kolom 52 ke atas: 3 baris atas MERAH, 3 baris bawah PUTIH)
+ * - "Code" : Nuansa Bendera Indonesia persis separuh (atas MERAH baris 0-1, bawah PUTIH baris 2-5)
  */
 function colorizeTextLogoLine(line, rowIndex) {
   const bPart = chalk.whiteBright.bold(line.slice(0, 10));
@@ -124,7 +124,7 @@ function colorizeTextLogoLine(line, rowIndex) {
   const worPart = chalk.whiteBright.bold(line.slice(21, 52));
 
   const codeSlice = line.slice(52);
-  const codePart = rowIndex < 3
+  const codePart = rowIndex < 2
     ? chalk.redBright.bold(codeSlice)
     : chalk.whiteBright.bold(codeSlice);
 
