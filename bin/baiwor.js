@@ -7,7 +7,7 @@ import '../src/colors.js';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
-import { getConfig, CONFIG_FILE, maskSecret } from '../src/config.js';
+import { getConfig, CONFIG_FILE, maskSecret, getTimelineMode, setTimelineMode } from '../src/config.js';
 import { runModelMenu } from '../src/modelMenu.js';
 import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
@@ -17,6 +17,7 @@ import { buildPlanUserPrompt } from '../src/chat/planMode.js';
 import { compactConversation } from '../src/chat/compact.js';
 import { listSessions, deleteSession, deleteAllSessions } from '../src/chat/sessionManager.js';
 import { discoverSkills, getSkill } from '../src/skills/skillManager.js';
+import { discoverRules } from '../src/rules/ruleManager.js';
 import { resetTodoStore } from '../src/tools/todoTool.js';
 import { renderStatusLine } from '../src/statusLine.js';
 import { resolveActiveCredentials } from '../src/auth/resolve.js';
@@ -268,6 +269,8 @@ function showHelp() {
   console.log(`    ${dim('        ○ Tambah unit test')}`);
   console.log(`    ${dim('Setiap tool dijalankan oleh karakter Punakawan yang sesuai dan dicatat durasinya.')}`);
   console.log(`    ${dim('Daftar tugas dari todo_list (semAIr) tampil sebagai checklist di bawah node-nya.')}`);
+  console.log(`    ${dim('Ingin lebih ringkas? Ketik')} ${chalk.cyan('/timeline compact')} ${dim('— satu baris per langkah.')}`);
+  console.log(`    ${dim('Kembali ke tampilan penuh kapan saja dengan')} ${chalk.cyan('/timeline detail')}${dim('.')}`);
   console.log(`    ${dim('Baris "Context X% left" muncul setelah setiap jawaban. Angka itu perkiraan,')}`);
   console.log(`    ${dim('dan riwayat dipangkas otomatis bila mulai penuh — pakai /compact atau /clear.')}`);
   console.log();
@@ -459,6 +462,30 @@ async function startInteractive() {
         }
         break;
       }
+      case '/timeline': {
+        const mode = (arg || '').trim().toLowerCase();
+        const active = getTimelineMode();
+        if (!mode) {
+          console.log(chalk.cyan.bold('\n  🎬 Tampilan Aktivitas Tim Punakawan (/timeline)'));
+          console.log(chalk.gray(`     Mode aktif : `) + chalk.white.bold(active));
+          console.log();
+          console.log(chalk.gray('  Pilihan mode:'));
+          console.log(chalk.gray('  - ') + chalk.cyan('compact') + chalk.gray(' : satu baris per langkah — alur cepat & ringkas'));
+          console.log(chalk.gray('  - ') + chalk.cyan('detail') + chalk.gray('  : pohon lengkap dengan argumen & ringkasan hasil'));
+          console.log(chalk.gray('\n  Contoh: ') + chalk.cyan('/timeline compact') + chalk.gray(' atau ') + chalk.cyan('/timeline detail\n'));
+          break;
+        }
+        const next = setTimelineMode(mode);
+        if (next === 'compact') {
+          console.log(chalk.green.bold('\n  ✓ Mode timeline: COMPACT'));
+          console.log(chalk.gray('    Tiap langkah kini satu baris: ikon · aktor · tool · durasi · baris'));
+        } else {
+          console.log(chalk.green.bold('\n  ✓ Mode timeline: DETAIL'));
+          console.log(chalk.gray('    Tiap langkah kini pohon penuh dengan argumen & ringkasan hasil'));
+        }
+        console.log();
+        break;
+      }
       case '/session': {
         const subParts = arg ? arg.split(/\s+/) : [];
         const action = subParts[0] || 'list';
@@ -594,6 +621,26 @@ async function startInteractive() {
             console.log(chalk.green.bold(`\n  ✓ Berhasil mengaktifkan skill "${skill.name}" ke dalam sesi aktif!`));
             console.log(chalk.gray(`    ${skill.description}\n`));
           }
+        }
+        break;
+      }
+      case '/rules':
+      case '/rule': {
+        const rules = discoverRules();
+        if (rules.size === 0) {
+          console.log(chalk.yellow('\n  Belum ada aturan koding khusus yang terpasang.'));
+          console.log(chalk.gray('  Buat berkas aturan di root proyek: ') + chalk.cyan('BAIWORS.md') + chalk.gray(' atau ') + chalk.cyan('.baiwor/rules/<nama>.md'));
+          console.log(chalk.gray('  atau aturan global di: ') + chalk.cyan('~/.baiwor/rules/<nama>.md\n'));
+        } else {
+          console.log(chalk.hex('#FBBF24').bold('\n  📜 Aturan Koding Aktif (Project & Global Rules):'));
+          for (const [name, r] of rules.entries()) {
+            const scopeBadge = r.scope === 'project' ? chalk.green('[proyek]') : chalk.cyan('[global]');
+            console.log(`    ${chalk.white.bold(r.title || name)} ${scopeBadge}`);
+            console.log(`      ${chalk.dim('Lokasi:')} ${chalk.cyan(r.path)}`);
+            const preview = r.content.slice(0, 150).replace(/\r?\n/g, ' ');
+            console.log(`      ${chalk.dim(preview + (r.content.length > 150 ? '…' : ''))}`);
+          }
+          console.log(chalk.gray('\n  Aturan di atas otomatis disuntikkan ke instruksi sistem bAIwor Code.\n'));
         }
         break;
       }
@@ -817,6 +864,29 @@ program
       console.log(chalk.gray('\n  Penggunaan perintah skill:'));
       console.log(chalk.gray('  - ') + chalk.cyan('baiworcode skill list') + chalk.gray('         : Tampilkan seluruh skill proyek & global'));
       console.log(chalk.gray('  - ') + chalk.cyan('baiworcode skill info <nama>') + chalk.gray('  : Tampilkan detail & instruksi skill\n'));
+    }
+    process.exit(0);
+  });
+
+program
+  .command('rules')
+  .description('Tampilkan aturan koding aktif proyek & global (BAIWORS.md / .baiwor/rules)')
+  .action(() => {
+    const rules = discoverRules();
+    if (rules.size === 0) {
+      console.log(chalk.yellow('\n  Belum ada aturan koding khusus yang terpasang.'));
+      console.log(chalk.gray('  Buat berkas aturan di root proyek: ') + chalk.cyan('BAIWORS.md') + chalk.gray(' atau ') + chalk.cyan('.baiwor/rules/<nama>.md'));
+      console.log(chalk.gray('  atau aturan global di: ') + chalk.cyan('~/.baiwor/rules/<nama>.md\n'));
+    } else {
+      console.log(chalk.hex('#FBBF24').bold('\n  📜 Aturan Koding Aktif (Project & Global Rules):'));
+      for (const [name, r] of rules.entries()) {
+        const scopeBadge = r.scope === 'project' ? chalk.green('[proyek]') : chalk.cyan('[global]');
+        console.log(`    ${chalk.white.bold(r.title || name)} ${scopeBadge}`);
+        console.log(`      ${chalk.dim('Lokasi:')} ${chalk.cyan(r.path)}`);
+        const preview = r.content.slice(0, 150).replace(/\r?\n/g, ' ');
+        console.log(`      ${chalk.dim(preview + (r.content.length > 150 ? '…' : ''))}`);
+      }
+      console.log();
     }
     process.exit(0);
   });

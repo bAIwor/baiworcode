@@ -15,7 +15,9 @@ const DEFAULT_MAX_CHARS = 20000;
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 const FETCH_TIMEOUT_MS = 30000;
 
-const USER_AGENT = 'bAIworCode/1.0 (+https://baiwor.my.id)';
+const FETCH_USER_AGENT = 'bAIworCode/1.0 (+https://baiwor.my.id)';
+const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 /**
  * Memvalidasi URL: harus http/https dan dapat diurai.
@@ -100,7 +102,7 @@ export async function handleWebFetch({ url, max_chars = DEFAULT_MAX_CHARS, raw =
     const res = await globalThis.fetch(target.href, {
       redirect: 'follow',
       signal: controller.signal,
-      headers: { 'user-agent': USER_AGENT, accept: 'text/html,application/json,text/plain,*/*' },
+      headers: { 'user-agent': FETCH_USER_AGENT, accept: 'text/html,application/json,text/plain,*/*' },
     });
 
     const contentType = res.headers?.get?.('content-type') || '';
@@ -174,6 +176,7 @@ export function parseDuckDuckGo(html, maxResults) {
 
 /**
  * Mencari di web (mesin DuckDuckGo, tanpa API key).
+ * Menggunakan request POST form-urlencoded sebagai jalur utama dan GET sebagai fallback.
  *
  * @param {{query:string, max_results?:number}} args
  * @returns {Promise<{success:boolean, output:string}>}
@@ -183,21 +186,51 @@ export async function handleWebSearch({ query, max_results = 5 } = {}) {
   if (!q) return { success: false, output: 'Error: parameter "query" wajib diisi.' };
 
   const maxResults = Math.min(10, Math.max(1, Number(max_results) || 5));
-  const endpoint = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
+  const postEndpoint = 'https://html.duckduckgo.com/html/';
+  const getEndpoint = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await globalThis.fetch(endpoint, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: { 'user-agent': USER_AGENT, accept: 'text/html' },
-    });
-    if (!res.ok) {
-      return { success: false, output: `Pencarian gagal: HTTP ${res.status} ${res.statusText || ''}` };
+    let html = '';
+
+    // Coba jalur 1: POST form-urlencoded (paling andal untuk multi-kata di DuckDuckGo HTML)
+    try {
+      const res = await globalThis.fetch(postEndpoint, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'user-agent': BROWSER_USER_AGENT,
+          'content-type': 'application/x-www-form-urlencoded',
+          accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'accept-language': 'en-US,en;q=0.9,id;q=0.8',
+        },
+        body: `q=${encodeURIComponent(q)}`,
+      });
+      if (res.ok) {
+        html = await res.text();
+      }
+    } catch {}
+
+    // Jalur fallback 2: GET bila POST gagal atau kosong
+    if (!html || !html.includes('result__a')) {
+      try {
+        const getRes = await globalThis.fetch(getEndpoint, {
+          redirect: 'follow',
+          signal: controller.signal,
+          headers: {
+            'user-agent': BROWSER_USER_AGENT,
+            accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'accept-language': 'en-US,en;q=0.9,id;q=0.8',
+          },
+        });
+        if (getRes.ok) {
+          html = await getRes.text();
+        }
+      } catch {}
     }
-    const html = await res.text();
-    const results = parseDuckDuckGo(html, maxResults);
+
+    const results = html ? parseDuckDuckGo(html, maxResults) : [];
 
     if (!results.length) {
       return {

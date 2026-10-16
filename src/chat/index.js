@@ -4,7 +4,7 @@ import { conversationSession } from './conversation.js';
 import { streamChatCompletion } from './client.js';
 import { TOOL_DEFINITIONS, executeTool } from '../tools/index.js';
 import { todoStore, resetTodoStore } from '../tools/todoTool.js';
-import { renderTimeline, renderTodoChecklist, formatTodoProgress } from './timeline.js';
+import { renderTimelineByMode } from './timeline.js';
 import { LiveActivity } from './liveActivity.js';
 import { AnswerStyler } from './answerStyle.js';
 import { createOutputWriter } from './outputWriter.js';
@@ -12,6 +12,7 @@ import { classifyCommand } from '../tools/sandbox.js';
 import { getContextUsage, formatContextWarning } from './context.js';
 import { autoCompactConversation } from './compact.js';
 import { parseDeliverAssetsContent, renderDeliverableCard } from './deliverables.js';
+import { getTimelineMode } from '../config.js';
 
 export { conversationSession };
 
@@ -165,9 +166,13 @@ export async function handleUserChat(promptText) {
   // Blok aktivitas tool yang digambar ulang di tempat: tiap langkah muncul
   // begitu selesai, sementara langkah yang sedang berjalan berputar. Di luar
   // TTY ia nonaktif dan pohon dicetak sekali di akhir sebagai gantinya.
+  const timelineMode = getTimelineMode();
   const live = new LiveActivity({
     stream: process.stdout,
     useColor: Boolean(process.stdout.isTTY),
+    // Mode tampilan dipakai apa adanya dari konfigurasi (/timeline), supaya
+    // pilihan pengguna bertahan antar-sesi dan antar-giliran.
+    mode: timelineMode,
   });
 
   /**
@@ -477,7 +482,7 @@ export async function handleUserChat(promptText) {
           // tidak muncul baris kosong ganda antara blok tool dan thinking.
           live.commit();
         } else {
-          const block = renderTimeline(turnEvents, { useColor: false });
+          const block = renderTimelineByMode(turnEvents, { mode: timelineMode, useColor: false });
           if (block) process.stdout.write(`${block}\n\n`);
         }
 

@@ -1,4 +1,4 @@
-import { renderTimeline } from './timeline.js';
+import { renderTimelineByMode } from './timeline.js';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const FRAME_MS = 90;
@@ -53,12 +53,13 @@ function truncateAnsi(str, maxWidth) {
  */
 export class LiveActivity {
   /**
-   * @param {{stream?:NodeJS.WriteStream, useColor?:boolean, enabled?:boolean, maxSummary?:number}} [options]
+   * @param {{stream?:NodeJS.WriteStream, useColor?:boolean, enabled?:boolean, maxSummary?:number, mode?:'detail'|'compact'}} [options]
    */
-  constructor({ stream = process.stdout, useColor = true, enabled = true, maxSummary } = {}) {
+  constructor({ stream = process.stdout, useColor = true, enabled = true, maxSummary, mode = 'detail' } = {}) {
     this.stream = stream;
     this.useColor = useColor;
     this.maxSummary = maxSummary;
+    this.mode = mode;
     // Animasi bergantung pada kemampuan menimpa baris (TTY).
     this.enabled = Boolean(enabled && stream && stream.isTTY);
     this.events = [];
@@ -149,7 +150,8 @@ export class LiveActivity {
     const columns = this.stream.columns || 80;
     const maxWidth = Math.max(20, columns - 1);
 
-    const lines = renderTimeline(this.events, {
+    const lines = renderTimelineByMode(this.events, {
+      mode: this.mode,
       useColor: this.useColor,
       maxSummary: this.maxSummary,
       spinnerFrame: FRAMES[this.frame],

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { resolveTimelineMode } from './chat/timeline.js';
 
 export const CONFIG_DIR = path.join(os.homedir(), '.baiwor');
 export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
@@ -19,6 +20,9 @@ export const DEFAULT_CONFIG = {
     },
   ],
   oauth: {},
+  // Tampilan blok aktivitas tool: 'detail' (pohon dua baris) atau
+  // 'compact' (satu baris per langkah, gaya CLI modern). Diubah via /timeline.
+  timelineMode: 'detail',
 };
 
 export function maskSecret(str) {
@@ -118,8 +122,36 @@ export function getConfig() {
   }
 }
 
-export function saveConfig(partialConfig) {
+/**
+ * Membaca mode tampilan timeline yang aktif.
+ * Nilai tak dikenal di config jatuh kembali ke `detail`.
+ *
+ * @returns {'detail'|'compact'}
+ */
+export function getTimelineMode() {
   try {
+    return resolveTimelineMode(getConfig().timelineMode, 'detail');
+  } catch {
+    return 'detail';
+  }
+}
+
+/**
+ * Menyetel mode tampilan timeline. Nilai tak dikenal diabaikan dan mode
+ * lama dikembalikan, sehingga salah ketik tidak merusak konfigurasi.
+ *
+ * @param {'detail'|'compact'} mode
+ * @returns {'detail'|'compact'} mode yang benar-benar aktif setelah penyimpanan
+ */
+export function setTimelineMode(mode) {
+  const next = resolveTimelineMode(mode, 'detail');
+  if (next !== resolveTimelineMode(getConfig().timelineMode, 'detail')) {
+    saveConfig({ timelineMode: next });
+  }
+  return getTimelineMode();
+}
+
+export function saveConfig(partialConfig) {  try {
     const current = getConfig();
     const merged = { ...current, ...partialConfig };
 

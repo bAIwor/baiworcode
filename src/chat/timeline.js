@@ -429,3 +429,113 @@ export function renderTimeline(
 
   return out.join('\n');
 }
+
+/**
+ * Mode tampilan timeline yang didukung.
+ *
+ * - `detail`  : pohon dua baris per node (argumen + ringkasan hasil).
+ * - `compact` : satu baris per node, gaya CLI modern (MCode/opencode) —
+ *               hanya ikon status, aktor, nama tool, dan meta ringkas.
+ *
+ * @type {ReadonlyArray<'detail'|'compact'>}
+ */
+export const TIMELINE_MODES = Object.freeze(['detail', 'compact']);
+
+/**
+ * Menormalkan masukan mode timeline menjadi nilai yang dikenal.
+ * Nilai asing/kosong jatuh ke `fallback` supaya konfigurasi yang rusak
+ * tidak pernah membuat renderer melempar error.
+ *
+ * @param {unknown} value
+ * @param {'detail'|'compact'} [fallback]
+ * @returns {'detail'|'compact'}
+ */
+export function resolveTimelineMode(value, fallback = 'detail') {
+  const mode = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  return TIMELINE_MODES.includes(mode) ? mode : fallback;
+}
+
+/**
+ * Merender timeline dalam mode ringkas: SATU baris per aktivitas.
+ *
+ * Dipinjam dari pola CLI modern (MCode) di mana tiap langkah cukup
+ * `├ ✓ Baca berkas · 120ms · 3 baris` — tanpa baris anak argumen/hasil,
+ * sehingga alur kerja tetap terbaca utuh walau satu giliran memanggil
+ * belasan tool. Identitas Tim Punakawan tetap dipertahankan di depannya.
+ *
+ * Node yang gagal menyertakan alasan singkat supaya diagnosis tidak
+ * memaksa pengguna pindah ke mode detail.
+ *
+ * @param {Array<{name:string, args?:object, durationMs:number, output?:string, success?:boolean, extraMeta?:string, running?:boolean}>} events
+ * @param {{useColor?:boolean, spinnerFrame?:string, maxSummary?:number}} [options]
+ * @returns {string} baris-baris siap cetak (tanpa baris kosong di akhir)
+ */
+export function renderTimelineCompact(
+  events,
+  { useColor = true, spinnerFrame = '⠋', maxSummary = DEFAULT_SUMMARY_LEN } = {}
+) {
+  const c = painter(useColor);
+  const list = (events || []).filter(Boolean);
+  if (!list.length) return '';
+
+  return list
+    .map((ev, index) => {
+      const isLast = index === list.length - 1;
+      const isRunning = ev.running === true;
+      const failed = !isRunning && ev.success === false;
+
+      const branch = c.gray(isLast ? '└' : '├');
+      const icon = isRunning
+        ? c.hex(palette.warning)(spinnerFrame)
+        : failed
+          ? c.hex(palette.error)('✗')
+          : c.hex(palette.success)('✓');
+      const dot = c.gray('·');
+
+      const tint = c.hex(toolColorHex(ev.name));
+      const toolName = (failed ? c.hex(palette.error) : tint)(c.bold(toolLabel(ev.name)));
+
+      // Aktor Punakawan tetap tampil (kuning emas) — beda dengan MCode yang
+      // hanya menampilkan nama tool — agar "siapa yang bertindak" tetap jelas.
+      const punakawan = PUNAKAWAN_ROLES[ev.name];
+      const actorPart = punakawan
+        ? `${c.hex(PUNAKAWAN_COLORS[punakawan] || palette.gold)(c.bold(punakawan))} ${dot} `
+        : '';
+
+      const meta = [c.gray(isRunning ? '…' : formatDuration(ev.durationMs))];
+      if (!isRunning) {
+        const lineCount = countOutputLines(ev.output);
+        if (lineCount > 0) meta.push(c.gray(`${lineCount} baris`));
+      }
+      if (ev.extraMeta) meta.push(c.gray(ev.extraMeta));
+
+      // Hanya kegagalan membawa alasan; sukses tidak perlu memakan kolom.
+      if (failed) {
+        const reason = summarizeResult(ev.output, Math.min(48, maxSummary));
+        if (reason) meta.push(c.hex(palette.error)(reason));
+      }
+
+      return `  ${branch} ${icon} ${actorPart}${toolName} ${dot} ${meta.join(` ${dot} `)}`;
+    })
+    .join('\n');
+}
+
+/**
+ * Menjalankan renderer timeline sesuai mode yang diminta.
+ *
+ * @param {Array} events
+ * @param {{mode?:'detail'|'compact', useColor?:boolean, spinnerFrame?:string, maxSummary?:number}} [options]
+ * @returns {string}
+ */
+export function renderTimelineByMode(
+  events,
+  { mode = 'detail', useColor = true, spinnerFrame = '⠋', maxSummary = DEFAULT_SUMMARY_LEN } = {}
+) {
+  const resolved = resolveTimelineMode(mode);
+  const opts = { useColor, spinnerFrame, maxSummary };
+  return resolved === 'compact'
+    ? renderTimelineCompact(events, opts)
+    : renderTimeline(events, opts);
+}

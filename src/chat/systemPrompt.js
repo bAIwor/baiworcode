@@ -2,6 +2,7 @@ import os from 'node:os';
 import { getDefinitions } from '../tools/index.js';
 import { getConfig } from '../config.js';
 import { discoverSkills, formatSkillsPrompt } from '../skills/skillManager.js';
+import { discoverRules, formatRulesPrompt } from '../rules/ruleManager.js';
 
 /**
  * Memadatkan deskripsi tool menjadi satu baris pendek agar system prompt
@@ -50,6 +51,14 @@ export function getSystemPrompt(options = {}) {
     const skills = discoverSkills({ cwd });
     if (skills && skills.size > 0) {
       skillsSection = `\n\n${formatSkillsPrompt(skills)}`;
+    }
+  } catch {}
+
+  let rulesSection = '';
+  try {
+    const rules = discoverRules({ cwd });
+    if (rules && rules.size > 0) {
+      rulesSection = `\n\n${formatRulesPrompt(rules)}`;
     }
   } catch {}
 
@@ -106,5 +115,5 @@ Konteks Lingkungan Sistem:
 - Provider Aktif  : ${activeProvider}
 - Workspace / CWD : ${cwd}
 - Platform OS     : ${platform}
-- Node.js Version : ${nodeVersion}${skillsSection}`;
+- Node.js Version : ${nodeVersion}${skillsSection}${rulesSection}`;
 }
