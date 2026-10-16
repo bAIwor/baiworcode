@@ -77,8 +77,15 @@ export function buildPromptFrame({
     out += `  ${theme.input('›')}  ${shown ? theme.input(shown) : chalk.dim(placeholder)}`;
 
     if (dropdownOpen && value.startsWith('/')) {
-      const query = value.toLowerCase();
-      const matches = COMMANDS.filter((c) => c.name.startsWith(query));
+      const trimmedVal = value.trim();
+      const rawQuery = trimmedVal.toLowerCase();
+      const cleanWord = rawQuery.replace(/^\/+\s*/, '');
+      const matches = !cleanWord
+        ? COMMANDS
+        : COMMANDS.filter((c) => {
+            const cmdWord = c.name.replace(/^\//, '');
+            return c.name.startsWith(rawQuery) || cmdWord.startsWith(cleanWord);
+          });
       const active = matches.length ? Math.min(selectedIndex, matches.length - 1) : 0;
 
       // Seluruh baris dropdown dijaga muat di lebar terminal. Sebelumnya kotak
@@ -93,7 +100,7 @@ export function buildPromptFrame({
       };
 
       const header =
-        '  ╭─ Perintah (↑/↓ pilih, Enter jalankan, Tab lengkapi, Esc tutup)';
+        '  ╭─ Perintah (↑/↓/Tab pilih, Enter jalankan, Esc tutup)';
       const shortHeader = '  ╭─ Perintah';
       out += '\n' + chalk.gray(fit(header.length <= width ? header : shortHeader)) + '\n';
 
@@ -135,6 +142,7 @@ export class SlashTextPrompt extends TextPrompt {
     const placeholder = opts.placeholder || '';
     let selectedIndex = 0;
     let showDropdown = false;
+    let userNavigated = false;
     let lastVal = '';
     let lastCtrlCTime = 0;
     let ctrlCTimer = null;
@@ -323,11 +331,15 @@ export class SlashTextPrompt extends TextPrompt {
       const val = currentVal || '';
       if (val !== lastVal) {
         lastVal = val;
-        if (val.startsWith('/')) {
+        if (val.trimStart().startsWith('/')) {
           showDropdown = true;
-          selectedIndex = 0;
+          if (!userNavigated) {
+            selectedIndex = 0;
+          }
         } else {
           showDropdown = false;
+          userNavigated = false;
+          selectedIndex = 0;
         }
       }
     });
@@ -352,7 +364,7 @@ export class SlashTextPrompt extends TextPrompt {
       ensureRlHooked();
 
       const val = this.value || '';
-      const isSlash = val.startsWith('/');
+      const isSlash = val.trimStart().startsWith('/');
       const isCtrlC =
         (key?.name === 'c' && Boolean(key?.ctrl)) ||
         u === '\u0003' ||
@@ -459,14 +471,40 @@ export class SlashTextPrompt extends TextPrompt {
         return;
       }
 
-      if (isSlash && showDropdown) {
-        const query = val.toLowerCase();
-        const matches = COMMANDS.filter((c) => c.name.startsWith(query));
+      // Tab saat baris masih kosong: langsung munculkan '/' dan buka dropdown
+      if (!val && (key?.name === 'tab' || u === '\t')) {
+        this.value = '/';
+        this._cursor = 1;
+        if (this.rl) {
+          this.rl.line = '/';
+          this.rl.cursor = 1;
+        }
+        showDropdown = true;
+        selectedIndex = 0;
+        userNavigated = false;
+        lastVal = '/';
+        this.emit('value', '/');
+        this.render();
+        return;
+      }
+
+      if (isSlash) {
+        showDropdown = true;
+        const trimmed = val.trim();
+        const rawQuery = trimmed.toLowerCase();
+        const cleanWord = rawQuery.replace(/^\/+\s*/, '');
+        const matches = !cleanWord
+          ? COMMANDS
+          : COMMANDS.filter((c) => {
+              const cmdWord = c.name.replace(/^\//, '');
+              return c.name.startsWith(rawQuery) || cmdWord.startsWith(cleanWord);
+            });
 
         if (matches.length > 0) {
           // Panah Atas (↑): pindah 1 item ke atas tanpa lag
           if (key?.name === 'up') {
             selectedIndex = (selectedIndex - 1 + matches.length) % matches.length;
+            userNavigated = true;
             this.render();
             return;
           }
@@ -474,32 +512,81 @@ export class SlashTextPrompt extends TextPrompt {
           // Panah Bawah (↓): pindah 1 item ke bawah tanpa lag
           if (key?.name === 'down') {
             selectedIndex = (selectedIndex + 1) % matches.length;
+            userNavigated = true;
             this.render();
             return;
           }
 
-          // Tab: lengkapi nama perintah ke input line dan TUTUP dropdown
+          // Tab: navigasi siklis ke pilihan berikutnya & BIARKAN dropdown tetap terbuka
           if (key?.name === 'tab' || u === '\t') {
-            const picked = matches[selectedIndex] || matches[0];
-            if (picked) {
-              const diff = picked.name.slice(val.length);
-              if (diff && this.rl) {
-                this.rl.write(diff);
-              }
-              this.value = picked.name;
-              this._cursor = picked.name.length;
-              showDropdown = false; // Langsung tutup dropdown setelah terpilih
-              lastVal = picked.name;
-              this.render();
+            if (key?.shift) {
+              selectedIndex = (selectedIndex - 1 + matches.length) % matches.length;
+            } else {
+              selectedIndex = (selectedIndex + 1) % matches.length;
             }
+            userNavigated = true;
+            showDropdown = true;
+
+            // Jika user mengetik sebagian kata perintah, lengkapi di input tapi jangan tutup dropdown
+            if (cleanWord) {
+              const picked = matches[selectedIndex] || matches[0];
+              if (picked) {
+                this.value = picked.name;
+                this._cursor = picked.name.length;
+                if (this.rl) {
+                  this.rl.line = picked.name;
+                  this.rl.cursor = picked.name.length;
+                }
+                lastVal = picked.name;
+              }
+            }
+            this.render();
             return;
           }
 
-          // Enter: langsung eksekusi perintah yang dipilih
+          // Enter: eksekusi perintah yang dipilih atau buka p.select
           if (key?.name === 'return') {
-            const picked = matches[selectedIndex] || matches[0];
-            if (picked) {
-              this.value = picked.name;
+            // Kasus 1: User sudah aktif bernavigasi lewat panah atau Tab
+            if (userNavigated) {
+              const picked = matches[selectedIndex] || matches[0];
+              if (picked) {
+                this.value = picked.name;
+                showDropdown = false;
+                this.state = 'submit';
+                this.emit('finalize');
+                this.render();
+                this.close();
+                return;
+              }
+            }
+
+            // Kasus 2: User mengetik nama perintah lengkap (misal '/help' atau '/model')
+            const exact = matches.find((m) => m.name.toLowerCase() === rawQuery);
+            if (exact) {
+              this.value = exact.name;
+              showDropdown = false;
+              this.state = 'submit';
+              this.emit('finalize');
+              this.render();
+              this.close();
+              return;
+            }
+
+            // Kasus 3: User hanya mengetik '/' (atau '/ ') dan tekan Enter tanpa navigasi panah
+            // submit '/' agar bin/baiwor.js membuka p.select (menu pilihan interaktif)
+            if (!cleanWord) {
+              this.value = '/';
+              showDropdown = false;
+              this.state = 'submit';
+              this.emit('finalize');
+              this.render();
+              this.close();
+              return;
+            }
+
+            // Kasus 4: Match tunggal (misal /mod -> /model)
+            if (matches.length === 1) {
+              this.value = matches[0].name;
               showDropdown = false;
               this.state = 'submit';
               this.emit('finalize');

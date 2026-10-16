@@ -643,3 +643,87 @@ describe('Prompt: Pengamanan Ctrl+C dan Escape (Anti-Exit Tidak Disengaja)', () 
   });
 });
 
+describe('Prompt: Interaksi Slash Dropdown (/ Tab, Spasi, Panah, Enter)', () => {
+  function createMockPrompt() {
+    const writes = [];
+    const fakeOutput = {
+      write(s) {
+        writes.push(s);
+      },
+      on() {},
+      off() {},
+      columns: 80,
+    };
+    const fakeInput = {
+      on() {},
+      off() {},
+      pause() {},
+      resume() {},
+      unpipe() {},
+      removeListener() {},
+    };
+    const prompt = new SlashTextPrompt({
+      placeholder: 'Ask bAIwor Code to do anything...',
+      output: fakeOutput,
+      input: fakeInput,
+    });
+    return { prompt, writes };
+  }
+
+  it('menekan Tab saat baris kosong harus memunculkan "/" dan membuka dropdown', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '';
+    prompt.onKeypress('\t', { name: 'tab' });
+    assert.equal(prompt.value, '/');
+  });
+
+  it('mengetik "/" lalu spasi "/ " harus tetap mempertahankan dropdown dengan semua perintah', () => {
+    const out = polos(buildPromptFrame({ value: '/ ', dropdownOpen: true }));
+    assert.ok(out.includes('Perintah'));
+    assert.ok(out.includes('/help'));
+    assert.ok(out.includes('/plan'));
+    assert.ok(!out.includes('Tidak ada perintah yang cocok'));
+  });
+
+  it('mengetik "/" lalu Tab harus berpindah ke pilihan berikutnya dan dropdown tetap terbuka', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '/';
+    prompt.emit('value', '/');
+    prompt.onKeypress('\t', { name: 'tab' });
+    assert.equal(prompt.value, '/');
+    assert.equal(prompt.state, 'active');
+  });
+
+  it('mengetik "/" lalu panah bawah harus berpindah pilihan tanpa menutup dropdown', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '/';
+    prompt.emit('value', '/');
+    prompt.onKeypress('', { name: 'down' });
+    assert.equal(prompt.state, 'active');
+  });
+
+  it('mengetik "/" lalu langsung Enter tanpa navigasi harus submit "/" agar p.select terbuka', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '/';
+    prompt.emit('value', '/');
+    prompt.onKeypress('\r', { name: 'return' });
+    assert.equal(prompt.state, 'submit');
+    assert.equal(prompt.value, '/');
+  });
+
+  it('mengetik "/" lalu navigasi panah bawah lalu Enter harus submit perintah yang di-highlight', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '/';
+    prompt.emit('value', '/');
+    prompt.onKeypress('', { name: 'down' }); // pindah dari /help (0) ke /plan (1)
+    prompt.onKeypress('\r', { name: 'return' });
+    assert.equal(prompt.state, 'submit');
+    assert.equal(prompt.value, '/plan');
+  });
+});
+
