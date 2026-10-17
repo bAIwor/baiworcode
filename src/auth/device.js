@@ -1,4 +1,4 @@
-import { exec } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
 import { USER_AGENT } from '../branding.js';
@@ -6,11 +6,15 @@ import { USER_AGENT } from '../branding.js';
 export function openBrowser(url) {
   try {
     if (process.platform === 'win32') {
-      exec(`start "" "${url}"`);
+      execFile('cmd', ['/c', 'start', '', url], (err) => {
+        if (err) {
+          execFile('explorer', [url], () => {});
+        }
+      });
     } else if (process.platform === 'darwin') {
-      exec(`open "${url}"`);
+      execFile('open', [url], () => {});
     } else {
-      exec(`xdg-open "${url}"`);
+      execFile('xdg-open', [url], () => {});
     }
   } catch {
     // Abaikan jika gagal membuka browser secara otomatis

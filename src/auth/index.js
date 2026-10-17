@@ -128,11 +128,12 @@ export async function login(providerId) {
     const agyExe = process.env.ANTIGRAVITY_AGENTAPI_EXE || 'agy';
     let isAvailable = false;
     try {
-      const { execSync } = await import('node:child_process');
-      const out = execSync(`"${agyExe}" models`, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000 }).toString('utf8');
-      if (out.includes('gemini-3.8-flash-high') || out.includes('Gemini 3.8 Flash')) {
-        isAvailable = true;
-      }
+      const { exec } = await import('node:child_process');
+      isAvailable = await new Promise((resolve) => {
+        exec(`"${agyExe}" --version`, { timeout: 3000 }, (err) => {
+          resolve(!err);
+        });
+      });
     } catch {}
 
     if (!isAvailable) {
