@@ -941,3 +941,52 @@ describe('Prompt: Subcommand Context & Dropdown (/timeline, /session, /skill)', 
   });
 });
 
+describe('Prompt: Stdin Recovery & Anti-freeze Protections', () => {
+  it('Prompt.prototype harus memiliki patch proteksi stdin global', async () => {
+    const { Prompt } = await import('@clack/core');
+    assert.equal(Prompt.prototype._baiworStdinPatched, true);
+  });
+
+  it('prompt.close() harus memulihkan dan meresume input stream', () => {
+    let resumed = false;
+    const fakeInput = {
+      isTTY: true,
+      setRawMode() {},
+      on() {},
+      off() {},
+      pause() {},
+      resume() { resumed = true; },
+      unpipe() {},
+      removeListener() {},
+      once() {},
+    };
+    const fakeOutput = {
+      write() {},
+      on() {},
+      off() {},
+      columns: 80,
+    };
+    const prompt = new SlashTextPrompt({
+      placeholder: 'Test input...',
+      input: fakeInput,
+      output: fakeOutput,
+    });
+    prompt.close();
+    assert.equal(resumed, true, 'input stream harus di-resume setelah prompt ditutup');
+  });
+
+  it('Ctrl+C pada SlashTextPrompt baris kosong penekanan pertama memicu peringatan', () => {
+    const fakeOutput = { write() {}, on() {}, off() {}, columns: 80 };
+    const prompt = new SlashTextPrompt({
+      placeholder: 'Test...',
+      output: fakeOutput,
+    });
+    prompt.state = 'active';
+    prompt.value = '';
+    // Ctrl+C pertama: memicu peringatan keluar
+    prompt.onKeypress('', { name: 'c', ctrl: true });
+    assert.equal(prompt.state, 'active');
+  });
+});
+
+

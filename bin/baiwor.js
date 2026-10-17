@@ -640,6 +640,11 @@ async function startInteractive(opts = {}) {
   }
 
   while (true) {
+    if (process.stdin.isPaused()) {
+      try {
+        process.stdin.resume();
+      } catch {}
+    }
     const config = getConfig();
     const input = await askBaiworInput({
       placeholder: 'Ask bAIwor Code to do anything...',
@@ -976,13 +981,28 @@ async function startInteractive(opts = {}) {
         } else if (handled.output) {
           console.log(handled.output);
         }
+        if (process.stdin.isPaused()) {
+          try {
+            process.stdin.resume();
+          } catch {}
+        }
         break;
       }
       case '/login':
         await login(arg || undefined);
+        if (process.stdin.isPaused()) {
+          try {
+            process.stdin.resume();
+          } catch {}
+        }
         break;
       case '/logout':
         await logout(arg || undefined);
+        if (process.stdin.isPaused()) {
+          try {
+            process.stdin.resume();
+          } catch {}
+        }
         break;
       case '/reset':
         resetConversation();

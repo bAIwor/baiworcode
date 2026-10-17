@@ -164,8 +164,165 @@ async function configureAgentikFlow(existingCp, customList, config) {
   p.outro(chalk.green(`✓ Agentik AI (${finalModel}) sekarang aktif! Siap nggarap kodingan, Lur!`));
 }
 
+async function handleGoogleSubmenu() {
+  while (true) {
+    if (process.stdin.isPaused()) {
+      try {
+        process.stdin.resume();
+      } catch {}
+    }
+    await new Promise((r) => setTimeout(r, 20));
+
+    const config = getConfig();
+    const googleOptions = Object.values(PROVIDERS).map((prov, idx) => {
+      const isAgy = prov.method === 'agy';
+      const isActive = isAgy
+        ? (config.activeType === 'agy' && config.activeProvider === prov.name)
+        : (config.activeType === 'oauth' && config.activeProvider === prov.name);
+      const authData = config.oauth?.[prov.id];
+      const isLoggedIn = isAgy
+        ? Boolean(authData && (authData.active || authData.connectedAt))
+        : Boolean(authData && (authData.accessToken || authData.apiKey));
+      const badge = isLoggedIn ? chalk.cyan.dim(' [Logged In]') : '';
+      const activeSuffix = isActive ? chalk.green.bold(` ← currently active (${config.activeModel})`) : '';
+      const descText = prov.desc ? ` ▸ (${prov.desc})` : '';
+      return {
+        value: `oauth_${prov.id}`,
+        label: `${idx + 1}. ${prov.name}${descText}${badge}${activeSuffix}`,
+      };
+    });
+
+    googleOptions.push({
+      value: 'back',
+      label: chalk.gray('← Kembali'),
+    });
+
+    const pickedGoogle = await p.select({
+      message: 'Pilih varian Google (OAuth):',
+      options: googleOptions,
+    });
+
+    if (p.isCancel(pickedGoogle) || pickedGoogle === 'back') {
+      return false;
+    }
+
+    const provId = pickedGoogle.replace('oauth_', '');
+    const provObj = PROVIDERS[provId];
+    if (!provObj) continue;
+
+    const isAgy = provObj.method === 'agy';
+    const authData = config.oauth?.[provId];
+    const isLoggedIn = isAgy
+      ? Boolean(authData && (authData.active || authData.connectedAt))
+      : Boolean(authData && (authData.accessToken || authData.apiKey));
+
+    if (!isLoggedIn) {
+      const res = await login(provId);
+      if (res && res.success) {
+        return true;
+      }
+      continue;
+    }
+
+    const activeModelForProv =
+      config.activeProvider === provObj.name ? config.activeModel : provObj.defaultModel;
+
+    const subChoice = await p.select({
+      message: `Kelola ${chalk.bold(provObj.name)} (${chalk.green('Logged In')}):`,
+      options: [
+        {
+          value: 'activate',
+          label: `Aktifkan ${provObj.name} (${activeModelForProv})`,
+        },
+        {
+          value: 'switch_model',
+          label: 'Ganti model aktif',
+        },
+        {
+          value: 'logout',
+          label: chalk.redBright(`Logout dari ${provObj.name}`),
+        },
+        {
+          value: 'back',
+          label: '← Kembali',
+        },
+      ],
+    });
+
+    if (p.isCancel(subChoice) || subChoice === 'back') {
+      continue;
+    }
+
+    if (subChoice === 'activate') {
+      saveConfig({
+        activeProvider: provObj.name,
+        activeModel: activeModelForProv,
+        activeType: isAgy ? 'agy' : 'oauth',
+      });
+      p.outro(chalk.green(`✓ ${provObj.name} (${activeModelForProv}) sekarang aktif!`));
+      return true;
+    }
+
+    if (subChoice === 'switch_model') {
+      let modelOptions = [];
+      if (isAgy) {
+        modelOptions = [
+          { value: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High)' },
+          { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Thinking)' },
+          { value: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
+          { value: 'gpt-oss-120b-medium', label: 'GPT-OSS 120B (Medium)' },
+          { value: 'gemini-3.8-flash-medium', label: 'Gemini 3.8 Flash (Medium)' },
+          { value: 'gemini-3.8-flash-low', label: 'Gemini 3.8 Flash (Low)' },
+        ];
+      } else {
+        modelOptions = [
+          ...provObj.models.map((m) => ({ value: m, label: m })),
+          { value: '__custom__', label: '✎ Ketik model lain...' },
+        ];
+      }
+
+      const picked = await p.select({
+        message: `Pilih model untuk ${provObj.name}:`,
+        options: modelOptions,
+      });
+
+      if (p.isCancel(picked)) continue;
+
+      let finalModel = picked;
+      if (picked === '__custom__') {
+        const typed = await p.text({
+          message: 'Ketik nama model:',
+          defaultValue: provObj.defaultModel,
+        });
+        if (p.isCancel(typed) || !typed.trim()) continue;
+        finalModel = typed.trim();
+      }
+
+      saveConfig({
+        activeProvider: provObj.name,
+        activeModel: finalModel,
+        activeType: isAgy ? 'agy' : 'oauth',
+      });
+      p.outro(chalk.green(`✓ Model ${provObj.name} diubah menjadi: ${finalModel}`));
+      return true;
+    }
+
+    if (subChoice === 'logout') {
+      await logout(provId);
+      continue;
+    }
+  }
+}
+
 export async function runModelMenu() {
   while (true) {
+    if (process.stdin.isPaused()) {
+      try {
+        process.stdin.resume();
+      } catch {}
+    }
+    await new Promise((r) => setTimeout(r, 20));
+
     const config = getConfig();
 
     console.log();
@@ -272,39 +429,11 @@ export async function runModelMenu() {
 
     // Aksi: Google Group (Pilih Antigravity atau Gemini)
     if (choice === 'group_google') {
-      const googleOptions = Object.values(PROVIDERS).map((prov, idx) => {
-        const isAgy = prov.method === 'agy';
-        const isActive = isAgy
-          ? (config.activeType === 'agy' && config.activeProvider === prov.name)
-          : (config.activeType === 'oauth' && config.activeProvider === prov.name);
-        const authData = config.oauth?.[prov.id];
-        const isLoggedIn = isAgy
-          ? Boolean(authData && (authData.active || authData.connectedAt))
-          : Boolean(authData && (authData.accessToken || authData.apiKey));
-        const badge = isLoggedIn ? chalk.cyan.dim(' [Logged In]') : '';
-        const activeSuffix = isActive ? chalk.green.bold(` ← currently active (${config.activeModel})`) : '';
-        const descText = prov.desc ? ` ▸ (${prov.desc})` : '';
-        return {
-          value: `oauth_${prov.id}`,
-          label: `${idx + 1}. ${prov.name}${descText}${badge}${activeSuffix}`,
-        };
-      });
-
-      googleOptions.push({
-        value: 'back',
-        label: chalk.gray('← Kembali'),
-      });
-
-      const pickedGoogle = await p.select({
-        message: 'Pilih varian Google (OAuth):',
-        options: googleOptions,
-      });
-
-      if (p.isCancel(pickedGoogle) || pickedGoogle === 'back') {
-        continue;
+      const activated = await handleGoogleSubmenu();
+      if (activated) {
+        return;
       }
-
-      choice = pickedGoogle;
+      continue;
     }
 
     // Aksi: Model alias — switch langsung tanpa sub-menu
@@ -321,103 +450,6 @@ export async function runModelMenu() {
         )
       );
       return;
-    }
-
-    // Aksi: OAuth Provider (Google Gemini / Google Antigravity)
-    if (choice.startsWith('oauth_')) {
-      const provId = choice.replace('oauth_', '');
-      const provObj = PROVIDERS[provId];
-      if (!provObj) continue;
-
-      const isAgy = provObj.method === 'agy';
-      const authData = config.oauth?.[provId];
-      const isLoggedIn = isAgy
-        ? Boolean(authData && (authData.active || authData.connectedAt))
-        : Boolean(authData && (authData.accessToken || authData.apiKey));
-
-      if (!isLoggedIn) {
-        // Belum login -> tawarkan login
-        const res = await login(provId);
-        if (res && res.success) {
-          return;
-        }
-        continue;
-      }
-
-      // Sudah login -> Tawarkan: Aktifkan, Ganti model, Logout, ← Kembali
-      const activeModelForProv =
-        config.activeProvider === provObj.name ? config.activeModel : provObj.defaultModel;
-
-      const subChoice = await p.select({
-        message: `Kelola ${chalk.bold(provObj.name)} (${chalk.green('Logged In')}):`,
-        options: [
-          {
-            value: 'activate',
-            label: `Aktifkan ${provObj.name} (${activeModelForProv})`,
-          },
-          {
-            value: 'switch_model',
-            label: 'Ganti model aktif',
-          },
-          {
-            value: 'logout',
-            label: chalk.redBright(`Logout dari ${provObj.name}`),
-          },
-          {
-            value: 'back',
-            label: '← Kembali',
-          },
-        ],
-      });
-
-      if (p.isCancel(subChoice) || subChoice === 'back') {
-        continue;
-      }
-
-      if (subChoice === 'activate') {
-        saveConfig({
-          activeProvider: provObj.name,
-          activeModel: activeModelForProv,
-          activeType: isAgy ? 'agy' : 'oauth',
-        });
-        p.outro(chalk.green(`✓ ${provObj.name} (${activeModelForProv}) sekarang aktif!`));
-        return;
-      }
-
-      if (subChoice === 'switch_model') {
-        const picked = await p.select({
-          message: `Pilih model untuk ${provObj.name}:`,
-          options: [
-            ...provObj.models.map((m) => ({ value: m, label: m })),
-            { value: '__custom__', label: '✎ Ketik model lain...' },
-          ],
-        });
-
-        if (p.isCancel(picked)) continue;
-
-        let finalModel = picked;
-        if (picked === '__custom__') {
-          const typed = await p.text({
-            message: 'Ketik nama model:',
-            defaultValue: provObj.defaultModel,
-          });
-          if (p.isCancel(typed)) continue;
-          finalModel = typed.trim();
-        }
-
-        saveConfig({
-          activeProvider: provObj.name,
-          activeModel: finalModel,
-          activeType: isAgy ? 'agy' : 'oauth',
-        });
-        p.outro(chalk.green(`✓ Model ${provObj.name} diubah menjadi: ${finalModel}`));
-        return;
-      }
-
-      if (subChoice === 'logout') {
-        await logout(provId);
-        continue;
-      }
     }
 
     // Aksi: Custom Provider yang sudah tersimpan (termasuk Agentik)

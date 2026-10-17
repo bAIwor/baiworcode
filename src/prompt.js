@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { TextPrompt, isCancel } from '@clack/core';
+import { Prompt, TextPrompt, isCancel } from '@clack/core';
 import chalk from 'chalk';
 import readline from 'node:readline';
 import { theme } from './theme.js';
@@ -8,6 +8,70 @@ import { renderStatusLine, frameRules, terminalWidth } from './statusLine.js';
 import { todoStore } from './tools/todoTool.js';
 import { renderTodoWidget, toggleTodoCompactMode, getTodoCompactMode } from './chat/planMode.js';
 import { CONFIG_DIR } from './config.js';
+
+// Proteksi global untuk seluruh prompt @clack/core (@clack/prompts)
+// Mencegah process.stdin paused, rawMode deadlock, dan terminal freeze pada Windows saat Esc / cancel beruntun
+if (typeof Prompt === 'function' && !Prompt.prototype._baiworStdinPatched) {
+  Prompt.prototype._baiworStdinPatched = true;
+
+  const origPrompt = Prompt.prototype.prompt;
+  Prompt.prototype.prompt = function (...args) {
+    if (this.input && this.input.isTTY) {
+      if (typeof this.input.resume === 'function') {
+        try {
+          this.input.resume();
+        } catch {}
+      }
+      if (typeof this.input.setRawMode === 'function' && !this.input.isRaw) {
+        try {
+          this.input.setRawMode(true);
+        } catch {}
+      }
+    }
+    if (process.stdin && process.stdin.isTTY && typeof process.stdin.resume === 'function') {
+      try {
+        process.stdin.resume();
+      } catch {}
+    }
+    return origPrompt.apply(this, args);
+  };
+
+  const origClose = Prompt.prototype.close;
+  Prompt.prototype.close = function (...args) {
+    const res = origClose.apply(this, args);
+    // Setelah prompt ditutup (submit atau cancel), pastikan stdin langsung di-resume
+    // agar tidak tertinggal dalam status pause / reading handle mati di Windows
+    if (this.input && this.input.isTTY && typeof this.input.resume === 'function') {
+      try {
+        this.input.resume();
+      } catch {}
+    }
+    if (process.stdin && process.stdin.isTTY && typeof process.stdin.resume === 'function') {
+      try {
+        process.stdin.resume();
+      } catch {}
+    }
+    return res;
+  };
+
+  const origOnKeypress = Prompt.prototype.onKeypress;
+  Prompt.prototype.onKeypress = function (u, key) {
+    const isCtrlC =
+      (key?.name === 'c' && Boolean(key?.ctrl)) ||
+      u === '\u0003' ||
+      key?.sequence === '\u0003';
+
+    if (isCtrlC) {
+      this.state = 'cancel';
+      this.emit('finalize');
+      this.render();
+      this.close();
+      return;
+    }
+
+    return origOnKeypress.call(this, u, key);
+  };
+}
 
 const HISTORY_FILE = path.join(CONFIG_DIR, 'history.json');
 const MAX_HISTORY = 200;
@@ -866,6 +930,11 @@ export async function askBaiworInput(opts = {}) {
 
   if (process.stdin.isTTY) {
     try {
+      if (process.stdin.isPaused()) {
+        try {
+          process.stdin.resume();
+        } catch {}
+      }
       const promptInstance = new SlashTextPrompt({
         placeholder,
         defaultValue: '',
@@ -877,6 +946,12 @@ export async function askBaiworInput(opts = {}) {
       return input;
     } catch {
       // Fallback to readline below if TTY initialization fails
+    } finally {
+      if (process.stdin.isPaused()) {
+        try {
+          process.stdin.resume();
+        } catch {}
+      }
     }
   }
 
