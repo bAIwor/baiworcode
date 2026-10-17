@@ -28,6 +28,8 @@ export const DEFAULT_CONFIG = {
   timelineMode: 'detail',
   // TinyFish Web Intelligence: API Key untuk Search, Fetch (anti-bot & JS), dan Web Automate
   tinyfishApiKey: '',
+  // Model Context Protocol (MCP): daftar server terdaftar { <name>: { type, url?, command?, args?, headers? } }
+  mcpServers: {},
 };
 
 export function maskSecret(str) {

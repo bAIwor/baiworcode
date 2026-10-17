@@ -17,6 +17,7 @@ import {
   saveTinyFishApiKey,
 } from '../src/config.js';
 import { handleWebFetch, handleWebSearch } from '../src/tools/webTool.js';
+import { initAllMcpServers, listActiveMcpSessions, startMcpServer } from '../src/mcp/index.js';
 import { runModelMenu } from '../src/modelMenu.js';
 import { handleModelCommand } from '../src/modelAlias.js';
 import { askBaiworInput, COMMANDS } from '../src/prompt.js';
@@ -471,6 +472,17 @@ async function printStatus() {
   } else {
     console.log(`    ${chalk.gray('○')} Status  : ${chalk.yellow('Belum dikonfigurasi')} (fallback: DuckDuckGo & native fetch)`);
   }
+
+  console.log();
+  console.log(chalk.whiteBright.bold('  🔌 Model Context Protocol (MCP):'));
+  const mcpList = listActiveMcpSessions();
+  if (mcpList.length > 0) {
+    for (const s of mcpList) {
+      console.log(`    ${chalk.green('●')} ${chalk.bold(s.name)} ${chalk.dim(`[${s.type}]`)} ─ ${chalk.cyan(`${s.tools.length} tool aktif`)}`);
+    }
+  } else {
+    console.log(`    ${chalk.gray('○')} Belum ada MCP server aktif (gunakan /mcp list atau konfigurasi ~/.baiwor/config.json)`);
+  }
   console.log();
 }
 
@@ -573,9 +585,52 @@ async function handleTinyFishCommand(arg = '') {
   console.log(chalk.gray('    /tinyfish key <apiKey>    → ganti API key\n'));
 }
 
+async function handleMcpCommand(arg = '') {
+  const parts = String(arg || '').trim().split(/\s+/);
+  const sub = parts[0]?.toLowerCase();
+
+  if (sub === 'refresh') {
+    console.log(chalk.cyan('\n  🔄 Memuat ulang seluruh koneksi MCP Server...'));
+    const results = await initAllMcpServers();
+    if (results.length === 0) {
+      console.log(chalk.yellow('    Belum ada MCP server yang terdaftar di konfigurasi.\n'));
+      return;
+    }
+    for (const r of results) {
+      const badge = r.status === 'connected' ? chalk.green('● Terhubung') : chalk.red('✗ Gagal');
+      console.log(`    ${badge} ${chalk.bold(r.name)}: ${r.toolCount} tool ${r.error ? chalk.gray(`(${r.error})`) : ''}`);
+    }
+    console.log();
+    return;
+  }
+
+  // Default: /mcp list
+  const active = listActiveMcpSessions();
+  console.log(chalk.hex('#FBBF24').bold('\n  🔌 Model Context Protocol (MCP) Servers:'));
+  if (active.length === 0) {
+    console.log(chalk.yellow('    Belum ada MCP server yang terhubung.'));
+    console.log(chalk.gray('    Konfigurasikan di: ~/.baiwor/config.json (key "mcpServers") atau .baiwor/mcp.json'));
+    console.log(chalk.gray('    Gunakan /mcp refresh untuk memindai ulang server yang baru ditambahkan.\n'));
+    return;
+  }
+
+  for (const s of active) {
+    console.log(`    ${chalk.green('●')} ${chalk.white.bold(s.name)} ${chalk.dim(`[${s.type}]`)} ─ ${chalk.cyan(`${s.tools.length} tool aktif`)}`);
+    for (const t of s.tools) {
+      console.log(`       - ${chalk.yellow(t.name)}: ${chalk.dim(t.description || '')}`);
+    }
+  }
+  console.log(chalk.gray('\n  Gunakan /mcp refresh untuk memuat ulang koneksi server.\n'));
+}
+
 async function startInteractive(opts = {}) {
   // Cegah sistem operasi langsung mematikan proses saat Ctrl+C ditekan di terminal
   process.on('SIGINT', () => {});
+
+  // Hubungkan server MCP di latar belakang
+  try {
+    await initAllMcpServers();
+  } catch {}
 
   if (!opts.skipBanner) {
     showBanner();
@@ -902,6 +957,9 @@ async function startInteractive(opts = {}) {
         break;
       case '/tinyfish':
         await handleTinyFishCommand(arg);
+        break;
+      case '/mcp':
+        await handleMcpCommand(arg);
         break;
       case '/model':
       case '/provider': {
@@ -1234,6 +1292,13 @@ program
   .action(async (provider) => {
     await logout(provider);
     process.exit(0);
+  });
+
+program
+  .command('mcp')
+  .description('Jalankan bAIwor Code sebagai MCP Server (stdio) untuk Claude Desktop / Cursor')
+  .action(() => {
+    startMcpServer();
   });
 
 // Samakan gaya warna help untuk seluruh subcommand yang sudah terdaftar.

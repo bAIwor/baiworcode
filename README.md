@@ -192,6 +192,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `/skill [list|info]` — Kelola modul keahlian & plugin (`.baiwor/skills`)
 - `/rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
 - `/status` — Status konfigurasi, provider aktif, **latency**, dan sesi login
+- `/tinyfish [status|search|fetch|key]` — Kelola integrasi TinyFish Web Intelligence
+- `/mcp [list|refresh]` — Kelola server & tool Model Context Protocol (MCP) eksternal
 - `/model [target]` — Ganti model AI & provider. Tanpa argumen membuka menu; dengan argumen switch langsung: `/model <alias>` atau `/model <provider>/<model>`. Kelola alias: `/model alias list|add|remove`
 - `/provider [target]` — Alias untuk perintah `/model`
 - `/login` — Login ke provider OAuth (Google Gemini)
@@ -208,6 +210,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `baiworcode skill [action] [target]` — Kelola modul keahlian & plugin (`.baiwor/skills`)
 - `baiworcode rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
 - `baiworcode status` — Status konfigurasi dan sesi login
+- `baiworcode mcp` — Jalankan bAIwor Code sebagai MCP Server (stdio) untuk Claude Desktop / Cursor
 - `baiworcode model [target]` — Tanpa argumen: menu kelola model/provider. Dengan argumen: switch langsung (`baiworcode model step`, `baiworcode model stepfun/step-5-preview`, `baiworcode model alias add ...`)
 - `baiworcode provider [target]` — Alias untuk perintah `model`
 - `baiworcode login [provider]` — Login langsung ke provider OAuth
@@ -279,6 +282,51 @@ bAIwor Code kini terintegrasi secara bawaan dengan ekosistem [TinyFish](https://
   - `/tinyfish search <query>` — Uji pencarian web langsung dari terminal.
   - `/tinyfish fetch <url>` — Uji ekstraksi halaman web langsung dari terminal.
   - `/tinyfish key <apiKey>` — Mengatur atau memperbarui TinyFish API Key.
+
+### 🔌 Model Context Protocol (MCP)
+
+bAIwor Code mendukung standar terbuka **Model Context Protocol (MCP)** secara dua arah:
+
+#### 1. Sebagai MCP Client (Konsumsi Tool Eksternal)
+bAIwor Code dapat terhubung ke berbagai server MCP (baik via **remote HTTP** maupun **stdio command**), membaca seluruh tools yang diekspos server tersebut, dan langsung menyediakannya ke dalam loop agentic bAIwor.
+- Konfigurasi server MCP tersimpan di `~/.baiwor/config.json` (key `"mcpServers"`) atau berkas lokal proyek `.baiwor/mcp.json`:
+  ```json
+  {
+    "mcpServers": {
+      "github": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "..." }
+      },
+      "custom_remote": {
+        "type": "remote",
+        "url": "https://mcp.example.com",
+        "headers": { "Authorization": "Bearer ..." }
+      }
+    }
+  }
+  ```
+- Integrasi TinyFish MCP otomatis aktif bila `tinyfishApiKey` tersedia di konfigurasi bAIwor.
+- **Perintah REPL `/mcp`**:
+  - `/mcp list` — Tampilkan seluruh server MCP dan daftar tool dinamis yang terhubung.
+  - `/mcp refresh` — Muat ulang dan sambungkan kembali seluruh koneksi server MCP.
+
+#### 2. Sebagai MCP Server (Gunakan bAIwor Code di Claude Desktop / Cursor)
+bAIwor Code dapat bertindak sebagai server MCP berstandar stdio JSON-RPC 2.0 untuk mengekspos **14 tools bawaan bAIwor Code** ke aplikasi AI lain seperti **Claude Desktop**, **Cursor**, atau agen MCP lainnya:
+```bash
+baiworcode mcp
+```
+Contoh konfigurasi di `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "baiworcode": {
+      "command": "baiworcode",
+      "args": ["mcp"]
+    }
+  }
+}
+```
 
 ### Contoh Pemakaian Tool Baru
 

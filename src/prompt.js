@@ -66,6 +66,7 @@ export const COMMANDS = [
   { name: '/rules', desc: 'Lihat aturan koding aktif (BAIWORS.md / .baiwor/rules)' },
   { name: '/status', desc: 'Status konfigurasi & model AI aktif' },
   { name: '/tinyfish', desc: 'Kelola integrasi TinyFish (status, wallet, key, search, fetch)' },
+  { name: '/mcp', desc: 'Kelola Model Context Protocol server & tool eksternal' },
   { name: '/model', desc: 'Pilih model: /model (menu) · /model <alias|provider/model>' },
   { name: '/provider', desc: 'Alias untuk perintah /model' },
   { name: '/login', desc: 'Login ke Google Gemini OAuth' },
@@ -96,6 +97,10 @@ export const SUBCOMMANDS = {
     { name: 'key', desc: 'Simpan API Key TinyFish: /tinyfish key <sk-tinyfish-...>' },
     { name: 'search', desc: 'Tes pencarian web: /tinyfish search <query>' },
     { name: 'fetch', desc: 'Tes ekstraksi URL: /tinyfish fetch <url>' },
+  ],
+  '/mcp': [
+    { name: 'list', desc: 'Tampilkan daftar MCP server & tool aktif' },
+    { name: 'refresh', desc: 'Muat ulang & sambungkan kembali seluruh MCP server' },
   ],
 };
 

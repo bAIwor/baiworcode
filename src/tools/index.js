@@ -23,6 +23,7 @@ import {
 } from './questionnaireTool.js';
 import {
   registerTool,
+  unregisterTool,
   getDefinitions,
   dispatchTool,
   capToolOutput,
@@ -80,6 +81,7 @@ export async function executeTool(toolName, rawArgs, options = {}) {
 export {
   TOOL_DEFINITIONS,
   registerTool,
+  unregisterTool,
   getDefinitions,
   dispatchTool,
   capToolOutput,

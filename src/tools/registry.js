@@ -94,6 +94,15 @@ export function registerTool({
 }
 
 /**
+ * Menghapus pendaftaran sebuah tool dari registry bAIwor Code
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function unregisterTool(name) {
+  return tools.delete(name);
+}
+
+/**
  * Mengambil daftar tool dalam format OpenAI Function Calling
  *
  * @param {Array<string>} [names=null] - Filter daftar nama tool tertentu
