@@ -1,7 +1,19 @@
 # 🎭 bAIwor Code
 
+<p align="left">
+  <a href="https://github.com/bAIwor/baiworcode"><img src="https://img.shields.io/badge/Status-Alpha%20%7C%20Penyempurnaan%20Aktif-orange?style=flat-square" alt="Status: Alpha" /></a>
+  <a href="https://baiwor.my.id"><img src="https://img.shields.io/badge/Website-baiwor.my.id-blue?style=flat-square" alt="Website" /></a>
+  <a href="https://agentik.my.id"><img src="https://img.shields.io/badge/Bonus%20Token-agentik.my.id-10B981?style=flat-square" alt="Bonus Token" /></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D18-green?style=flat-square" alt="Node.js" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-purple?style=flat-square" alt="License: MIT" /></a>
+</p>
+
 > *"Saka Bawor dadi bAIwor — Jiwa Punakawan, Pikiran AI, Guardian Banyumas"*  
-> **Official Website:** [baiwor.my.id](https://baiwor.my.id) · **Bonus Token AI:** [agentik.my.id](https://agentik.my.id)
+> **Website Resmi:** [https://baiwor.my.id](https://baiwor.my.id) · **Bonus Token AI:** [https://agentik.my.id](https://agentik.my.id)
+
+> [!NOTE]
+> **Status Proyek: Tahap Alpha (Penyempurnaan Aktif) 🚧**  
+> bAIwor Code saat ini berada dalam tahap **Alpha** dan sedang terus disempurnakan secara aktif. Fitur baru, stabilitas, dan optimasi performa terus diperbarui setiap hari. Dokumentasi resmi, update, dan ekosistem bAIwor dapat diakses di [baiwor.my.id](https://baiwor.my.id). Masukan dan laporan kendala dapat disampaikan melalui [GitHub Issues](https://github.com/bAIwor/baiworcode/issues).
 
 CLI coding agent pintar berbahasa Indonesia — ngobrol santai di terminal, dan bAIwor langsung bekerja di berkas proyekmu.
 
@@ -279,6 +291,15 @@ bAIwor Code dapat membaca, menulis, dan menjalankan perintah di komputermu. Kare
 
 ## 🎁 Bonus Kredit & Komunitas
 Pengguna dan instalasi bAIwor Code berkesempatan mendapatkan bonus token/kredit API melalui partner resmi di [agentik.my.id](https://agentik.my.id) dengan kode kupon **"baiworcode"**.
+
+---
+
+## 🌐 Tentang bAIwor & Website Resmi
+
+- **Website Resmi**: [https://baiwor.my.id](https://baiwor.my.id)
+- **Ekosistem & Pembaruan**: Kunjungi [baiwor.my.id](https://baiwor.my.id) untuk dokumentasi lengkap, panduan setup, dan informasi rilis terbaru.
+- **Bonus Token AI**: Dapatkan kuota token tambahan melalui [https://agentik.my.id](https://agentik.my.id) (Kupon: `baiworcode`).
+- **Pengembang**: PT. bAIwor Agentic Indonesia.
 
 ---
 

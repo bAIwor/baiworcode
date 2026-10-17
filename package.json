@@ -1,7 +1,7 @@
 {
   "name": "baiworcode",
   "version": "1.0.0",
-  "description": "bAIwor Code — Terminal AI Coding Agent (baiwor.my.id)",
+  "description": "bAIwor Code [Alpha] — Terminal AI Coding Agent · Jiwa Punakawan, Pikiran AI, Guardian Banyumas (https://baiwor.my.id)",
   "type": "module",
   "bin": {
     "baiworcode": "bin/baiwor.js",
