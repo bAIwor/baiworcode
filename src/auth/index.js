@@ -415,7 +415,7 @@ export function authStatus() {
     const isAgy = prov.method === 'agy';
     const auth = config.oauth?.[prov.id];
     const isLoggedIn = isAgy
-      ? Boolean(auth && (auth.active || auth.connectedAt))
+      ? Boolean((auth && (auth.active || auth.connectedAt)) || (config.activeType === 'agy' && config.activeProvider === prov.name))
       : Boolean(auth && (auth.accessToken || auth.apiKey));
     const tokenVal = isAgy ? 'Google AI Pro (agy)' : (auth?.accessToken || auth?.apiKey || '');
     const masked = isAgy ? 'agy cli (local session)' : maskSecret(tokenVal);

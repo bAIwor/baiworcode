@@ -273,13 +273,24 @@ export function applyModelTarget(target, config) {
     if (!prov) {
       return { ok: false, error: `Provider '${target.provider}' tidak dikenal.` };
     }
+    const isAgy = target.type === 'agy' || prov.method === 'agy';
+    const patch = {
+      activeProvider: prov.name,
+      activeModel: target.model,
+      activeType: isAgy ? 'agy' : 'oauth',
+    };
+    if (isAgy) {
+      patch.oauth = {
+        [prov.id]: {
+          active: true,
+          method: 'agy',
+          connectedAt: Date.now(),
+        },
+      };
+    }
     return {
       ok: true,
-      patch: {
-        activeProvider: prov.name,
-        activeModel: target.model,
-        activeType: target.type || (prov.method === 'agy' ? 'agy' : 'oauth'),
-      },
+      patch,
       target: { ...target, provider: prov.name },
     };
   }
