@@ -232,7 +232,7 @@ export const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'webfetch',
-      description: 'Mengambil isi sebuah URL (http/https) dan mengembalikannya sebagai teks yang sudah dibersihkan. Gunakan untuk membaca dokumentasi, catatan rilis, pesan galat dari forum, atau halaman API — tanpa perlu perintah curl.',
+      description: 'Mengambil isi sebuah URL (http/https) dan mengembalikannya sebagai teks yang sudah dibersihkan. Didukung TinyFish Fetch API (bila dikonfigurasi) untuk rendering JavaScript & bypass anti-bot, dengan fallback ke fetch standar. Gunakan untuk membaca dokumentasi, catatan rilis, pesan galat, atau halaman API.',
       parameters: {
         type: 'object',
         properties: {
@@ -248,6 +248,10 @@ export const TOOL_DEFINITIONS = [
             type: 'boolean',
             description: 'true: kembalikan isi mentah apa adanya (tanpa mengubah HTML jadi teks). Default: false.',
           },
+          purpose: {
+            type: 'string',
+            description: 'Tujuan atau konteks pengambilan halaman untuk optimasi ekstraksi TinyFish. Opsional.',
+          },
         },
         required: ['url'],
       },
@@ -257,7 +261,7 @@ export const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'websearch',
-      description: 'Mencari informasi terbaru di web (mesin DuckDuckGo, tanpa API key) dan mengembalikan daftar judul, URL, dan ringkasan. Pakai untuk menemukan dokumentasi, solusi galat, atau rilis paket terbaru.',
+      description: 'Mencari informasi terbaru di web (didukung TinyFish Search API bila ada key, atau DuckDuckGo bawaan) dan mengembalikan daftar judul, URL, dan ringkasan. Pakai untuk menemukan dokumentasi, solusi galat, atau rilis paket terbaru.',
       parameters: {
         type: 'object',
         properties: {
@@ -269,8 +273,46 @@ export const TOOL_DEFINITIONS = [
             type: 'integer',
             description: 'Jumlah maksimum hasil (1-10). Default: 5.',
           },
+          location: {
+            type: 'string',
+            description: 'Kode negara untuk target geo pencarian (misal: "ID", "US"). Opsional.',
+          },
+          language: {
+            type: 'string',
+            description: 'Kode bahasa hasil pencarian (misal: "id", "en"). Opsional.',
+          },
+          include_domains: {
+            type: 'string',
+            description: 'Domain yang dibatasi, dipisahkan koma (misal: "github.com,nodejs.org"). Opsional.',
+          },
         },
         required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'webautomate',
+      description: 'Menjalankan otomasi browser (Web Agent TinyFish / Mako) untuk menyelesaikan tugas interaktif pada situs target (misal: ekstraksi data dinamis, mengisi formulir, navigasi multi-langkah).',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: 'URL situs target yang akan dijelajahi oleh browser (misal: "https://news.ycombinator.com").',
+          },
+          goal: {
+            type: 'string',
+            description: 'Tujuan atau tugas spesifik dalam bahasa alami (misal: "Ambil judul dan link dari 3 artikel teratas").',
+          },
+          browser_profile: {
+            type: 'string',
+            enum: ['lite', 'stealth'],
+            description: 'Profil browser: "lite" untuk kecepatan, "stealth" bila situs memiliki proteksi bot ketat. Default: "lite".',
+          },
+        },
+        required: ['url', 'goal'],
       },
     },
   },

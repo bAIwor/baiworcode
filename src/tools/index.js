@@ -13,7 +13,7 @@ import {
 } from './handlers.js';
 import { handleSearchFiles } from './searchTool.js';
 import { handleTodoList } from './todoTool.js';
-import { handleWebFetch, handleWebSearch } from './webTool.js';
+import { handleWebFetch, handleWebSearch, handleWebAutomate } from './webTool.js';
 import { handleDiagnostics } from './diagnosticsTool.js';
 import { handleDelegateTask, SUBAGENT_ROLES } from './subagentTool.js';
 import {
@@ -43,6 +43,7 @@ const handlersMap = {
   todo_list: { handler: handleTodoList, toolset: 'todo', emoji: '📋' },
   webfetch: { handler: handleWebFetch, toolset: 'web', emoji: '🌐' },
   websearch: { handler: handleWebSearch, toolset: 'web', emoji: '🔍' },
+  webautomate: { handler: handleWebAutomate, toolset: 'web', emoji: '🧭' },
   diagnostics: { handler: handleDiagnostics, toolset: 'quality', emoji: '🩺' },
   delegate_task: { handler: handleDelegateTask, toolset: 'agent', emoji: '🎭' },
   ask_user: { handler: handleAskUser, toolset: 'interactive', emoji: '❓' },
@@ -89,6 +90,7 @@ export {
   handleTodoList,
   handleWebFetch,
   handleWebSearch,
+  handleWebAutomate,
   handleDiagnostics,
   handleDelegateTask,
   SUBAGENT_ROLES,

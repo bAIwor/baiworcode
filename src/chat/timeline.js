@@ -27,6 +27,7 @@ const TOOL_TINTS = {
   todo_list: palette.warning, // oranye tua — merencanakan
   webfetch: palette.info, // cyan — membaca halaman web
   websearch: palette.secondary, // biru — menelusuri web
+  webautomate: palette.primary, // oranye aksen — otomasi browser
   diagnostics: palette.warning, // oranye tua — memeriksa mutu
   delegate_task: palette.primary, // oranye aksen — mendelegasikan subagent
   ask_user: palette.warning, // oranye tua — menanyakan keputusan ke pengguna
@@ -45,6 +46,7 @@ export const PUNAKAWAN_ROLES = {
   search_files: 'pAItruk',
   webfetch: 'pAItruk',
   websearch: 'pAItruk',
+  webautomate: 'pAItruk',
   write_file: 'bAIwor',
   edit_file: 'bAIwor',
   patch_file: 'bAIwor',
@@ -88,6 +90,7 @@ export const TOOL_LABELS = {
   todo_list: 'Daftar tugas',
   webfetch: 'Ambil halaman',
   websearch: 'Cari di web',
+  webautomate: 'Otomasi web',
   diagnostics: 'Periksa mutu',
   delegate_task: 'Delegasi tugas',
   ask_user: 'Tanya pengguna',

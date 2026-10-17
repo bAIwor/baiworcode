@@ -26,6 +26,8 @@ export const DEFAULT_CONFIG = {
   // Tampilan blok aktivitas tool: 'detail' (pohon dua baris) atau
   // 'compact' (satu baris per langkah, gaya CLI modern). Diubah via /timeline.
   timelineMode: 'detail',
+  // TinyFish Web Intelligence: API Key untuk Search, Fetch (anti-bot & JS), dan Web Automate
+  tinyfishApiKey: '',
 };
 
 export function maskSecret(str) {
@@ -196,4 +198,44 @@ export function saveConfig(partialConfig) {  try {
     console.error('Gagal menyimpan konfigurasi:', err.message);
     return getConfig();
   }
+}
+
+/**
+ * Mendapatkan API Key TinyFish dengan urutan prioritas:
+ * 1. Environment variable TINYFISH_API_KEY
+ * 2. Konfigurasi bAIwor Code (~/.baiwor/config.json -> tinyfishApiKey)
+ * 3. Konfigurasi CLI TinyFish (~/.tinyfish/config.json -> api_key)
+ *
+ * @returns {string}
+ */
+export function getTinyFishApiKey() {
+  if (process.env.TINYFISH_API_KEY && process.env.TINYFISH_API_KEY.trim()) {
+    return process.env.TINYFISH_API_KEY.trim();
+  }
+  const config = getConfig();
+  if (config.tinyfishApiKey && typeof config.tinyfishApiKey === 'string' && config.tinyfishApiKey.trim()) {
+    return config.tinyfishApiKey.trim();
+  }
+  // Cek konfigurasi resmi ~/.tinyfish/config.json bila pengguna setup via CLI
+  try {
+    const tfFile = path.join(os.homedir(), '.tinyfish', 'config.json');
+    if (fs.existsSync(tfFile)) {
+      const parsed = JSON.parse(fs.readFileSync(tfFile, 'utf8'));
+      if (parsed && typeof parsed.api_key === 'string' && parsed.api_key.trim()) {
+        return parsed.api_key.trim();
+      }
+    }
+  } catch {}
+  return '';
+}
+
+/**
+ * Menyimpan API Key TinyFish ke dalam konfigurasi ~/.baiwor/config.json.
+ * @param {string} key
+ * @returns {string}
+ */
+export function saveTinyFishApiKey(key) {
+  const clean = String(key || '').trim();
+  saveConfig({ tinyfishApiKey: clean });
+  return clean;
 }

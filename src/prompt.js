@@ -65,6 +65,7 @@ export const COMMANDS = [
   { name: '/skill', desc: 'Kelola modul keahlian & plugin (.baiwor/skills)' },
   { name: '/rules', desc: 'Lihat aturan koding aktif (BAIWORS.md / .baiwor/rules)' },
   { name: '/status', desc: 'Status konfigurasi & model AI aktif' },
+  { name: '/tinyfish', desc: 'Kelola integrasi TinyFish (status, wallet, key, search, fetch)' },
   { name: '/model', desc: 'Pilih model: /model (menu) · /model <alias|provider/model>' },
   { name: '/provider', desc: 'Alias untuk perintah /model' },
   { name: '/login', desc: 'Login ke Google Gemini OAuth' },
@@ -89,6 +90,12 @@ export const SUBCOMMANDS = {
   '/skill': [
     { name: 'list', desc: 'Tampilkan daftar modul keahlian & plugin yang terpasang' },
     { name: 'info', desc: 'Tampilkan detail instruksi modul keahlian' },
+  ],
+  '/tinyfish': [
+    { name: 'status', desc: 'Lihat status koneksi TinyFish & saldo wallet' },
+    { name: 'key', desc: 'Simpan API Key TinyFish: /tinyfish key <sk-tinyfish-...>' },
+    { name: 'search', desc: 'Tes pencarian web: /tinyfish search <query>' },
+    { name: 'fetch', desc: 'Tes ekstraksi URL: /tinyfish fetch <url>' },
   ],
 };
 

@@ -7,6 +7,7 @@ import {
   parseDuckDuckGo,
   handleWebFetch,
   handleWebSearch,
+  handleWebAutomate,
 } from '../src/tools/webTool.js';
 
 const realFetch = globalThis.fetch;
@@ -27,6 +28,7 @@ function mockResponse({ status = 200, statusText = 'OK', url, contentType, body 
     },
     arrayBuffer: async () => Buffer.from(body ?? '', 'utf8'),
     text: async () => String(body ?? ''),
+    json: async () => JSON.parse(body ?? '{}'),
   };
 }
 
@@ -151,5 +153,104 @@ describe('webTool: handleWebSearch', () => {
     const res = await handleWebSearch({ query: 'q' });
     assert.equal(res.success, true);
     assert.match(res.output, /Tidak ada hasil/);
+  });
+});
+
+describe('webTool: Integrasi TinyFish', () => {
+  it('handleWebSearch menggunakan TinyFish Search API saat key aktif', async () => {
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes('api.search.tinyfish.ai')) {
+        return mockResponse({
+          contentType: 'application/json',
+          body: JSON.stringify({
+            results: [
+              {
+                title: 'Dokumentasi bAIwor',
+                url: 'https://baiwor.my.id/docs',
+                snippet: 'Panduan lengkap AI Agent Banyumasan.',
+                site_name: 'baiwor.my.id',
+              },
+            ],
+          }),
+        });
+      }
+      return mockResponse({ status: 500, body: 'upstream error' });
+    };
+
+    const res = await handleWebSearch({ query: 'baiwor docs' });
+    assert.equal(res.success, true);
+    assert.match(res.output, /TinyFish Search/);
+    assert.match(res.output, /Dokumentasi bAIwor/);
+    assert.match(res.output, /https:\/\/baiwor\.my\.id\/docs/);
+  });
+
+  it('handleWebFetch menggunakan TinyFish Fetch API untuk ekstraksi markdown', async () => {
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes('api.fetch.tinyfish.ai')) {
+        return mockResponse({
+          contentType: 'application/json',
+          body: JSON.stringify({
+            results: [
+              {
+                url: 'https://baiwor.my.id',
+                title: 'bAIwor Official',
+                description: 'AI Agent Banyumas',
+                text: '# Selamat Datang di bAIwor\n\nAI tangguh berjiwa Bawor.',
+              },
+            ],
+          }),
+        });
+      }
+      return mockResponse({ status: 500, body: 'error' });
+    };
+
+    const res = await handleWebFetch({ url: 'https://baiwor.my.id' });
+    assert.equal(res.success, true);
+    assert.match(res.output, /TinyFish Fetch/);
+    assert.match(res.output, /bAIwor Official/);
+    assert.match(res.output, /AI tangguh berjiwa Bawor/);
+  });
+
+  it('handleWebAutomate menolak URL invalid dan goal kosong', async () => {
+    const res1 = await handleWebAutomate({ url: 'bukan-url', goal: 'lakukan sesuatu' });
+    assert.equal(res1.success, false);
+    assert.match(res1.output, /URL tidak valid/);
+
+    const res2 = await handleWebAutomate({ url: 'https://example.com', goal: '   ' });
+    assert.equal(res2.success, false);
+    assert.match(res2.output, /goal/);
+  });
+
+  it('handleWebAutomate mengeksekusi automasi dan mengembalikan hasil terstruktur', async () => {
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes('/v1/automation/run')) {
+        return mockResponse({
+          contentType: 'application/json',
+          body: JSON.stringify({
+            run_id: 'run-test-123',
+            status: 'COMPLETED',
+            num_of_steps: 3,
+            result: {
+              top_story: 'Berita Hebat Banyumas',
+              url: 'https://news.example.com/1',
+            },
+          }),
+        });
+      }
+      return mockResponse({ status: 500, body: 'upstream error' });
+    };
+
+    const res = await handleWebAutomate({
+      url: 'https://news.example.com',
+      goal: 'Ambil top story',
+    });
+    assert.equal(res.success, true);
+    assert.match(res.output, /COMPLETED/);
+    assert.match(res.output, /Berita Hebat Banyumas/);
+    assert.match(res.output, /3 langkah/);
+    assert.match(res.output, /run-test-123/);
   });
 });

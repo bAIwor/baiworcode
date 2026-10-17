@@ -7,7 +7,16 @@ import '../src/colors.js';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
-import { getConfig, CONFIG_FILE, maskSecret, getTimelineMode, setTimelineMode } from '../src/config.js';
+import {
+  getConfig,
+  CONFIG_FILE,
+  maskSecret,
+  getTimelineMode,
+  setTimelineMode,
+  getTinyFishApiKey,
+  saveTinyFishApiKey,
+} from '../src/config.js';
+import { handleWebFetch, handleWebSearch } from '../src/tools/webTool.js';
 import { runModelMenu } from '../src/modelMenu.js';
 import { handleModelCommand } from '../src/modelAlias.js';
 import { askBaiworInput, COMMANDS } from '../src/prompt.js';
@@ -452,6 +461,16 @@ async function printStatus() {
       console.log(`    ${marker}${chalk.bold(cp.name)} ─ ${chalk.dim(cp.baseUrl)} [Key: ${maskedKey}] ─ Model: ${chalk.cyan(cp.model)}`);
     }
   }
+
+  console.log();
+  console.log(chalk.whiteBright.bold('  🐟 TinyFish Web Intelligence:'));
+  const tfKey = getTinyFishApiKey();
+  if (tfKey) {
+    console.log(`    ${chalk.green('●')} Status  : ${chalk.green('Aktif')} [Key: ${maskSecret(tfKey)}]`);
+    console.log(`      Layanan : ${chalk.cyan('Search')}, ${chalk.cyan('Fetch (Anti-bot + JS)')}, ${chalk.cyan('Web Automate (Mako/Browser)')}`);
+  } else {
+    console.log(`    ${chalk.gray('○')} Status  : ${chalk.yellow('Belum dikonfigurasi')} (fallback: DuckDuckGo & native fetch)`);
+  }
   console.log();
 }
 
@@ -486,6 +505,72 @@ function showResumedBanner() {
     }
   }
   console.log();
+}
+
+async function handleTinyFishCommand(arg = '') {
+  const parts = String(arg || '').trim().split(/\s+/);
+  const sub = parts[0]?.toLowerCase();
+  const rest = parts.slice(1).join(' ').trim();
+
+  if (sub === 'key') {
+    if (!rest) {
+      console.log(chalk.yellow('\n  Penggunaan: /tinyfish key <sk-tinyfish-...>'));
+      return;
+    }
+    saveTinyFishApiKey(rest);
+    console.log(chalk.green(`\n  ✅ TinyFish API Key berhasil disimpan: ${maskSecret(rest)}`));
+    console.log(chalk.gray('     Fitur Web Search, Fetch (anti-bot & JS), dan Web Automate kini aktif.\n'));
+    return;
+  }
+
+  if (sub === 'search') {
+    if (!rest) {
+      console.log(chalk.yellow('\n  Penggunaan: /tinyfish search <kata-kunci>'));
+      return;
+    }
+    console.log(chalk.cyan(`\n  🔍 Mencari via TinyFish: "${rest}"...`));
+    const res = await handleWebSearch({ query: rest });
+    console.log('\n' + res.output + '\n');
+    return;
+  }
+
+  if (sub === 'fetch') {
+    if (!rest) {
+      console.log(chalk.yellow('\n  Penggunaan: /tinyfish fetch <url>'));
+      return;
+    }
+    console.log(chalk.cyan(`\n  🌐 Mengambil halaman via TinyFish: "${rest}"...`));
+    const res = await handleWebFetch({ url: rest });
+    console.log('\n' + res.output + '\n');
+    return;
+  }
+
+  const key = getTinyFishApiKey();
+  console.log(chalk.whiteBright.bold('\n  🐟 Status TinyFish Web Intelligence:'));
+  if (!key) {
+    console.log(`    ${chalk.gray('○')} Status   : ${chalk.yellow('Belum dikonfigurasi')}`);
+    console.log(chalk.gray('      Gunakan: /tinyfish key <sk-tinyfish-...> untuk mengaktifkan.'));
+    console.log(chalk.gray('      Saat ini websearch & webfetch menggunakan DuckDuckGo & native fetch.\n'));
+    return;
+  }
+
+  console.log(`    ${chalk.green('●')} Status   : ${chalk.green('Aktif')} [Key: ${maskSecret(key)}]`);
+  console.log(`    ${chalk.cyan('✦')} Layanan  : Search, Fetch (anti-bot & JS rendering), Web Automate (Mako)`);
+
+  try {
+    const res = await globalThis.fetch('https://agent.tinyfish.ai/v1/wallet', {
+      headers: { 'X-API-Key': key },
+    });
+    if (res.ok) {
+      const w = await res.json();
+      const bal = w.available_balance ? `$${w.available_balance} ${w.currency || 'USD'}` : 'Tersedia';
+      console.log(`    ${chalk.hex('#10B981')('💰')} Saldo    : ${chalk.bold.greenBright(bal)}`);
+    }
+  } catch {}
+  console.log(chalk.gray('\n  Sub-perintah:'));
+  console.log(chalk.gray('    /tinyfish search <query>  → uji pencarian web'));
+  console.log(chalk.gray('    /tinyfish fetch <url>     → uji ekstraksi URL bersih'));
+  console.log(chalk.gray('    /tinyfish key <apiKey>    → ganti API key\n'));
 }
 
 async function startInteractive(opts = {}) {
@@ -814,6 +899,9 @@ async function startInteractive(opts = {}) {
       }
       case '/status':
         await printStatus();
+        break;
+      case '/tinyfish':
+        await handleTinyFishCommand(arg);
         break;
       case '/model':
       case '/provider': {

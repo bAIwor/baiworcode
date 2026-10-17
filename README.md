@@ -164,15 +164,17 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Berkas berakhiran baris CRLF (khas Windows) dibaca dan disunting tanpa menyisakan `\r` atau mengubah akhir baris seluruh berkas.
   - Loop agentic hingga 12 putaran: model bisa memanggil tool, membaca hasilnya, lalu melanjutkan sendiri.
   - **Selalu berakhir dengan jawaban**: bila batas putaran tercapai — atau terdeteksi model mengulang rangkaian tool yang sama tiga kali — bAIwor otomatis meminta satu giliran kesimpulan **tanpa tool**, jadi pekerjaan tidak berhenti tanpa keputusan.
-- **🛠️ 11 Tool Bawaan** — bAIwor tidak hanya menjawab, tapi benar-benar mengerjakan:
+- **🛠️ 14 Tool Bawaan** — bAIwor tidak hanya menjawab, tapi benar-benar mengerjakan:
   - `read_file`, `write_file`, `edit_file`, `patch_file`, `list_directory` — baca, tulis, dan sunting berkas proyek.
   - `edit_file` **tahan banting** — pencocokannya toleran terhadap perbedaan indentasi, spasi ujung baris, dan CRLF/LF, jadi refactor tidak gagal hanya karena spasi. Ada `replace_all` untuk mengganti semua kemunculan, dan `edits` untuk banyak perubahan sekaligus secara **atomik** (semua berhasil atau tidak ada yang ditulis).
   - `patch_file` — menerapkan unified diff (format `git diff`); blok konteksnya dicari ulang sehingga patch tetap kena walau nomor baris bergeser.
   - `search_files` — cari fungsi/teks di seluruh proyek tanpa membuka berkas satu per satu, dengan pengaman anti-ReDoS agar pola berat tidak membuat proses menggantung.
   - `run_command` — jalankan `npm test`, linter, git, dan perintah terminal lain.
-  - `webfetch` & `websearch` — baca dokumentasi/halaman web dan cari solusi galat di internet tanpa perlu `curl`. Halaman HTML dibersihkan menjadi teks agar hemat konteks.
+  - `webfetch` & `websearch` — baca dokumentasi/halaman web dan cari solusi di internet. Didukung **TinyFish Web Intelligence** (rendering JavaScript modern, anti-bot bypass, hasil terstruktur & markdown bersih untuk LLM) dengan fallback mulus ke DuckDuckGo & native fetch.
+  - `webautomate` — mengemudikan browser headless (Web Agent TinyFish / Mako) untuk menyelesaikan misi interaktif, ekstraksi data dinamis, dan pengisian formulir.
   - `diagnostics` — deteksi & jalankan pemeriksaan mutu proyek (script `lint`/`typecheck`/`check`, atau `tsc`/`eslint`) supaya bAIwor memverifikasi pekerjaannya sebelum menyatakan selesai.
   - `todo_list` — susun rencana tugas untuk pekerjaan besar dan lacak progresnya.
+  - `delegate_task` & `ask_user` — orkestrasi subagent dan konfirmasi interaktif.
 - **🔒 Keamanan Berlapis**:
   - **Sandbox workspace** — akses berkas dibatasi pada folder proyek; area kredensial seperti `.ssh` dan `~/.baiwor` selalu ditolak.
   - **Approval Gate (Y/n)** — perintah berisiko seperti `git push`, `npm publish`, atau penghapusan rekursif akan meminta konfirmasi lebih dulu, dengan default **Tidak**.
@@ -247,7 +249,7 @@ Di dalam mode interaktif, cara pakainya sama — cukup `/model step`, `/model al
 
 ---
 
-## 🛠️ Daftar Tool
+## 🛠️ Daftar Tool (14 Tools)
 
 | Tool | Kegunaan |
 |---|---|
@@ -258,10 +260,25 @@ Di dalam mode interaktif, cara pakainya sama — cukup `/model step`, `/model al
 | `list_directory` | Melihat daftar berkas & folder (mengabaikan `node_modules`) |
 | `search_files` | Mencari teks/fungsi di seluruh proyek, atau mencari nama berkas |
 | `run_command` | Menjalankan perintah terminal di dalam workspace |
-| `webfetch` | Mengambil isi sebuah URL dan mengembalikannya sebagai teks bersih |
-| `websearch` | Mencari di web (tanpa API key) untuk dokumentasi/solusi galat |
-| `diagnostics` | Menjalankan pemeriksaan mutu proyek (lint/typecheck) |
+| `webfetch` | Mengambil & mengekstrak URL bersih (didukung **TinyFish** rendering JS & anti-bot, fallback fetch standar) |
+| `websearch` | Mencari di web terstruktur & berperingkat (didukung **TinyFish Search**, fallback DuckDuckGo) |
+| `webautomate` | Menjalankan otomasi browser headless (**TinyFish Web Agent / Mako**) untuk misi interaktif web |
+| `diagnostics` | Menjalankan pemeriksaan mutu proyek (lint/typecheck/tsc/eslint) |
 | `todo_list` | Menyusun dan memperbarui daftar tugas multi-langkah, ditampilkan sebagai checklist |
+| `delegate_task` | Mendelegasikan sub-tugas ke subagent otonom terspesialisasi |
+| `ask_user` | Mengajukan pertanyaan atau mengonfirmasi pilihan interaktif kepada pengguna |
+
+### 🐟 Integrasi TinyFish Web Intelligence
+
+bAIwor Code kini terintegrasi secara bawaan dengan ekosistem [TinyFish](https://www.tinyfish.ai/):
+- **Search API**: Pencarian web berperingkat tinggi, terstruktur, dan cepat tanpa risiko bot blocking.
+- **Fetch API**: Mengambil konten web dengan rendering JavaScript lengkap, bypass Cloudflare/anti-bot secara otomatis, dan mengembalikan Markdown bersih yang hemat token LLM.
+- **Web Automate (Mako Agent)**: Mengemudikan browser nyata via perintah alami untuk menyelesaikan alur multi-langkah di web.
+- **Perintah REPL `/tinyfish`**:
+  - `/tinyfish status` — Menampilkan status koneksi, API key aktif, dan saldo wallet TinyFish.
+  - `/tinyfish search <query>` — Uji pencarian web langsung dari terminal.
+  - `/tinyfish fetch <url>` — Uji ekstraksi halaman web langsung dari terminal.
+  - `/tinyfish key <apiKey>` — Mengatur atau memperbarui TinyFish API Key.
 
 ### Contoh Pemakaian Tool Baru
 
