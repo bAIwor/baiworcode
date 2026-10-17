@@ -193,12 +193,17 @@ export async function runModelMenu() {
       optionNumber++;
     }
 
-    // 2. Google Gemini OAuth
+    // 2. Google Providers (Gemini AI Studio & Google Antigravity)
     for (const prov of Object.values(PROVIDERS)) {
-      const isActive = config.activeType === 'oauth' && config.activeProvider === prov.name;
+      const isAgy = prov.method === 'agy';
+      const isActive = isAgy
+        ? (config.activeType === 'agy' && config.activeProvider === prov.name)
+        : (config.activeType === 'oauth' && config.activeProvider === prov.name);
       const authData = config.oauth?.[prov.id];
-      const isLoggedIn = Boolean(authData && (authData.accessToken || authData.apiKey));
-      const loginBadge = isLoggedIn ? chalk.cyan.dim(' [Logged In]') : '';
+      const isLoggedIn = isAgy
+        ? Boolean(authData && (authData.active || authData.connectedAt))
+        : Boolean(authData && (authData.accessToken || authData.apiKey));
+      const loginBadge = isLoggedIn ? chalk.cyan.dim(isAgy ? ' [Google AI Pro]' : ' [Logged In]') : '';
       const suffix = isActive ? chalk.green.bold(' ← currently active') : '';
 
       selectOptions.push({
@@ -277,14 +282,17 @@ export async function runModelMenu() {
       return;
     }
 
-    // Aksi: OAuth Provider (Google Gemini)
+    // Aksi: OAuth Provider (Google Gemini / Google Antigravity)
     if (choice.startsWith('oauth_')) {
       const provId = choice.replace('oauth_', '');
       const provObj = PROVIDERS[provId];
       if (!provObj) continue;
 
+      const isAgy = provObj.method === 'agy';
       const authData = config.oauth?.[provId];
-      const isLoggedIn = Boolean(authData && (authData.accessToken || authData.apiKey));
+      const isLoggedIn = isAgy
+        ? Boolean(authData && (authData.active || authData.connectedAt))
+        : Boolean(authData && (authData.accessToken || authData.apiKey));
 
       if (!isLoggedIn) {
         // Belum login -> tawarkan login
@@ -300,7 +308,7 @@ export async function runModelMenu() {
         config.activeProvider === provObj.name ? config.activeModel : provObj.defaultModel;
 
       const subChoice = await p.select({
-        message: `Kelola ${chalk.bold(provObj.name)} (${chalk.green('Logged In')}):`,
+        message: `Kelola ${chalk.bold(provObj.name)} (${chalk.green(isAgy ? 'Google AI Pro Active' : 'Logged In')}):`,
         options: [
           {
             value: 'activate',
@@ -329,7 +337,7 @@ export async function runModelMenu() {
         saveConfig({
           activeProvider: provObj.name,
           activeModel: activeModelForProv,
-          activeType: 'oauth',
+          activeType: isAgy ? 'agy' : 'oauth',
         });
         p.outro(chalk.green(`✓ ${provObj.name} (${activeModelForProv}) sekarang aktif!`));
         return;
@@ -359,7 +367,7 @@ export async function runModelMenu() {
         saveConfig({
           activeProvider: provObj.name,
           activeModel: finalModel,
-          activeType: 'oauth',
+          activeType: isAgy ? 'agy' : 'oauth',
         });
         p.outro(chalk.green(`✓ Model ${provObj.name} diubah menjadi: ${finalModel}`));
         return;

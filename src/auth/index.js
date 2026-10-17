@@ -121,6 +121,59 @@ export async function login(providerId) {
     return null;
   }
 
+  if (provider.method === 'agy') {
+    const s = p.spinner();
+    s.start('Memeriksa status Antigravity CLI (agy) & sesi Google AI Pro...');
+
+    const agyExe = process.env.ANTIGRAVITY_AGENTAPI_EXE || 'agy';
+    let isAvailable = false;
+    try {
+      const { execSync } = await import('node:child_process');
+      const out = execSync(`"${agyExe}" models`, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000 }).toString('utf8');
+      if (out.includes('gemini-3.8-flash-high') || out.includes('Gemini 3.8 Flash')) {
+        isAvailable = true;
+      }
+    } catch {}
+
+    if (!isAvailable) {
+      s.stop(chalk.red('✗ Antigravity CLI (agy) belum terdeteksi atau belum login.'));
+      console.log(chalk.yellow('  Pastikan Antigravity CLI sudah terpasang dan login dengan akun Google AI Pro Anda.'));
+      return null;
+    }
+
+    s.stop(chalk.green('✓ Terhubung ke Antigravity CLI (Google AI Pro aktif)!'));
+
+    const modelChoice = await p.select({
+      message: `Pilih model aktif untuk ${provider.name}:`,
+      options: [
+        { value: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High) — Bawaan Cepat & Cerdas' },
+        { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Thinking) — Penalaran Mendalam' },
+        { value: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking) — Arsitektur & Refactor' },
+        { value: 'gpt-oss-120b-medium', label: 'GPT-OSS 120B (Medium) — Open-weights' },
+        { value: 'gemini-3.8-flash-medium', label: 'Gemini 3.8 Flash (Medium)' },
+        { value: 'gemini-3.8-flash-low', label: 'Gemini 3.8 Flash (Low)' },
+      ],
+    });
+
+    if (p.isCancel(modelChoice)) return null;
+
+    saveConfig({
+      oauth: {
+        [provider.id]: {
+          active: true,
+          method: 'agy',
+          connectedAt: Date.now(),
+        },
+      },
+      activeProvider: provider.name,
+      activeModel: modelChoice,
+      activeType: 'agy',
+    });
+
+    p.outro(chalk.green(`✓ Berhasil mengaktifkan ${provider.name} (${modelChoice})!`));
+    return { success: true, method: 'agy', model: modelChoice };
+  }
+
   let config = getConfig();
   let clientId = provider.getClientId(config);
   let clientSecret = provider.getClientSecret ? provider.getClientSecret(config) : (provider.clientSecret || '');
@@ -343,7 +396,7 @@ export async function logout(providerId) {
     },
   };
 
-  if (config.activeType === 'oauth' && config.activeProvider === provName) {
+  if ((config.activeType === 'oauth' || config.activeType === 'agy') && config.activeProvider === provName) {
     updates.activeProvider = 'Not configured';
     updates.activeModel = 'Not configured';
     updates.activeType = 'none';
@@ -359,13 +412,16 @@ export async function logout(providerId) {
 export function authStatus() {
   const config = getConfig();
   return Object.values(PROVIDERS).map((prov) => {
+    const isAgy = prov.method === 'agy';
     const auth = config.oauth?.[prov.id];
-    const isLoggedIn = Boolean(auth && (auth.accessToken || auth.apiKey));
-    const tokenVal = auth?.accessToken || auth?.apiKey || '';
-    const masked = maskSecret(tokenVal);
+    const isLoggedIn = isAgy
+      ? Boolean(auth && (auth.active || auth.connectedAt))
+      : Boolean(auth && (auth.accessToken || auth.apiKey));
+    const tokenVal = isAgy ? 'Google AI Pro (agy)' : (auth?.accessToken || auth?.apiKey || '');
+    const masked = isAgy ? 'agy cli (local session)' : maskSecret(tokenVal);
     const expiresAt = auth?.expiresAt || null;
 
-    let expiryStatus = 'Aktif';
+    let expiryStatus = isAgy ? 'Aktif (Google AI Pro)' : 'Aktif';
     if (expiresAt) {
       if (Date.now() >= expiresAt) {
         expiryStatus = 'Kedaluwarsa';

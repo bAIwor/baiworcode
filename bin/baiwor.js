@@ -385,6 +385,9 @@ function showHelp() {
 async function checkActiveProviderLatency() {
   try {
     const creds = await resolveActiveCredentials();
+    if (creds.type === 'agy') {
+      return 'local CLI (agy)';
+    }
     const startTime = performance.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);

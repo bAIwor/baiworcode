@@ -209,7 +209,7 @@ describe('StatusLine: Penyesuaian Lebar Terminal', () => {
     const sempit = polos(renderStatusLine({ maxWidth: 65 }));
     const modelSnippet = (config.activeModel || 'Not configured').slice(0, 10);
     assert.ok(sempit.includes(modelSnippet), 'nama model harus bertahan');
-    if (config.activeProvider && config.activeProvider !== 'baiwor.my.id') {
+    if (config.activeProvider && config.activeProvider !== 'baiwor.my.id' && config.activeProvider !== 'Not configured') {
       assert.ok(!sempit.includes(config.activeProvider), 'provider boleh hilang dulu');
     }
   });

@@ -48,6 +48,22 @@ export async function resolveActiveCredentials() {
     };
   }
 
+  if (config.activeType === 'agy' || (config.activeProvider || '').toLowerCase().includes('antigravity')) {
+    const prov = PROVIDERS['google-antigravity'];
+    const activeModel =
+      config.activeModel && config.activeModel !== 'Not configured'
+        ? config.activeModel
+        : prov.defaultModel;
+
+    return {
+      provider: prov.name,
+      type: 'agy',
+      baseUrl: 'local://antigravity',
+      headers: {},
+      model: activeModel,
+    };
+  }
+
   if (config.activeType === 'oauth') {
     const prov = Object.values(PROVIDERS).find(
       (p) => p.name.toLowerCase() === (config.activeProvider || '').toLowerCase()

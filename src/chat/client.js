@@ -1,3 +1,122 @@
+import { spawn } from 'node:child_process';
+
+/**
+ * Melakukan streaming chat completion melalui Antigravity CLI (agy)
+ * ditenagai oleh sesi Google AI Pro (Gemini 3.8 Flash, Claude Sonnet 4.6, Opus 4.6, dll.)
+ */
+export async function streamAgyCompletion({
+  credentials,
+  messages,
+  signal,
+  onStart,
+  onDelta,
+  onReasoning,
+}) {
+  const agyExe = process.env.ANTIGRAVITY_AGENTAPI_EXE || 'agy';
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+  const contextHistory = messages.slice(0, -1);
+
+  let fullPrompt = '';
+  if (contextHistory.length > 0) {
+    const historyText = contextHistory
+      .filter((m) => m.content && (m.role === 'user' || m.role === 'assistant'))
+      .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
+      .join('\n\n');
+    fullPrompt = `Konteks percakapan sebelumnya:\n${historyText}\n\nInstruksi pengguna sekarang:\n${lastUserMsg}`;
+  } else {
+    fullPrompt = lastUserMsg;
+  }
+
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(
+        agyExe,
+        ['--model', credentials.model, '--output-format', 'stream-json', '-p', '-'],
+        {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: false,
+        }
+      );
+    } catch (err) {
+      return reject(new Error(`Gagal menjalankan Antigravity CLI (${agyExe}): ${err.message}`));
+    }
+
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        try {
+          child.kill('SIGTERM');
+        } catch {}
+      });
+    }
+
+    let buffer = '';
+    let hasStarted = false;
+    let fullContent = '';
+    let fullReasoning = '';
+
+    child.stdout.on('data', (chunk) => {
+      buffer += chunk.toString('utf8');
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const json = JSON.parse(trimmed);
+          if (json.event === 'step_update') {
+            const step = json.step_update;
+            if (step?.text_delta) {
+              if (!hasStarted) {
+                hasStarted = true;
+                if (onStart) onStart();
+              }
+              fullContent += step.text_delta;
+              if (onDelta) onDelta(step.text_delta);
+            }
+          } else if (json.event === 'result') {
+            if (json.result?.response && !fullContent) {
+              fullContent = json.result.response;
+            }
+          }
+        } catch {
+          // Abaikan baris non-JSON
+        }
+      }
+    });
+
+    let stderr = '';
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString('utf8');
+    });
+
+    child.on('error', (err) => {
+      reject(err);
+    });
+
+    child.on('close', (code) => {
+      if (signal?.aborted) {
+        const err = new Error('Streaming dihentikan oleh pengguna.');
+        err.name = 'AbortError';
+        return reject(err);
+      }
+      if (code !== 0 && !fullContent) {
+        return reject(new Error(`Antigravity error (exit code ${code}): ${stderr || 'Unknown error'}`));
+      }
+      resolve({
+        content: fullContent,
+        reasoning: fullReasoning,
+        tool_calls: null,
+        completed: true,
+      });
+    });
+
+    child.stdin.write(fullPrompt);
+    child.stdin.end();
+  });
+}
+
 /**
  * Helper untuk menyusun URL endpoint /chat/completions secara fleksibel
  * baik untuk AgentikMyID, OpenRouter, Groq, maupun endpoint OpenAI-compatible lainnya.
@@ -133,6 +252,18 @@ export async function streamChatCompletion({
   maxRetries = DEFAULT_MAX_RETRIES,
   retryDelayMs = DEFAULT_RETRY_DELAY_MS,
 }) {
+  if (credentials.type === 'agy') {
+    return await streamAgyCompletion({
+      credentials,
+      messages,
+      tools,
+      signal,
+      onStart,
+      onDelta,
+      onReasoning,
+    });
+  }
+
   const url = buildChatEndpoint(credentials.baseUrl);
   const payload = {
     model: credentials.model,
