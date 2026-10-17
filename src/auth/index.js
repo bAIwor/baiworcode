@@ -23,6 +23,9 @@ async function refreshAccessToken(provider, currentAuth) {
       refresh_token: currentAuth.refreshToken,
       client_id: clientId,
     });
+    if (provider.clientSecret) {
+      bodyParams.set('client_secret', provider.clientSecret);
+    }
 
     const res = await fetch(provider.tokenEndpoint, {
       method: 'POST',
@@ -120,112 +123,129 @@ export async function login(providerId) {
 
   let config = getConfig();
   let clientId = provider.getClientId(config);
+  let clientSecret = provider.getClientSecret ? provider.getClientSecret(config) : (provider.clientSecret || '');
 
-  // Jika Client ID kosong, beri petunjuk dan tawarkan opsi
-  if (!clientId) {
-    console.log();
-    console.log(chalk.yellow.bold(`  ℹ️  Konfigurasi ${provider.name}:`));
-    console.log(chalk.gray(`     ${provider.setupGuide}`));
-    console.log();
+  const envKey = provider.id === 'google-gemini' ? process.env.GEMINI_API_KEY : null;
 
-    const envKey = provider.id === 'google-gemini' ? process.env.GEMINI_API_KEY : null;
+  // Tampilkan pilihan metode login
+  const opt = await p.select({
+    message: `Pilih metode autentikasi untuk ${provider.name}:`,
+    options: [
+      {
+        value: 'oauth_browser',
+        label: '🌐 Login dengan Akun Google di Browser (OAuth 2.0 PKCE)',
+      },
+      {
+        value: 'api_key',
+        label: envKey
+          ? `🔑 Gunakan GEMINI_API_KEY dari environment (${maskSecret(envKey)})`
+          : '🔑 Gunakan API Key (Google AI Studio via aistudio.google.com)',
+      },
+      {
+        value: 'custom_client_id',
+        label: '✎ Atur / Ubah OAuth Client ID Google Cloud',
+      },
+      {
+        value: 'cancel',
+        label: '← Batal',
+      },
+    ],
+  });
 
-    const opt = await p.select({
-      message: `Pilih metode otentikasi untuk ${provider.name}:`,
+  if (p.isCancel(opt) || opt === 'cancel') return null;
+
+  if (opt === 'custom_client_id' || (opt === 'oauth_browser' && !clientId)) {
+    if (opt === 'oauth_browser' && !clientId) {
+      console.log();
+      console.log(chalk.yellow.bold(`  ℹ️  Konfigurasi OAuth Client ID untuk ${provider.name}:`));
+      console.log(chalk.gray(`     ${provider.setupGuide}`));
+      console.log();
+    }
+
+    const inputCid = await p.text({
+      message: `Masukkan Client ID untuk ${provider.name}:`,
+      defaultValue: clientId || '',
+      validate(val) {
+        if (!val || !val.trim()) return 'Client ID tidak boleh kosong';
+      },
+    });
+    if (p.isCancel(inputCid)) return null;
+    clientId = inputCid.trim();
+
+    const inputSec = await p.password({
+      message: 'Masukkan Client Secret (opsional untuk desktop PKCE, tekan Enter jika tidak ada):',
+      mask: '•',
+    });
+    if (p.isCancel(inputSec)) return null;
+    clientSecret = inputSec ? inputSec.trim() : '';
+
+    saveConfig({
+      oauth: {
+        [provider.id]: {
+          ...(config.oauth?.[provider.id] || {}),
+          clientId,
+          ...(clientSecret ? { clientSecret } : {}),
+        },
+      },
+    });
+    config = getConfig();
+  } else if (opt === 'api_key') {
+    let apiKey = envKey;
+    if (apiKey) {
+      const useEnv = await p.confirm({
+        message: `Ditemukan GEMINI_API_KEY di environment (${maskSecret(apiKey)}). Gunakan kunci ini?`,
+        initialValue: true,
+      });
+      if (p.isCancel(useEnv)) return null;
+      if (!useEnv) apiKey = null;
+    }
+    if (!apiKey) {
+      const inputKey = await p.password({
+        message: `Masukkan API Key untuk ${provider.name} (dapatkan di https://aistudio.google.com/apikey):`,
+        mask: '•',
+        validate(val) {
+          if (!val || !val.trim()) return 'API Key tidak boleh kosong';
+        },
+      });
+      if (p.isCancel(inputKey)) return null;
+      apiKey = inputKey.trim();
+    }
+
+    // Pilih model
+    const modelChoice = await p.select({
+      message: `Pilih model default untuk ${provider.name}:`,
       options: [
-        {
-          value: 'api_key_fallback',
-          label: envKey
-            ? `🔑 Gunakan GEMINI_API_KEY dari environment (${maskSecret(envKey)})`
-            : '🔑 Gunakan API Key (Rekomendasi: Gratis & Instan via aistudio.google.com)',
-        },
-        {
-          value: 'input_client_id',
-          label: '🌐 Masukkan OAuth 2.0 Client ID Desktop (Google Cloud Console)',
-        },
-        {
-          value: 'cancel',
-          label: '← Batal',
-        },
+        ...provider.models.map((m) => ({ value: m, label: m })),
+        { value: '__custom__', label: '✎ Ketik model lain...' },
       ],
     });
+    if (p.isCancel(modelChoice)) return null;
 
-    if (p.isCancel(opt) || opt === 'cancel') return null;
-
-    if (opt === 'input_client_id') {
-      const inputCid = await p.text({
-        message: `Masukkan Client ID untuk ${provider.name}:`,
-        validate(val) {
-          if (!val || !val.trim()) return 'Client ID tidak boleh kosong';
-        },
+    let finalModel = modelChoice;
+    if (modelChoice === '__custom__') {
+      const typed = await p.text({
+        message: 'Ketik nama model:',
+        defaultValue: provider.defaultModel,
       });
-      if (p.isCancel(inputCid)) return null;
-      clientId = inputCid.trim();
-
-      saveConfig({
-        oauth: {
-          [provider.id]: { clientId },
-        },
-      });
-      config = getConfig();
-    } else if (opt === 'api_key_fallback') {
-      let apiKey = envKey;
-      if (apiKey) {
-        const useEnv = await p.confirm({
-          message: `Ditemukan GEMINI_API_KEY di environment (${maskSecret(apiKey)}). Gunakan kunci ini?`,
-          initialValue: true,
-        });
-        if (p.isCancel(useEnv)) return null;
-        if (!useEnv) apiKey = null;
-      }
-      if (!apiKey) {
-        const inputKey = await p.password({
-          message: `Masukkan API Key untuk ${provider.name} (dapatkan di https://aistudio.google.com/apikey):`,
-          mask: '•',
-          validate(val) {
-            if (!val || !val.trim()) return 'API Key tidak boleh kosong';
-          },
-        });
-        if (p.isCancel(inputKey)) return null;
-        apiKey = inputKey.trim();
-      }
-
-      // Pilih model
-      const modelChoice = await p.select({
-        message: `Pilih model default untuk ${provider.name}:`,
-        options: [
-          ...provider.models.map((m) => ({ value: m, label: m })),
-          { value: '__custom__', label: '✎ Ketik model lain...' },
-        ],
-      });
-      if (p.isCancel(modelChoice)) return null;
-
-      let finalModel = modelChoice;
-      if (modelChoice === '__custom__') {
-        const typed = await p.text({
-          message: 'Ketik nama model:',
-          defaultValue: provider.defaultModel,
-        });
-        if (p.isCancel(typed)) return null;
-        finalModel = typed.trim();
-      }
-
-      saveConfig({
-        oauth: {
-          [provider.id]: {
-            apiKey: apiKey.trim(),
-            method: 'apikey',
-            savedAt: Date.now(),
-          },
-        },
-        activeProvider: provider.name,
-        activeModel: finalModel,
-        activeType: 'oauth',
-      });
-
-      p.outro(chalk.green(`✓ Berhasil menyimpan API Key untuk ${provider.name} (${finalModel})!`));
-      return { success: true, method: 'apikey' };
+      if (p.isCancel(typed)) return null;
+      finalModel = typed.trim();
     }
+
+    saveConfig({
+      oauth: {
+        [provider.id]: {
+          apiKey: apiKey.trim(),
+          method: 'apikey',
+          savedAt: Date.now(),
+        },
+      },
+      activeProvider: provider.name,
+      activeModel: finalModel,
+      activeType: 'oauth',
+    });
+
+    p.outro(chalk.green(`✓ Berhasil menyimpan API Key untuk ${provider.name} (${finalModel})!`));
+    return { success: true, method: 'apikey' };
   }
 
   // Jalankan alur OAuth (Device Flow atau PKCE)
@@ -234,7 +254,7 @@ export async function login(providerId) {
     if (provider.method === 'device') {
       tokenData = await runDeviceFlow(provider, clientId);
     } else {
-      tokenData = await runPkceFlow(provider, clientId);
+      tokenData = await runPkceFlow(provider, clientId, clientSecret);
     }
 
     // Pilih model aktif

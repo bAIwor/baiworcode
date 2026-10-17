@@ -16,7 +16,7 @@ function base64url(buffer) {
 /**
  * Menjalankan OAuth 2.0 Authorization Code Flow dengan PKCE via Loopback
  */
-export async function runPkceFlow(provider, clientId) {
+export async function runPkceFlow(provider, clientId, clientSecret = '') {
   const codeVerifier = base64url(crypto.randomBytes(32));
   const codeChallenge = base64url(
     crypto.createHash('sha256').update(codeVerifier).digest()
@@ -41,7 +41,12 @@ export async function runPkceFlow(provider, clientId) {
       try {
         const reqUrl = new URL(req.url, 'http://127.0.0.1');
 
-        if (reqUrl.pathname !== '/callback') {
+        const validPaths = ['/callback', '/oauth2callback'];
+        if (provider.redirectPath && !validPaths.includes(provider.redirectPath)) {
+          validPaths.push(provider.redirectPath);
+        }
+
+        if (!validPaths.includes(reqUrl.pathname)) {
           res.writeHead(404, { 'Content-Type': 'text/plain' });
           res.end('Not Found');
           return;
@@ -93,7 +98,9 @@ export async function runPkceFlow(provider, clientId) {
 
         // Tukar authorization code dengan access token
         const port = server.address().port;
-        const redirectUri = `http://127.0.0.1:${port}/callback`;
+        const redirectPath = provider.redirectPath || '/oauth2callback';
+        const redirectHost = provider.redirectHost || 'localhost';
+        const redirectUri = `http://${redirectHost}:${port}${redirectPath}`;
 
         const s = p.spinner();
         s.start('Menukarkan kode otorisasi dengan Access Token...');
@@ -105,6 +112,13 @@ export async function runPkceFlow(provider, clientId) {
           client_id: clientId,
           code_verifier: codeVerifier,
         });
+
+        const sec =
+          clientSecret ||
+          (provider.getClientSecret ? provider.getClientSecret() : provider.clientSecret);
+        if (sec) {
+          tokenBody.set('client_secret', sec);
+        }
 
         const tokenRes = await fetch(provider.tokenEndpoint, {
           method: 'POST',
@@ -147,7 +161,9 @@ export async function runPkceFlow(provider, clientId) {
 
     server.listen(0, '127.0.0.1', () => {
       const port = server.address().port;
-      const redirectUri = `http://127.0.0.1:${port}/callback`;
+      const redirectPath = provider.redirectPath || '/oauth2callback';
+      const redirectHost = provider.redirectHost || 'localhost';
+      const redirectUri = `http://${redirectHost}:${port}${redirectPath}`;
 
       const authUrl = new URL(provider.authEndpoint);
       authUrl.searchParams.set('response_type', 'code');
@@ -157,6 +173,8 @@ export async function runPkceFlow(provider, clientId) {
       authUrl.searchParams.set('state', expectedState);
       authUrl.searchParams.set('code_challenge', codeChallenge);
       authUrl.searchParams.set('code_challenge_method', 'S256');
+      authUrl.searchParams.set('access_type', 'offline');
+      authUrl.searchParams.set('prompt', 'consent');
 
       console.log();
       console.log(chalk.yellow.bold(`  🔐 Otorisasi Browser untuk ${provider.name}:`));
