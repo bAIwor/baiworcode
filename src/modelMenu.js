@@ -193,25 +193,33 @@ export async function runModelMenu() {
       optionNumber++;
     }
 
-    // 2. Google Providers (Gemini AI Studio & Google Antigravity)
-    for (const prov of Object.values(PROVIDERS)) {
+    // 2. Google OAuth & AI Pro (Google Antigravity & Google Gemini)
+    const googleActiveProv = Object.values(PROVIDERS).find((prov) => {
       const isAgy = prov.method === 'agy';
-      const isActive = isAgy
+      return isAgy
         ? (config.activeType === 'agy' && config.activeProvider === prov.name)
         : (config.activeType === 'oauth' && config.activeProvider === prov.name);
-      const authData = config.oauth?.[prov.id];
-      const isLoggedIn = isAgy
-        ? Boolean(authData && (authData.active || authData.connectedAt))
-        : Boolean(authData && (authData.accessToken || authData.apiKey));
-      const loginBadge = isLoggedIn ? chalk.cyan.dim(isAgy ? ' [Google AI Pro]' : ' [Logged In]') : '';
-      const suffix = isActive ? chalk.green.bold(' ← currently active') : '';
+    });
+    const isGoogleActive = Boolean(googleActiveProv);
+    const googleSuffix = isGoogleActive
+      ? chalk.green.bold(` ← currently active (${googleActiveProv.name}: ${config.activeModel})`)
+      : '';
+    const agyAuth = config.oauth?.['google-antigravity'];
+    const geminiAuth = config.oauth?.['google-gemini'];
+    const agyLoggedIn = Boolean(agyAuth && (agyAuth.active || agyAuth.connectedAt));
+    const geminiLoggedIn = Boolean(geminiAuth && (geminiAuth.accessToken || geminiAuth.apiKey));
+    const googleLoggedInBadges = [];
+    if (agyLoggedIn) googleLoggedInBadges.push('Google AI Pro');
+    if (geminiLoggedIn) googleLoggedInBadges.push('AI Studio');
+    const googleBadge = googleLoggedInBadges.length > 0
+      ? chalk.cyan.dim(` [${googleLoggedInBadges.join(' | ')}]`)
+      : '';
 
-      selectOptions.push({
-        value: `oauth_${prov.id}`,
-        label: `${optionNumber}. ${prov.name} ▸ (${prov.desc})${loginBadge}${suffix}`,
-      });
-      optionNumber++;
-    }
+    selectOptions.push({
+      value: 'group_google',
+      label: `${optionNumber}. 🌐 ${chalk.bold('Google')} ▸ (Antigravity & Gemini OAuth)${googleBadge}${googleSuffix}`,
+    });
+    optionNumber++;
 
     // 3. Custom Providers lain yang tersimpan (selain Agentik)
     const otherCustomList = customList.filter(
@@ -257,13 +265,49 @@ export async function runModelMenu() {
       label: chalk.gray('← Leave unchanged'),
     });
 
-    const choice = await p.select({
+    let choice = await p.select({
       message: 'Select model or provider:',
       options: selectOptions,
     });
 
     if (p.isCancel(choice) || choice === 'action_leave') {
       return;
+    }
+
+    // Aksi: Google Group (Pilih Antigravity atau Gemini)
+    if (choice === 'group_google') {
+      const googleOptions = Object.values(PROVIDERS).map((prov, idx) => {
+        const isAgy = prov.method === 'agy';
+        const isActive = isAgy
+          ? (config.activeType === 'agy' && config.activeProvider === prov.name)
+          : (config.activeType === 'oauth' && config.activeProvider === prov.name);
+        const authData = config.oauth?.[prov.id];
+        const isLoggedIn = isAgy
+          ? Boolean(authData && (authData.active || authData.connectedAt))
+          : Boolean(authData && (authData.accessToken || authData.apiKey));
+        const badge = isLoggedIn ? chalk.cyan.dim(isAgy ? ' [Google AI Pro]' : ' [Logged In]') : '';
+        const activeSuffix = isActive ? chalk.green.bold(` ← currently active (${config.activeModel})`) : '';
+        return {
+          value: `oauth_${prov.id}`,
+          label: `${idx + 1}. ${prov.name} ▸ (${prov.desc})${badge}${activeSuffix}`,
+        };
+      });
+
+      googleOptions.push({
+        value: 'back',
+        label: chalk.gray('← Kembali'),
+      });
+
+      const pickedGoogle = await p.select({
+        message: 'Pilih varian Google (OAuth / Google AI Pro):',
+        options: googleOptions,
+      });
+
+      if (p.isCancel(pickedGoogle) || pickedGoogle === 'back') {
+        continue;
+      }
+
+      choice = pickedGoogle;
     }
 
     // Aksi: Model alias — switch langsung tanpa sub-menu

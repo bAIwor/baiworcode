@@ -2,7 +2,7 @@ export const PROVIDERS = {
   'google-antigravity': {
     id: 'google-antigravity',
     name: 'Google Antigravity',
-    desc: 'Google AI Pro (Gemini 3.8 Flash, Claude Sonnet 4.6, Opus 4.6)',
+    desc: 'Google AI Pro',
     method: 'agy',
     defaultModel: 'gemini-3.8-flash-high',
     models: [
@@ -20,7 +20,7 @@ export const PROVIDERS = {
   'google-gemini': {
     id: 'google-gemini',
     name: 'Google Gemini',
-    desc: 'Google AI Studio (gemini-2.5-pro, gemini-2.0-flash)',
+    desc: 'Google AI Studio',
     method: 'pkce',
     authEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenEndpoint: 'https://oauth2.googleapis.com/token',
