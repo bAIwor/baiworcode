@@ -20,6 +20,9 @@ export const DEFAULT_CONFIG = {
     },
   ],
   oauth: {},
+  // Model aliases ala Hermes: nama pendek → "provider/model" atau objek
+  // { model, provider, baseUrl?, apiKey? }. Dikelola via /model alias ...
+  modelAliases: {},
   // Tampilan blok aktivitas tool: 'detail' (pohon dua baris) atau
   // 'compact' (satu baris per langkah, gaya CLI modern). Diubah via /timeline.
   timelineMode: 'detail',
@@ -102,6 +105,16 @@ export function getConfig() {
       if (!hasAgentik) {
         config.customProviders.unshift(DEFAULT_CONFIG.customProviders[0]);
       }
+    }
+
+    // Pastikan modelAliases selalu berbentuk objek (config lama/tidak valid
+    // tidak boleh membuat resolver alias jatuh error).
+    if (
+      !config.modelAliases ||
+      typeof config.modelAliases !== 'object' ||
+      Array.isArray(config.modelAliases)
+    ) {
+      config.modelAliases = {};
     }
 
     cachedConfig = config;

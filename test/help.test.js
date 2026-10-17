@@ -65,4 +65,11 @@ describe('CLI --help berwarna', () => {
       assert.match(out, /^\d+\.\d+\.\d+/, `flag ${flag} harus tetap mencetak versi`);
     }
   });
+
+  it('menampilkan opsi session resume (-c, -r, -s) pada help utama', () => {
+    const out = run(['--help'], { color: false });
+    assert.match(out, /-c,\s+--continue/);
+    assert.match(out, /-r,\s+--resume/);
+    assert.match(out, /-s,\s+--session/);
+  });
 });

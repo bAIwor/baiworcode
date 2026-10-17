@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { TextPrompt, isCancel } from '@clack/core';
 import chalk from 'chalk';
 import readline from 'node:readline';
@@ -5,6 +7,54 @@ import { theme } from './theme.js';
 import { renderStatusLine, frameRules, terminalWidth } from './statusLine.js';
 import { todoStore } from './tools/todoTool.js';
 import { renderTodoWidget, toggleTodoCompactMode, getTodoCompactMode } from './chat/planMode.js';
+import { CONFIG_DIR } from './config.js';
+
+const HISTORY_FILE = path.join(CONFIG_DIR, 'history.json');
+const MAX_HISTORY = 200;
+
+let promptHistory = [];
+
+export function loadPromptHistory() {
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      const data = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+      if (Array.isArray(data)) {
+        promptHistory = data.filter((x) => typeof x === 'string' && x.trim());
+        return promptHistory;
+      }
+    }
+  } catch {}
+  return promptHistory;
+}
+
+export function savePromptHistory(entry) {
+  if (!entry || typeof entry !== 'string') return;
+  const trimmed = entry.trim();
+  if (!trimmed) return;
+
+  promptHistory = promptHistory.filter((item) => item !== trimmed);
+  promptHistory.unshift(trimmed);
+  if (promptHistory.length > MAX_HISTORY) {
+    promptHistory.length = MAX_HISTORY;
+  }
+
+  try {
+    if (!fs.existsSync(CONFIG_DIR)) {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    }
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(promptHistory, null, 2), 'utf8');
+  } catch {}
+}
+
+export function getPromptHistory() {
+  return promptHistory;
+}
+
+export function resetPromptHistory() {
+  promptHistory = [];
+}
+
+loadPromptHistory();
 
 export const COMMANDS = [
   { name: '/help', desc: 'Menampilkan panduan perintah & bantuan' },
@@ -15,7 +65,7 @@ export const COMMANDS = [
   { name: '/skill', desc: 'Kelola modul keahlian & plugin (.baiwor/skills)' },
   { name: '/rules', desc: 'Lihat aturan koding aktif (BAIWORS.md / .baiwor/rules)' },
   { name: '/status', desc: 'Status konfigurasi & model AI aktif' },
-  { name: '/model', desc: 'Pilih model Agentik, Google Gemini, atau Custom' },
+  { name: '/model', desc: 'Pilih model: /model (menu) · /model <alias|provider/model>' },
   { name: '/provider', desc: 'Alias untuk perintah /model' },
   { name: '/login', desc: 'Login ke Google Gemini OAuth' },
   { name: '/logout', desc: 'Logout dari sesi Google Gemini OAuth' },
@@ -24,6 +74,93 @@ export const COMMANDS = [
   { name: '/exit', desc: 'Keluar dari bAIwor Code (alias: /q, /quit)' },
   { name: '/q', desc: 'Keluar dari bAIwor Code (alias /exit)' },
 ];
+
+export const SUBCOMMANDS = {
+  '/timeline': [
+    { name: 'compact', desc: 'Satu baris per langkah — alur cepat & ringkas' },
+    { name: 'detail', desc: 'Pohon lengkap dengan argumen & ringkasan hasil' },
+  ],
+  '/session': [
+    { name: 'list', desc: 'Tampilkan daftar sesi percakapan proyek' },
+    { name: 'resume', desc: 'Lanjutkan sesi percakapan (terakhir atau spesifik)' },
+    { name: 'delete', desc: 'Hapus sesi percakapan proyek' },
+    { name: 'clear', desc: 'Bersihkan seluruh riwayat sesi proyek' },
+  ],
+  '/skill': [
+    { name: 'list', desc: 'Tampilkan daftar modul keahlian & plugin yang terpasang' },
+    { name: 'info', desc: 'Tampilkan detail instruksi modul keahlian' },
+  ],
+};
+
+/**
+ * Mengurai konteks perintah slash dari teks input yang sedang diketik.
+ * Menentukan apakah pengguna sedang memilih perintah utama atau sub-opsi.
+ *
+ * @param {string} value
+ * @returns {{ type: 'none'|'command'|'subcommand'|'freeform', parentCmd: string|null, query: string, matches: Array<{name:string, desc:string}> }}
+ */
+export function getPromptContext(value = '') {
+  const trimmedStart = (value || '').trimStart();
+  if (!trimmedStart.startsWith('/')) {
+    return { type: 'none', parentCmd: null, query: '', matches: [] };
+  }
+
+  const spaceIdx = trimmedStart.search(/\s/);
+  if (spaceIdx !== -1) {
+    const rawCmd = trimmedStart.slice(0, spaceIdx).toLowerCase();
+    const cleanCmd = rawCmd.replace(/^\/+/, '');
+
+    // Jika hanya "/" lalu spasi ("/ "), anggap masih melihat semua root COMMANDS
+    if (!cleanCmd) {
+      return {
+        type: 'command',
+        parentCmd: null,
+        query: '',
+        matches: COMMANDS,
+      };
+    }
+
+    if (SUBCOMMANDS[rawCmd]) {
+      const rest = trimmedStart.slice(spaceIdx).trimStart().toLowerCase();
+      const subs = SUBCOMMANDS[rawCmd];
+      const matches = !rest
+        ? subs
+        : subs.filter((s) => s.name.toLowerCase().startsWith(rest));
+      return {
+        type: 'subcommand',
+        parentCmd: rawCmd,
+        query: rest,
+        matches,
+      };
+    }
+
+    // Perintah tanpa sub-opsi terdaftar (misal /plan sesuatu)
+    const rest = trimmedStart.slice(spaceIdx).trimStart().toLowerCase();
+    return {
+      type: 'freeform',
+      parentCmd: rawCmd,
+      query: rest,
+      matches: [],
+    };
+  }
+
+  // Tanpa spasi: "/", "/t", "/timeline"
+  const rawQuery = trimmedStart.toLowerCase();
+  const cleanWord = rawQuery.replace(/^\/+\s*/, '');
+  const matches = !cleanWord
+    ? COMMANDS
+    : COMMANDS.filter((c) => {
+        const cmdWord = c.name.replace(/^\//, '');
+        return c.name.startsWith(rawQuery) || cmdWord.startsWith(cleanWord);
+      });
+
+  return {
+    type: 'command',
+    parentCmd: null,
+    query: cleanWord,
+    matches,
+  };
+}
 
 /**
  * Menyusun seluruh frame area input: garis atas, baris input, dropdown
@@ -76,21 +213,12 @@ export function buildPromptFrame({
   } else {
     out += `  ${theme.input('›')}  ${shown ? theme.input(shown) : chalk.dim(placeholder)}`;
 
-    if (dropdownOpen && value.startsWith('/')) {
-      const trimmedVal = value.trim();
-      const rawQuery = trimmedVal.toLowerCase();
-      const cleanWord = rawQuery.replace(/^\/+\s*/, '');
-      const matches = !cleanWord
-        ? COMMANDS
-        : COMMANDS.filter((c) => {
-            const cmdWord = c.name.replace(/^\//, '');
-            return c.name.startsWith(rawQuery) || cmdWord.startsWith(cleanWord);
-          });
+    const ctx = getPromptContext(value);
+    if (dropdownOpen && (ctx.type === 'command' || ctx.type === 'subcommand')) {
+      const matches = ctx.matches;
       const active = matches.length ? Math.min(selectedIndex, matches.length - 1) : 0;
 
-      // Seluruh baris dropdown dijaga muat di lebar terminal. Sebelumnya kotak
-      // bawah dipatok 76 kolom dan header 66 kolom, sehingga di terminal sempit
-      // barisnya meluber dan kotak layout ikut patah. Satu kolom disisakan
+      // Seluruh baris dropdown dijaga muat di lebar terminal. Satu kolom disisakan
       // supaya tidak ada baris yang persis selebar terminal (pemicu wrap).
       const width = currentCols - 1;
       const fit = (text, max = width) => {
@@ -99,20 +227,22 @@ export function buildPromptFrame({
         return s.length > max ? `${s.slice(0, Math.max(0, max - 1))}…` : s;
       };
 
+      const isSub = ctx.type === 'subcommand';
+      const headerTitle = isSub ? `Pilihan ${ctx.parentCmd}` : 'Perintah';
       const header =
-        '  ╭─ Perintah (↑/↓/Tab pilih, Enter jalankan, Esc tutup)';
-      const shortHeader = '  ╭─ Perintah';
+        `  ╭─ ${headerTitle} (↑/↓/Tab pilih, Enter jalankan, Esc tutup)`;
+      const shortHeader = `  ╭─ ${headerTitle}`;
       out += '\n' + chalk.gray(fit(header.length <= width ? header : shortHeader)) + '\n';
 
       // Prefix tiap item selalu 21 kolom tampil (tanpa warna), jadi deskripsi
       // tinggal memakai sisa lebar yang tersedia.
-      const NAME_LEN = 11;
-      const PREFIX_LEN = 21;
+      const NAME_LEN = isSub ? 10 : 11;
+      const PREFIX_LEN = isSub ? 20 : 21;
       const descBudget = width - PREFIX_LEN;
       if (matches.length > 0) {
-        matches.forEach((cmd, idx) => {
-          const name = cmd.name.padEnd(NAME_LEN);
-          const desc = fit(cmd.desc, descBudget);
+        matches.forEach((item, idx) => {
+          const name = item.name.padEnd(NAME_LEN);
+          const desc = fit(item.desc, descBudget);
           if (idx === active) {
             out += `  ${chalk.gray('│')}  ${chalk.cyan.bold('❯')} ${chalk.cyan.bold(name)} ${chalk.gray('─')} ${chalk.whiteBright.bold(desc)}\n`;
           } else {
@@ -120,7 +250,8 @@ export function buildPromptFrame({
           }
         });
       } else {
-        out += `  ${chalk.gray('│')}  ${chalk.red(fit('Tidak ada perintah yang cocok', width - 5))}\n`;
+        const noMatchMsg = isSub ? 'Tidak ada pilihan yang cocok' : 'Tidak ada perintah yang cocok';
+        out += `  ${chalk.gray('│')}  ${chalk.red(fit(noMatchMsg, width - 5))}\n`;
       }
       out += '  ' + chalk.gray(`╰${'─'.repeat(Math.max(0, width - 3))}`);
     }
@@ -146,6 +277,8 @@ export class SlashTextPrompt extends TextPrompt {
     let lastVal = '';
     let lastCtrlCTime = 0;
     let ctrlCTimer = null;
+    let historyIndex = -1;
+    let savedInputBuffer = '';
 
     super({
       ...opts,
@@ -326,12 +459,22 @@ export class SlashTextPrompt extends TextPrompt {
       }
     };
 
+    let lastContextKey = '';
+
     // Reset selection & update dropdown ONLY when the typed query actually changes
     this.on('value', (currentVal) => {
       const val = currentVal || '';
       if (val !== lastVal) {
         lastVal = val;
-        if (val.trimStart().startsWith('/')) {
+        const ctx = getPromptContext(val);
+        const contextKey = `${ctx.type}:${ctx.parentCmd || ''}`;
+        if (contextKey !== lastContextKey) {
+          selectedIndex = 0;
+          userNavigated = false;
+          lastContextKey = contextKey;
+        }
+
+        if (ctx.type === 'command' || ctx.type === 'subcommand') {
           showDropdown = true;
           if (!userNavigated) {
             selectedIndex = 0;
@@ -471,6 +614,50 @@ export class SlashTextPrompt extends TextPrompt {
         return;
       }
 
+      // 4. Navigasi riwayat prompt dengan Panah Atas (↑) dan Panah Bawah (↓)
+      // hanya aktif jika dropdown slash TIDAK sedang terbuka dan bukan awalan slash '/'
+      if (!showDropdown && !isSlash) {
+        if (key?.name === 'up' && promptHistory.length > 0) {
+          if (historyIndex + 1 < promptHistory.length) {
+            if (historyIndex === -1) {
+              savedInputBuffer = this.value || '';
+            }
+            historyIndex++;
+            const recalled = promptHistory[historyIndex];
+            this.value = recalled;
+            this._cursor = recalled.length;
+            if (this.rl) {
+              this.rl.line = recalled;
+              this.rl.cursor = recalled.length;
+            }
+            lastVal = recalled;
+            this.emit('value', recalled);
+            this.render();
+            return;
+          }
+        }
+
+        if (key?.name === 'down' && historyIndex >= 0) {
+          historyIndex--;
+          const recalled = historyIndex === -1 ? savedInputBuffer : promptHistory[historyIndex];
+          this.value = recalled;
+          this._cursor = recalled.length;
+          if (this.rl) {
+            this.rl.line = recalled;
+            this.rl.cursor = recalled.length;
+          }
+          lastVal = recalled;
+          this.emit('value', recalled);
+          this.render();
+          return;
+        }
+
+        if (key?.name !== 'up' && key?.name !== 'down' && key?.name !== 'left' && key?.name !== 'right' && historyIndex !== -1) {
+          historyIndex = -1;
+          savedInputBuffer = '';
+        }
+      }
+
       // Tab saat baris masih kosong: langsung munculkan '/' dan buka dropdown
       if (!val && (key?.name === 'tab' || u === '\t')) {
         this.value = '/';
@@ -489,20 +676,49 @@ export class SlashTextPrompt extends TextPrompt {
       }
 
       if (isSlash) {
-        showDropdown = true;
-        const trimmed = val.trim();
-        const rawQuery = trimmed.toLowerCase();
-        const cleanWord = rawQuery.replace(/^\/+\s*/, '');
-        const matches = !cleanWord
-          ? COMMANDS
-          : COMMANDS.filter((c) => {
-              const cmdWord = c.name.replace(/^\//, '');
-              return c.name.startsWith(rawQuery) || cmdWord.startsWith(cleanWord);
-            });
+        const ctx = getPromptContext(val);
+        const matches = ctx.matches;
+
+        // Jika perintah free-form (seperti /plan teks): Enter langsung submit
+        if (ctx.type === 'freeform') {
+          if (key?.name === 'return') {
+            showDropdown = false;
+            this.state = 'submit';
+            this.emit('finalize');
+            this.render();
+            this.close();
+            return;
+          }
+          return origOnKeypress(u, key);
+        }
+
+        // Spasi saat navigasi root command yang punya subcommand
+        // (contoh: user tekan panah bawah ke /timeline lalu tekan Spasi)
+        const isSpace = key?.name === 'space' || u === ' ';
+        if (isSpace && ctx.type === 'command' && userNavigated) {
+          const picked = matches[selectedIndex] || matches[0];
+          if (picked) {
+            const nextVal = picked.name + ' ';
+            this.value = nextVal;
+            this._cursor = nextVal.length;
+            if (this.rl) {
+              this.rl.line = nextVal;
+              this.rl.cursor = nextVal.length;
+            }
+            lastVal = nextVal;
+            lastContextKey = `subcommand:${picked.name}`;
+            selectedIndex = 0;
+            userNavigated = false;
+            showDropdown = true;
+            this.render();
+            return;
+          }
+        }
 
         if (matches.length > 0) {
           // Panah Atas (↑): pindah 1 item ke atas tanpa lag
           if (key?.name === 'up') {
+            if (!showDropdown) return origOnKeypress(u, key);
             selectedIndex = (selectedIndex - 1 + matches.length) % matches.length;
             userNavigated = true;
             this.render();
@@ -511,46 +727,58 @@ export class SlashTextPrompt extends TextPrompt {
 
           // Panah Bawah (↓): pindah 1 item ke bawah tanpa lag
           if (key?.name === 'down') {
+            if (!showDropdown) return origOnKeypress(u, key);
             selectedIndex = (selectedIndex + 1) % matches.length;
             userNavigated = true;
             this.render();
             return;
           }
 
-          // Tab: navigasi siklis ke pilihan berikutnya & BIARKAN dropdown tetap terbuka
+          // Tab: lengkapi perintah atau subperintah yang dipilih ke frame input dan TUTUP dropdown
           if (key?.name === 'tab' || u === '\t') {
-            if (key?.shift) {
-              selectedIndex = (selectedIndex - 1 + matches.length) % matches.length;
-            } else {
-              selectedIndex = (selectedIndex + 1) % matches.length;
-            }
-            userNavigated = true;
-            showDropdown = true;
+            const picked = matches[selectedIndex] || matches[0];
+            if (picked) {
+              let nextVal = '';
+              if (ctx.type === 'command') {
+                nextVal = picked.name + ' ';
+              } else if (ctx.type === 'subcommand') {
+                nextVal = `${ctx.parentCmd} ${picked.name} `;
+              }
 
-            // Jika user mengetik sebagian kata perintah, lengkapi di input tapi jangan tutup dropdown
-            if (cleanWord) {
-              const picked = matches[selectedIndex] || matches[0];
-              if (picked) {
-                this.value = picked.name;
-                this._cursor = picked.name.length;
+              if (nextVal) {
+                this.value = nextVal;
+                this._cursor = nextVal.length;
                 if (this.rl) {
-                  this.rl.line = picked.name;
-                  this.rl.cursor = picked.name.length;
+                  this.rl.line = nextVal;
+                  this.rl.cursor = nextVal.length;
                 }
-                lastVal = picked.name;
+                lastVal = nextVal;
+                showDropdown = false;
+                userNavigated = false;
+                selectedIndex = 0;
+                this.render();
+                return;
               }
             }
-            this.render();
-            return;
           }
 
-          // Enter: eksekusi perintah yang dipilih atau buka p.select
+          // Enter: eksekusi perintah yang dipilih atau buka opsi subcommand
           if (key?.name === 'return') {
-            // Kasus 1: User sudah aktif bernavigasi lewat panah atau Tab
-            if (userNavigated) {
-              const picked = matches[selectedIndex] || matches[0];
-              if (picked) {
-                this.value = picked.name;
+            // Jika dropdown sedang tertutup (karena ditutup dengan Tab atau Esc),
+            // Enter langsung submit nilai di frame input saat ini
+            if (!showDropdown) {
+              this.state = 'submit';
+              this.emit('finalize');
+              this.render();
+              this.close();
+              return;
+            }
+
+            // Kasus 1: Sedang berada dalam mode Subcommand (misal /timeline ...)
+            if (ctx.type === 'subcommand') {
+              const pickedSub = matches[selectedIndex] || matches[0];
+              if (pickedSub) {
+                this.value = `${ctx.parentCmd} ${pickedSub.name}`;
                 showDropdown = false;
                 this.state = 'submit';
                 this.emit('finalize');
@@ -560,33 +788,51 @@ export class SlashTextPrompt extends TextPrompt {
               }
             }
 
-            // Kasus 2: User mengetik nama perintah lengkap (misal '/help' atau '/model')
-            const exact = matches.find((m) => m.name.toLowerCase() === rawQuery);
-            if (exact) {
-              this.value = exact.name;
-              showDropdown = false;
-              this.state = 'submit';
-              this.emit('finalize');
-              this.render();
-              this.close();
-              return;
+            // Kasus 2: Sedang berada dalam mode Command utama
+            let pickedCmd = null;
+
+            if (userNavigated) {
+              pickedCmd = matches[selectedIndex] || matches[0];
+            } else {
+              const exact = matches.find((m) => m.name.toLowerCase() === val.trim().toLowerCase());
+              if (exact) {
+                pickedCmd = exact;
+              } else if (!ctx.query) {
+                // Hanya "/" (atau "/ ") dan tekan Enter tanpa navigasi -> submit "/" agar bin/baiwor.js buka p.select
+                this.value = '/';
+                showDropdown = false;
+                this.state = 'submit';
+                this.emit('finalize');
+                this.render();
+                this.close();
+                return;
+              } else if (matches.length === 1) {
+                pickedCmd = matches[0];
+              }
             }
 
-            // Kasus 3: User hanya mengetik '/' (atau '/ ') dan tekan Enter tanpa navigasi panah
-            // submit '/' agar bin/baiwor.js membuka p.select (menu pilihan interaktif)
-            if (!cleanWord) {
-              this.value = '/';
-              showDropdown = false;
-              this.state = 'submit';
-              this.emit('finalize');
-              this.render();
-              this.close();
-              return;
-            }
+            if (pickedCmd) {
+              // Jika perintah punya subcommand terdaftar (seperti /timeline, /session, /skill):
+              // Jangan langsung eksekusi! Buka pilihan sub-opsi untuk dipilih pengguna.
+              if (SUBCOMMANDS[pickedCmd.name]) {
+                const nextVal = pickedCmd.name + ' ';
+                this.value = nextVal;
+                this._cursor = nextVal.length;
+                if (this.rl) {
+                  this.rl.line = nextVal;
+                  this.rl.cursor = nextVal.length;
+                }
+                lastVal = nextVal;
+                lastContextKey = `subcommand:${pickedCmd.name}`;
+                selectedIndex = 0;
+                userNavigated = false;
+                showDropdown = true;
+                this.render();
+                return;
+              }
 
-            // Kasus 4: Match tunggal (misal /mod -> /model)
-            if (matches.length === 1) {
-              this.value = matches[0].name;
+              // Perintah biasa tanpa subcommand
+              this.value = pickedCmd.name;
               showDropdown = false;
               this.state = 'submit';
               this.emit('finalize');
@@ -612,7 +858,11 @@ export async function askBaiworInput(opts = {}) {
         placeholder,
         defaultValue: '',
       });
-      return await promptInstance.prompt();
+      const input = await promptInstance.prompt();
+      if (typeof input === 'string' && !isCancel(input)) {
+        savePromptHistory(input);
+      }
+      return input;
     } catch {
       // Fallback to readline below if TTY initialization fails
     }
@@ -627,6 +877,9 @@ export async function askBaiworInput(opts = {}) {
   return new Promise((resolve) => {
     rl.question(chalk.bold('› '), (answer) => {
       rl.close();
+      if (typeof answer === 'string') {
+        savePromptHistory(answer);
+      }
       resolve(answer);
     });
   });

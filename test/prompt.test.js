@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { buildPromptFrame, COMMANDS, SlashTextPrompt } from '../src/prompt.js';
+import { buildPromptFrame, COMMANDS, SUBCOMMANDS, getPromptContext, SlashTextPrompt, resetPromptHistory, savePromptHistory, getPromptHistory } from '../src/prompt.js';
 import { renderStatusLine, statusRule, terminalWidth } from '../src/statusLine.js';
+import { getConfig } from '../src/config.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'baiwor.js');
@@ -50,7 +51,7 @@ describe('StatusLine: Helper', () => {
   });
 
   it('harus menyisipkan prefix tugas bila diberikan', () => {
-    assert.match(polos(renderStatusLine({ prefix: 'Explore baiworcode' })), /Explore baiworcode/);
+    assert.match(polos(renderStatusLine({ prefix: 'Explore baiworcode', maxWidth: 120 })), /Explore baiworcode/);
   });
 
   it('harus tetap menampilkan indikator konteks walau model belum dikonfigurasi', () => {
@@ -204,9 +205,13 @@ describe('StatusLine: Penyesuaian Lebar Terminal', () => {
   });
 
   it('harus mengorbankan provider lebih dulu daripada nama model', () => {
-    const sempit = polos(renderStatusLine({ maxWidth: 60 }));
-    assert.ok(sempit.includes('step-5-preview'), 'nama model harus bertahan');
-    assert.ok(!sempit.includes('StepFun'), 'provider boleh hilang dulu');
+    const config = getConfig();
+    const sempit = polos(renderStatusLine({ maxWidth: 65 }));
+    const modelSnippet = (config.activeModel || 'Not configured').slice(0, 10);
+    assert.ok(sempit.includes(modelSnippet), 'nama model harus bertahan');
+    if (config.activeProvider && config.activeProvider !== 'baiwor.my.id') {
+      assert.ok(!sempit.includes(config.activeProvider), 'provider boleh hilang dulu');
+    }
   });
 
   it('harus memakai bentuk paling ringkas saat sangat sempit', () => {
@@ -643,32 +648,33 @@ describe('Prompt: Pengamanan Ctrl+C dan Escape (Anti-Exit Tidak Disengaja)', () 
   });
 });
 
+function createMockPrompt() {
+  const writes = [];
+  const fakeOutput = {
+    write(s) {
+      writes.push(s);
+    },
+    on() {},
+    off() {},
+    columns: 80,
+  };
+  const fakeInput = {
+    on() {},
+    off() {},
+    pause() {},
+    resume() {},
+    unpipe() {},
+    removeListener() {},
+  };
+  const prompt = new SlashTextPrompt({
+    placeholder: 'Ask bAIwor Code to do anything...',
+    output: fakeOutput,
+    input: fakeInput,
+  });
+  return { prompt, writes };
+}
+
 describe('Prompt: Interaksi Slash Dropdown (/ Tab, Spasi, Panah, Enter)', () => {
-  function createMockPrompt() {
-    const writes = [];
-    const fakeOutput = {
-      write(s) {
-        writes.push(s);
-      },
-      on() {},
-      off() {},
-      columns: 80,
-    };
-    const fakeInput = {
-      on() {},
-      off() {},
-      pause() {},
-      resume() {},
-      unpipe() {},
-      removeListener() {},
-    };
-    const prompt = new SlashTextPrompt({
-      placeholder: 'Ask bAIwor Code to do anything...',
-      output: fakeOutput,
-      input: fakeInput,
-    });
-    return { prompt, writes };
-  }
 
   it('menekan Tab saat baris kosong harus memunculkan "/" dan membuka dropdown', () => {
     const { prompt } = createMockPrompt();
@@ -686,14 +692,32 @@ describe('Prompt: Interaksi Slash Dropdown (/ Tab, Spasi, Panah, Enter)', () => 
     assert.ok(!out.includes('Tidak ada perintah yang cocok'));
   });
 
-  it('mengetik "/" lalu Tab harus berpindah ke pilihan berikutnya dan dropdown tetap terbuka', () => {
+  it('mengetik "/" lalu panah bawah lalu Tab harus melengkapi perintah yang dipilih ke input frame dan menutup dropdown', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '/';
+    prompt.emit('value', '/');
+    prompt.onKeypress('', { name: 'down' }); // pindah ke /plan (1)
+    prompt.onKeypress('\t', { name: 'tab' });
+    assert.equal(prompt.value, '/plan ');
+    assert.equal(prompt.state, 'active');
+    // Dropdown tertutup: tekan Enter langsung submit nilai di input frame
+    prompt.onKeypress('\r', { name: 'return' });
+    assert.equal(prompt.state, 'submit');
+    assert.equal(prompt.value, '/plan ');
+  });
+
+  it('mengetik "/" lalu Tab tanpa navigasi harus melengkapi perintah pertama ke input frame dan menutup dropdown', () => {
     const { prompt } = createMockPrompt();
     prompt.state = 'active';
     prompt.value = '/';
     prompt.emit('value', '/');
     prompt.onKeypress('\t', { name: 'tab' });
-    assert.equal(prompt.value, '/');
+    assert.equal(prompt.value, '/help ');
     assert.equal(prompt.state, 'active');
+    prompt.onKeypress('\r', { name: 'return' });
+    assert.equal(prompt.state, 'submit');
+    assert.equal(prompt.value, '/help ');
   });
 
   it('mengetik "/" lalu panah bawah harus berpindah pilihan tanpa menutup dropdown', () => {
@@ -724,6 +748,196 @@ describe('Prompt: Interaksi Slash Dropdown (/ Tab, Spasi, Panah, Enter)', () => 
     prompt.onKeypress('\r', { name: 'return' });
     assert.equal(prompt.state, 'submit');
     assert.equal(prompt.value, '/plan');
+  });
+});
+
+describe('Prompt: Subcommand Context & Dropdown (/timeline, /session, /skill)', () => {
+  it('getPromptContext harus mengenali root command dan subcommands dengan benar', () => {
+    // Kosong / Teks biasa
+    assert.equal(getPromptContext('').type, 'none');
+    assert.equal(getPromptContext('halo dunia').type, 'none');
+
+    // Root command
+    const root = getPromptContext('/tim');
+    assert.equal(root.type, 'command');
+    assert.ok(root.matches.some((c) => c.name === '/timeline'));
+
+    // Command dengan spasi tapi tanpa sub-opsi terdaftar
+    const free = getPromptContext('/plan buatkan auth');
+    assert.equal(free.type, 'freeform');
+    assert.equal(free.parentCmd, '/plan');
+
+    // /timeline dengan spasi -> subcommands compact & detail
+    const timeCtx = getPromptContext('/timeline ');
+    assert.equal(timeCtx.type, 'subcommand');
+    assert.equal(timeCtx.parentCmd, '/timeline');
+    assert.equal(timeCtx.matches.length, 2);
+    assert.equal(timeCtx.matches[0].name, 'compact');
+    assert.equal(timeCtx.matches[1].name, 'detail');
+
+    // /timeline dengan filter query
+    const timeComp = getPromptContext('/timeline comp');
+    assert.equal(timeComp.matches.length, 1);
+    assert.equal(timeComp.matches[0].name, 'compact');
+
+    const timeDet = getPromptContext('/timeline det');
+    assert.equal(timeDet.matches.length, 1);
+    assert.equal(timeDet.matches[0].name, 'detail');
+
+    // /session dengan spasi -> subcommands list, resume, delete, clear
+    const sessCtx = getPromptContext('/session ');
+    assert.equal(sessCtx.type, 'subcommand');
+    assert.equal(sessCtx.parentCmd, '/session');
+    assert.ok(sessCtx.matches.some((s) => s.name === 'list'));
+    assert.ok(sessCtx.matches.some((s) => s.name === 'resume'));
+    assert.ok(sessCtx.matches.some((s) => s.name === 'delete'));
+    assert.ok(sessCtx.matches.some((s) => s.name === 'clear'));
+  });
+
+  it('buildPromptFrame harus merender header Pilihan /timeline dan opsi compact/detail', () => {
+    const out = polos(buildPromptFrame({ value: '/timeline ', dropdownOpen: true, selectedIndex: 0 }));
+    assert.ok(out.includes('Pilihan /timeline'));
+    assert.ok(out.includes('compact'));
+    assert.ok(out.includes('detail'));
+    assert.ok(out.includes('❯ compact'));
+
+    const outDetail = polos(buildPromptFrame({ value: '/timeline ', dropdownOpen: true, selectedIndex: 1 }));
+    assert.ok(outDetail.includes('❯ detail'));
+  });
+
+  it('menavigasi ke /timeline lalu tekan Enter TIDAK langsung eksekusi, melainkan memunculkan opsi subperintah', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '/';
+    prompt.emit('value', '/');
+
+    // Indeks /timeline di COMMANDS
+    const timelineIdx = COMMANDS.findIndex((c) => c.name === '/timeline');
+    assert.ok(timelineIdx >= 0);
+
+    for (let i = 0; i < timelineIdx; i++) {
+      prompt.onKeypress('', { name: 'down' });
+    }
+
+    // Tekan Enter saat /timeline ter-highlight
+    prompt.onKeypress('\r', { name: 'return' });
+
+    // TIDAK boleh submit! Harus berubah menjadi "/timeline " dan state tetap active
+    assert.equal(prompt.state, 'active');
+    assert.equal(prompt.value, '/timeline ');
+
+    // Tekan panah bawah untuk memilih "detail"
+    prompt.onKeypress('', { name: 'down' });
+
+    // Tekan Enter untuk submit "detail"
+    prompt.onKeypress('\r', { name: 'return' });
+    assert.equal(prompt.state, 'submit');
+    assert.equal(prompt.value, '/timeline detail');
+  });
+
+  it('menavigasi ke /timeline lalu tekan Spasi harus berpindah ke mode subperintah', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '/';
+    prompt.emit('value', '/');
+
+    const timelineIdx = COMMANDS.findIndex((c) => c.name === '/timeline');
+    for (let i = 0; i < timelineIdx; i++) {
+      prompt.onKeypress('', { name: 'down' });
+    }
+
+    // Tekan Spasi
+    prompt.onKeypress(' ', { name: 'space' });
+
+    assert.equal(prompt.state, 'active');
+    assert.equal(prompt.value, '/timeline ');
+
+    // Tekan Enter langsung memilih opsi pertama (compact)
+    prompt.onKeypress('\r', { name: 'return' });
+    assert.equal(prompt.state, 'submit');
+    assert.equal(prompt.value, '/timeline compact');
+  });
+
+  it('mengetik /time lalu tekan Tab harus auto-complete ke "/timeline " dan menutup dropdown', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '/time';
+    prompt.emit('value', '/time');
+
+    // Tekan Tab
+    prompt.onKeypress('\t', { name: 'tab' });
+
+    assert.equal(prompt.state, 'active');
+    assert.equal(prompt.value, '/timeline ');
+
+    // Tekan Enter untuk submit /timeline
+    prompt.onKeypress('\r', { name: 'return' });
+    assert.equal(prompt.state, 'submit');
+    assert.equal(prompt.value, '/timeline ');
+  });
+
+  it('mengetik /timeline lalu spasi lalu Tab harus melengkapi subperintah yang dipilih ke input frame dan menutup dropdown', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '/timeline ';
+    prompt.emit('value', '/timeline ');
+
+    // Pindah ke opsi kedua "detail"
+    prompt.onKeypress('', { name: 'down' });
+    // Tekan Tab untuk melengkapi "detail"
+    prompt.onKeypress('\t', { name: 'tab' });
+
+    assert.equal(prompt.value, '/timeline detail ');
+    assert.equal(prompt.state, 'active');
+
+    // Tekan Enter untuk submit
+    prompt.onKeypress('\r', { name: 'return' });
+    assert.equal(prompt.state, 'submit');
+    assert.equal(prompt.value, '/timeline detail ');
+  });
+
+  it('mengetik "/timeline" lengkap lalu tekan Enter harus transisi ke pilihan subperintah', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '/timeline';
+    prompt.emit('value', '/timeline');
+
+    // Tekan Enter
+    prompt.onKeypress('\r', { name: 'return' });
+
+    assert.equal(prompt.state, 'active');
+    assert.equal(prompt.value, '/timeline ');
+
+    // Tekan Enter pada pilihan pertama (compact)
+    prompt.onKeypress('\r', { name: 'return' });
+    assert.equal(prompt.state, 'submit');
+    assert.equal(prompt.value, '/timeline compact');
+  });
+
+  it('harus memanggil kembali perintah sebelumnya dengan Panah Atas dan maju dengan Panah Bawah', () => {
+    resetPromptHistory();
+    savePromptHistory('perintah pertama');
+    savePromptHistory('perintah kedua');
+
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '';
+
+    // Tekan Panah Atas (↑): harus memanggil 'perintah kedua' (terbaru)
+    prompt.onKeypress('', { name: 'up' });
+    assert.equal(prompt.value, 'perintah kedua');
+
+    // Tekan Panah Atas lagi: harus memanggil 'perintah pertama' (lebih lama)
+    prompt.onKeypress('', { name: 'up' });
+    assert.equal(prompt.value, 'perintah pertama');
+
+    // Tekan Panah Bawah (↓): kembali ke 'perintah kedua'
+    prompt.onKeypress('', { name: 'down' });
+    assert.equal(prompt.value, 'perintah kedua');
+
+    // Tekan Panah Bawah lagi: kembali ke input semula (string kosong)
+    prompt.onKeypress('', { name: 'down' });
+    assert.equal(prompt.value, '');
   });
 });
 

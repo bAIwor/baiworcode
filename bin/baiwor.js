@@ -9,6 +9,7 @@ import chalk from 'chalk';
 import * as p from '@clack/prompts';
 import { getConfig, CONFIG_FILE, maskSecret, getTimelineMode, setTimelineMode } from '../src/config.js';
 import { runModelMenu } from '../src/modelMenu.js';
+import { handleModelCommand } from '../src/modelAlias.js';
 import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
@@ -22,7 +23,7 @@ import { resetTodoStore } from '../src/tools/todoTool.js';
 import { renderStatusLine } from '../src/statusLine.js';
 import { resolveActiveCredentials } from '../src/auth/resolve.js';
 import { applyHelpStyle, helpHeader, helpFooter } from '../src/cliHelp.js';
-import { APP_NAME, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE } from '../src/branding.js';
+import { APP_NAME, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE, COMPANY } from '../src/branding.js';
 
 // Cegah sistem operasi langsung mematikan proses saat Ctrl+C ditekan di terminal
 process.on('SIGINT', () => {});
@@ -103,7 +104,7 @@ function padBox(content) {
 }
 
 const BAWOR_TEXT_LOGO = [
-  '  ██████╗  █████╗ ██╗██╗    ██╗ ██████╗ ██████╗     ██████╗ ██████╗ ██████╗ ███████╗',
+  '  ██████╗  █████╗ ██╗██╗    ██╗ ██████╗ ██████╗     ██████╗ ███████╗ ██████╗ ███████╗',
   '  ██╔══██╗██╔══██╗██║██║    ██║██╔═══██╗██╔══██╗    ██╔════╝██╔═══██╗██╔══██╗██╔════╝',
   '  ██████╔╝███████║██║██║ █╗ ██║██║   ██║██████╔╝    ██║     ██║   ██║██║  ██║█████╗  ',
   '  ██╔══██╗██╔══██║██║██║███╗██║██║   ██║██╔══██╗    ██║     ██║   ██║██║  ██║██╔══╝  ',
@@ -111,14 +112,23 @@ const BAWOR_TEXT_LOGO = [
   '  ╚═════╝ ╚═╝  ╚═╝╚═╝ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝',
 ];
 
+/** Batas merah→putih: separuh tinggi logo (baris 0-2 merah, 3-5 putih). */
+const FLAG_SPLIT_ROW = BAWOR_TEXT_LOGO.length / 2;
+
 /**
  * Logo teks bAIwor Code:
  * - "b" : Putih terang (kolom 0 s/d 9)
  * - "AI" : Merah terang (kolom 10 s/d 20)
  * - "wor" : Putih terang (kolom 21 s/d 51, termasuk spasi pemisah)
- * - "Code" : Bendera Merah Putih seimbang tepat di tengah huruf E:
- *            - Baris 0, 1, 2 : MERAH (atap, celah atas, dan palang tengah E █████╗ utuh termasuk ╗)
- *            - Baris 3, 4, 5 : PUTIH (celah bawah E ██╔══╝, palang bawah, dan alas bayangan)
+ * - "Code" : Bendera Merah Putih — MERAH di ATAS, PUTIH di BAWAH, dengan
+ *            perbatasan persis di palang tengah huruf E (garis ganda "="):
+ *            - Baris 0, 1, 2 : MERAH (atap, celah atas, palang tengah E atas █████╗)
+ *            - Baris 3, 4, 5 : PUTIH (bawah palang tengah E ██╔══╝, palang bawah, alas)
+ *
+ * Warna bendera sengaja memakai `redBright`/`whiteBright` yang sama dengan
+ * bagian lain banner ("AI" merah, "b"/"wor" putih) supaya kedua merah dan
+ * kedua putih di logo identik di mata pengguna. Nilai resmi bendera RI
+ * (PP No. 40/1958) sendiri adalah #FF0000 dan #FFFFFF.
  */
 function colorizeTextLogoLine(line, rowIndex) {
   const bPart = chalk.whiteBright.bold(line.slice(0, 10));
@@ -126,7 +136,7 @@ function colorizeTextLogoLine(line, rowIndex) {
   const worPart = chalk.whiteBright.bold(line.slice(21, 52));
 
   const codeSlice = line.slice(52);
-  const codePart = rowIndex < 3
+  const codePart = rowIndex < FLAG_SPLIT_ROW
     ? chalk.redBright.bold(codeSlice)
     : chalk.whiteBright.bold(codeSlice);
 
@@ -136,27 +146,77 @@ function colorizeTextLogoLine(line, rowIndex) {
 const LOGO_INDENT = '  ';
 const LOGO_GAP = ' ';
 const TEXT_LOGO_WIDTH = Math.max(...BAWOR_TEXT_LOGO.map((l) => l.length));
+/** Spasi kiri tiap baris logo teks (semua baris memakai indent yang sama). */
+const TEXT_LOGO_LEFT_PAD = BAWOR_TEXT_LOGO[0].length - BAWOR_TEXT_LOGO[0].trimStart().length;
+/** Lebar "tinta" logo teks tanpa spasi tepi — dasar perataan tagline di bawahnya. */
+const TEXT_LOGO_INK_WIDTH =
+  Math.max(...BAWOR_TEXT_LOGO.map((l) => l.trimEnd().length)) - TEXT_LOGO_LEFT_PAD;
+
+/**
+ * Rencana layout header: apakah logo tampil berdampingan dengan topeng,
+ * bertumpuk, atau teks saja — sekaligus kolom awal dan lebar "tinta" tulisan
+ * bAIwor Code. Dipisah dari pencetakannya supaya elemen lain yang harus
+ * dirata-tengah terhadap tulisan itu (nama company di atas, tagline di bawah)
+ * memakai perhitungan yang sama persis, bukan menebak sendiri.
+ *
+ * @returns {{ mode: 'berdampingan'|'bertumpuk'|'teks', textIndent: number, textWidth: number }}
+ */
+function resolveLogoLayout() {
+  const columns = process.stdout.columns || 80;
+  const slotOffset = LOGO_INDENT.length + BAWOR_LOGO.cols + LOGO_GAP.length;
+  const mode =
+    columns >= slotOffset + TEXT_LOGO_WIDTH
+      ? 'berdampingan'
+      : columns >= BAWOR_LOGO.cols + LOGO_INDENT.length
+        ? 'bertumpuk'
+        : 'teks';
+
+  return {
+    mode,
+    // Kolom awal lajur kanan (tempat logo teks & judul di atasnya) pada layout
+    // berdampingan; 0 bila logo dicetak sendirian.
+    slotOffset: mode === 'berdampingan' ? slotOffset : 0,
+    textIndent: (mode === 'berdampingan' ? slotOffset : 0) + TEXT_LOGO_LEFT_PAD,
+    textWidth: TEXT_LOGO_INK_WIDTH,
+  };
+}
+
+/** Padding kiri agar `text` rata tengah terhadap tulisan bAIwor Code. */
+function centerPadInTextLogo(layout, text) {
+  return layout.textIndent + Math.max(0, Math.floor((layout.textWidth - visualWidth(text)) / 2));
+}
 
 /**
  * Header pembuka: muka Bawor (kiri) berdampingan dengan logo teks bAIwor (kanan).
  * Menyesuaikan lebar terminal: berdampingan -> bertumpuk -> logo teks saja.
+ *
+ * @param {{ mode: string, slotOffset: number }} [layout] Rencana dari
+ *   resolveLogoLayout(); dihitung sendiri bila tidak diberikan.
+ * @param {Object} [options]
+ * @param {string} [options.heading=''] Judul kecil di atas tulisan bAIwor Code
+ *   (mis. nama company). Pada layout berdampingan ia mengisi lajur kosong di
+ *   kanan antena topeng sehingga jatuh tepat satu baris di atas logo teks.
+ * @param {number} [options.headingPad=0] Kolom awal judul (dihitung dari
+ *   centerPadInTextLogo) supaya rata tengah dengan tulisan bAIwor Code.
  */
-function printLogoHeader() {
+function printLogoHeader(layout = resolveLogoLayout(), options = {}) {
+  const { heading = '', headingPad = 0 } = options;
   const artLines =
     (chalk.level > 0 && BAWOR_LOGO.color)
       ? BAWOR_LOGO.color
       : (BAWOR_LOGO.mono || BAWOR_LOGO.lines || []);
   const textLines = BAWOR_TEXT_LOGO.map((line, idx) => colorizeTextLogoLine(line, idx));
-  const columns = process.stdout.columns || 80;
-
-  const sideBySideWidth =
-    LOGO_INDENT.length + BAWOR_LOGO.cols + LOGO_GAP.length + TEXT_LOGO_WIDTH;
+  // Pad di dalam lajur kanan: kolom absolut dikurangi kolom awal lajur.
+  const headingInSlot = ' '.repeat(Math.max(0, headingPad - layout.slotOffset)) + heading;
 
   // 1. Terminal cukup lebar: logo berdampingan
-  if (columns >= sideBySideWidth) {
+  if (layout.mode === 'berdampingan') {
     const artH = artLines.length;
     const textH = textLines.length;
-    const padTop = Math.max(0, Math.floor((artH - textH) / 2));
+    // Selisih tinggi ganjil (topeng 7 baris vs teks 6 baris) dibagi ke bawah
+    // supaya teks sejajar dengan *kepala* topeng (baris 1-6), bukan dengan
+    // antenanya di baris 0 — hasilnya teks tampak tegak lurus di tengah.
+    const padTop = Math.max(0, Math.round((artH - textH) / 2));
     const padBot = Math.max(0, artH - textH - padTop);
 
     const right = [
@@ -165,6 +225,16 @@ function printLogoHeader() {
       ...Array(padBot).fill(''),
     ];
 
+    if (heading) {
+      // Baris kosong terakhir di atas logo teks (= baris antena topeng) dipakai
+      // untuk judul, jadi nama company duduk pas satu baris di atas "bAIwor Code".
+      if (padTop > 0) {
+        right[padTop - 1] = headingInSlot;
+      } else {
+        console.log(' '.repeat(headingPad) + heading);
+      }
+    }
+
     for (let i = 0; i < artH; i++) {
       console.log(LOGO_INDENT + artLines[i] + LOGO_GAP + (right[i] || ''));
     }
@@ -172,11 +242,14 @@ function printLogoHeader() {
   }
 
   // 2. Muat untuk logo saja: tampilkan bertumpuk (muka di atas, teks di bawah)
-  if (columns >= BAWOR_LOGO.cols + LOGO_INDENT.length) {
+  if (layout.mode === 'bertumpuk') {
     for (const line of artLines) {
       console.log(LOGO_INDENT + line);
     }
     console.log();
+    // Judul duduk tepat di atas tulisan bAIwor Code — konsisten dengan layout
+    // berdampingan, di mana ia sebaris dengan antena topeng.
+    if (heading) console.log(' '.repeat(headingPad) + heading);
     for (const line of textLines) {
       console.log(line);
     }
@@ -184,6 +257,7 @@ function printLogoHeader() {
   }
 
   // 3. Terlalu sempit: logo teks saja
+  if (heading) console.log(' '.repeat(headingPad) + heading);
   for (const line of textLines) {
     console.log(line);
   }
@@ -192,9 +266,22 @@ function printLogoHeader() {
 function showBanner() {
   const config = getConfig();
 
+  const layout = resolveLogoLayout();
+
   console.log();
-  printLogoHeader();
-  console.log(chalk.gray(`  🎭 "${TAGLINE}"`));
+  // Nama badan hukum tepat di atas tulisan bAIwor Code (pada layout
+  // berdampingan ia mengisi lajur kanan antena topeng), rata tengah — sepasang
+  // simetris dengan tagline di bawahnya.
+  printLogoHeader(layout, {
+    heading: chalk.gray(COMPANY),
+    headingPad: centerPadInTextLogo(layout, COMPANY),
+  });
+
+  // Tagline diletakkan tepat di bawah tulisan "bAIwor Code" dan dirata-tengah
+  // terhadap lebar tulisan itu (bukan lebar terminal), jadi tetap rapi baik di
+  // layout berdampingan (muka + teks) maupun bertumpuk.
+  const tagline = `🎭 "${TAGLINE}"`;
+  console.log(' '.repeat(centerPadInTextLogo(layout, tagline)) + chalk.gray(tagline));
   console.log();
 
   const readyText = '● Ready';
@@ -211,7 +298,6 @@ function showBanner() {
   console.log(padBox(chalk.whiteBright('Tips for getting started')));
   console.log(padBox(chalk.gray('› ') + 'Gunakan ' + chalk.cyan('/help') + ' untuk melihat semua perintah yang tersedia.'));
   console.log(padBox(chalk.gray('› ') + 'Gunakan ' + chalk.cyan('/clear') + ' untuk menyegarkan layar kerja kapan saja.'));
-  console.log(padBox(chalk.gray('› ') + 'Bonus token  : ' + chalk.cyan(BONUS_WEBSITE) + chalk.dim(' (kode kupon "baiworcode")')));
   console.log(padBox(chalk.gray('› ') + 'Kunjungi ' + chalk.cyan(WEBSITE) + ' untuk dokumentasi & update resmi.'));
   console.log(midBar);
   console.log(padBox(chalk.whiteBright('Workspace & Status')));
@@ -261,6 +347,7 @@ function showHelp() {
   console.log(`    ${chalk.cyan('baiworcode "jelaskan struktur proyek ini"')}`);
   console.log(`    ${chalk.cyan('baiworcode plan "rancang fitur baru"')}`);
   console.log(`    ${chalk.cyan('baiworcode "perbaiki error di src/index.js"')}`);
+  console.log(`    ${chalk.cyan('baiworcode -c')}  ${dim('atau')}  ${chalk.cyan('baiworcode --resume')}  ${dim('─ lanjutkan sesi terakhir')}`);
   console.log();
   console.log(gold.bold('  🧭 Cara Membaca Aktivitas Tim Punakawan:'));
   console.log(`    ${dim('├──')} ✓ ${chalk.cyan.bold('pAItruk')} · read_file ${dim('· 0.1s · 42 baris')}`);
@@ -370,6 +457,7 @@ async function printStatus() {
 
 function showExitMessage() {
   console.log(chalk.hex('#F59E0B')('\n  Matur nuwun! Sampun nganggo bAIwor Code. 🙏'));
+  console.log(chalk.gray('  🏢 Company           : ') + chalk.whiteBright(COMPANY));
   console.log(chalk.gray('  🌐 Website official  : ') + chalk.cyan(WEBSITE));
   console.log(
     chalk.gray('  🎁 Bonus token/credit: ') +
@@ -379,11 +467,34 @@ function showExitMessage() {
   process.exit(0);
 }
 
-async function startInteractive() {
+function showResumedBanner() {
+  const title = conversationSession.sessionTitle || conversationSession.sessionId;
+  const turns = conversationSession.getUserTurnCount();
+  console.log(chalk.cyan.bold('\n  🔄 Melanjutkan Sesi Percakapan Sebelumnya:'));
+  console.log(chalk.white(`     Judul  : `) + chalk.green.bold(title));
+  console.log(chalk.gray(`     ID     : ${conversationSession.sessionId} · ${turns} turn interaksi`));
+
+  const msgs = conversationSession.messages.filter((m) => m && (m.role === 'user' || m.role === 'assistant'));
+  if (msgs.length > 0) {
+    const recent = msgs.slice(-2);
+    console.log(chalk.dim('\n     Riwayat Terakhir:'));
+    for (const msg of recent) {
+      const roleLabel = msg.role === 'user' ? chalk.cyan('› Kamu   ') : chalk.yellow('✦ bAIwor ');
+      const cleanContent = typeof msg.content === 'string' ? msg.content.replace(/\s+/g, ' ').trim() : '';
+      const snippet = cleanContent.slice(0, 80);
+      console.log(`     ${roleLabel}: ${chalk.gray(snippet)}${cleanContent.length > 80 ? '...' : ''}`);
+    }
+  }
+  console.log();
+}
+
+async function startInteractive(opts = {}) {
   // Cegah sistem operasi langsung mematikan proses saat Ctrl+C ditekan di terminal
   process.on('SIGINT', () => {});
 
-  showBanner();
+  if (!opts.skipBanner) {
+    showBanner();
+  }
 
   while (true) {
     const config = getConfig();
@@ -431,21 +542,27 @@ async function startInteractive() {
       case '/help':
         showHelp();
         break;
-      case '/plan':
-        if (!arg) {
-          console.log(chalk.cyan.bold('\n  👑 Mode Perencanaan semAIr (/plan)'));
-          console.log(chalk.gray('     Format : ') + chalk.white('/plan <instruksi atau fitur yang ingin dirancang>'));
-          console.log(chalk.gray('     Contoh : ') + chalk.green('/plan buatkan sistem autentikasi JWT dan middleware\n'));
-        } else {
-          await handleUserChat(buildPlanUserPrompt(arg));
-          try {
-            conversationSession.saveToDisk({
-              model: config.activeModel,
-              provider: config.activeProvider,
-            });
-          } catch {}
+      case '/plan': {
+        let planPrompt = arg;
+        if (!planPrompt) {
+          const inputPrompt = await p.text({
+            message: 'Mode Perencanaan semAIr — masukkan instruksi atau fitur yang ingin dirancang:',
+            placeholder: 'Misal: buatkan sistem autentikasi JWT dan middleware',
+          });
+          if (p.isCancel(inputPrompt) || !inputPrompt?.trim()) {
+            break;
+          }
+          planPrompt = inputPrompt.trim();
         }
+        await handleUserChat(buildPlanUserPrompt(planPrompt));
+        try {
+          conversationSession.saveToDisk({
+            model: config.activeModel,
+            provider: config.activeProvider,
+          });
+        } catch {}
         break;
+      }
       case '/compact': {
         const res = await compactConversation(conversationSession);
         if (!res.compacted) {
@@ -465,17 +582,27 @@ async function startInteractive() {
         break;
       }
       case '/timeline': {
-        const mode = (arg || '').trim().toLowerCase();
+        let mode = (arg || '').trim().toLowerCase();
         const active = getTimelineMode();
         if (!mode) {
-          console.log(chalk.cyan.bold('\n  🎬 Tampilan Aktivitas Tim Punakawan (/timeline)'));
-          console.log(chalk.gray(`     Mode aktif : `) + chalk.white.bold(active));
-          console.log();
-          console.log(chalk.gray('  Pilihan mode:'));
-          console.log(chalk.gray('  - ') + chalk.cyan('compact') + chalk.gray(' : satu baris per langkah — alur cepat & ringkas'));
-          console.log(chalk.gray('  - ') + chalk.cyan('detail') + chalk.gray('  : pohon lengkap dengan argumen & ringkasan hasil'));
-          console.log(chalk.gray('\n  Contoh: ') + chalk.cyan('/timeline compact') + chalk.gray(' atau ') + chalk.cyan('/timeline detail\n'));
-          break;
+          const pickedMode = await p.select({
+            message: `Pilih mode tampilan timeline (saat ini: ${chalk.green(active)}):`,
+            options: [
+              {
+                value: 'compact',
+                label: `${chalk.green('compact'.padEnd(10))} ─ ${chalk.dim('Satu baris per langkah — alur cepat & ringkas')}`,
+              },
+              {
+                value: 'detail',
+                label: `${chalk.cyan('detail'.padEnd(10))} ─ ${chalk.dim('Pohon lengkap dengan argumen & ringkasan hasil')}`,
+              },
+              { value: '__cancel__', label: chalk.gray('← Batal') },
+            ],
+          });
+          if (p.isCancel(pickedMode) || pickedMode === '__cancel__') {
+            break;
+          }
+          mode = pickedMode;
         }
         const next = setTimelineMode(mode);
         if (next === 'compact') {
@@ -490,7 +617,23 @@ async function startInteractive() {
       }
       case '/session': {
         const subParts = arg ? arg.split(/\s+/) : [];
-        const action = subParts[0] || 'list';
+        let action = subParts[0];
+        if (!action) {
+          const pickedAction = await p.select({
+            message: 'Pilih aksi sesi percakapan:',
+            options: [
+              { value: 'list', label: `${chalk.cyan('list'.padEnd(10))} ─ ${chalk.dim('Tampilkan daftar sesi percakapan proyek')}` },
+              { value: 'resume', label: `${chalk.green('resume'.padEnd(10))} ─ ${chalk.dim('Lanjutkan sesi percakapan (terakhir atau spesifik)')}` },
+              { value: 'delete', label: `${chalk.yellow('delete'.padEnd(10))} ─ ${chalk.dim('Hapus sesi percakapan')}` },
+              { value: 'clear', label: `${chalk.red('clear'.padEnd(10))} ─ ${chalk.dim('Bersihkan seluruh riwayat sesi proyek')}` },
+              { value: '__cancel__', label: chalk.gray('← Batal') },
+            ],
+          });
+          if (p.isCancel(pickedAction) || pickedAction === '__cancel__') {
+            break;
+          }
+          action = pickedAction;
+        }
         if (action === 'list') {
           const list = listSessions();
           if (list.length === 0) {
@@ -509,16 +652,39 @@ async function startInteractive() {
           if (targetId) {
             const ok = conversationSession.loadFromDisk(targetId);
             if (ok) {
-              console.log(chalk.green.bold(`\n  ✅ Berhasil memuat sesi: ${conversationSession.sessionTitle || targetId}\n`));
+              showResumedBanner();
             } else {
               console.log(chalk.red.bold(`\n  ❌ Sesi "${targetId}" tidak ditemukan.\n`));
             }
           } else {
-            const ok = conversationSession.resumeLatest();
-            if (ok) {
-              console.log(chalk.green.bold(`\n  ✅ Berhasil memuat sesi terakhir: ${conversationSession.sessionTitle || conversationSession.sessionId}\n`));
-            } else {
+            const list = listSessions();
+            if (list.length === 0) {
               console.log(chalk.yellow('\n  Tidak ada sesi sebelumnya untuk di-resume.\n'));
+            } else {
+              const options = list.slice(0, 10).map((s) => {
+                const dt = s.updatedAt ? new Date(s.updatedAt).toLocaleString('id-ID') : '-';
+                const turns = s.stats?.turnCount || 0;
+                const title = (s.title || s.id).slice(0, 36);
+                return {
+                  value: s.id,
+                  label: `${title.padEnd(36)} ─ ${chalk.dim(`${turns} turn · ${dt}`)}`,
+                };
+              });
+              options.push({ value: '__cancel__', label: chalk.gray('← Batal') });
+
+              const pickedId = await p.select({
+                message: 'Pilih sesi yang ingin dilanjutkan:',
+                options,
+              });
+
+              if (!p.isCancel(pickedId) && pickedId !== '__cancel__') {
+                const ok = conversationSession.loadFromDisk(pickedId);
+                if (ok) {
+                  showResumedBanner();
+                } else {
+                  console.log(chalk.red.bold(`\n  ❌ Gagal memuat sesi "${pickedId}".\n`));
+                }
+              }
             }
           }
         } else if (action === 'delete' || action === 'rm') {
@@ -650,9 +816,19 @@ async function startInteractive() {
         await printStatus();
         break;
       case '/model':
-      case '/provider':
-        await runModelMenu();
+      case '/provider': {
+        // Tanpa argumen → menu interaktif. Dengan argumen → switch langsung:
+        //   /model <alias>            (alias buatan pengguna atau bawaan)
+        //   /model provider/model     (short form)
+        //   /model alias list|add|remove <nama> [provider/model]
+        const handled = handleModelCommand(arg);
+        if (handled.needsMenu) {
+          await runModelMenu();
+        } else if (handled.output) {
+          console.log(handled.output);
+        }
         break;
+      }
       case '/login':
         await login(arg || undefined);
         break;
@@ -712,10 +888,29 @@ program
   .name('baiworcode')
   .description(`${APP_NAME} v${VERSION} — ${WEBSITE.replace(/^https?:\/\//, '')}`)
   .version(VERSION, '-v, --version')
+  .option('-c, --continue', 'Lanjutkan sesi percakapan terakhir')
+  .option('-r, --resume', 'Alias untuk --continue')
+  .option('-s, --session <id>', 'Lanjutkan sesi percakapan tertentu berdasarkan ID')
   .argument('[prompt...]', 'Pertanyaan atau instruksi coding langsung')
-  .action(async (promptParts) => {
+  .action(async (promptParts, options = {}) => {
+    let resumed = false;
+    if (options.session) {
+      resumed = conversationSession.loadFromDisk(options.session);
+      if (!resumed) {
+        console.log(chalk.yellow(`\n  ⚠️  Sesi "${options.session}" tidak ditemukan. Memulai sesi baru.`));
+      }
+    } else if (options.continue || options.resume) {
+      resumed = conversationSession.resumeLatest();
+      if (!resumed) {
+        console.log(chalk.yellow('\n  ℹ️  Tidak ada sesi sebelumnya untuk dilanjutkan. Memulai sesi baru.'));
+      }
+    }
+
     if (promptParts && promptParts.length > 0) {
       const fullPrompt = promptParts.join(' ');
+      if (resumed) {
+        showResumedBanner();
+      }
       await handleUserChat(fullPrompt);
       try {
         const config = getConfig();
@@ -726,7 +921,13 @@ program
       } catch {}
       process.exit(0);
     }
-    await startInteractive();
+
+    if (resumed) {
+      showResumedBanner();
+      await startInteractive({ skipBanner: true });
+    } else {
+      await startInteractive();
+    }
   });
 
 program
@@ -773,18 +974,20 @@ program
       if (targetId) {
         const ok = conversationSession.loadFromDisk(targetId);
         if (ok) {
-          console.log(chalk.green.bold(`\n  ✅ Berhasil memuat sesi: ${conversationSession.sessionTitle || targetId}\n`));
-          await startInteractive();
+          showResumedBanner();
+          await startInteractive({ skipBanner: true });
         } else {
           console.log(chalk.red.bold(`\n  ❌ Sesi "${targetId}" tidak ditemukan.\n`));
+          process.exit(1);
         }
       } else {
         const ok = conversationSession.resumeLatest();
         if (ok) {
-          console.log(chalk.green.bold(`\n  ✅ Berhasil memuat sesi terakhir: ${conversationSession.sessionTitle || conversationSession.sessionId}\n`));
-          await startInteractive();
+          showResumedBanner();
+          await startInteractive({ skipBanner: true });
         } else {
           console.log(chalk.yellow('\n  Tidak ada sesi sebelumnya untuk di-resume.\n'));
+          process.exit(0);
         }
       }
     } else if (action === 'delete' || action === 'rm') {
@@ -902,18 +1105,30 @@ program
   });
 
 program
-  .command('model')
-  .description('Pilih model Agentik, Google Gemini, atau Custom Endpoint')
-  .action(async () => {
-    await runModelMenu();
+  .command('model [target...]')
+  .description(
+    'Pilih model/provider — tanpa argumen membuka menu; dengan argumen switch langsung (alias atau provider/model)'
+  )
+  .action(async (targets) => {
+    const handled = handleModelCommand((targets || []).join(' '));
+    if (handled.needsMenu) {
+      await runModelMenu();
+    } else if (handled.output) {
+      console.log(handled.output);
+    }
     process.exit(0);
   });
 
 program
-  .command('provider')
+  .command('provider [target...]')
   .description('Alias untuk perintah model')
-  .action(async () => {
-    await runModelMenu();
+  .action(async (targets) => {
+    const handled = handleModelCommand((targets || []).join(' '));
+    if (handled.needsMenu) {
+      await runModelMenu();
+    } else if (handled.output) {
+      console.log(handled.output);
+    }
     process.exit(0);
   });
 

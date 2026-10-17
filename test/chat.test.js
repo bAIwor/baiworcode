@@ -9,7 +9,7 @@ import { getSystemPrompt } from '../src/chat/systemPrompt.js';
 describe('Tahap 3A: System Prompt & Karakter bAIwor', () => {
   it('harus memuat filosofi Punakawan Banyumasan dan petunjuk teknis', () => {
     const prompt = getSystemPrompt();
-    assert.match(prompt, /Jiwa Punakawan, Pikiran AI, Ati Banyumas/i);
+    assert.match(prompt, /Jiwa Punakawan, Pikiran AI, Guardian Banyumas/i);
     assert.match(prompt, /blakasuta/i);
     assert.match(prompt, /bAIwor Code/i);
     assert.match(prompt, /Workspace \/ CWD/i);
@@ -111,6 +111,25 @@ describe('Tahap 3A: Endpoint Builder', () => {
     assert.equal(
       buildChatEndpoint('https://openrouter.ai/api/v1/chat/completions'),
       'https://openrouter.ai/api/v1/chat/completions'
+    );
+  });
+
+  it('harus menangani segmen versi lain seperti /v1beta (Google Gemini)', () => {
+    assert.equal(
+      buildChatEndpoint('https://generativelanguage.googleapis.com/v1beta/openai'),
+      'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
+    );
+    assert.equal(
+      buildChatEndpoint('https://contoh.example.com/v1beta'),
+      'https://contoh.example.com/v1beta/chat/completions'
+    );
+  });
+
+  it('tidak boleh menyuntik /v1 ganda pada segmen yang mirip versi', () => {
+    // '/v1x' bukan segmen versi → tetap diperlakukan sebagai base URL umum
+    assert.equal(
+      buildChatEndpoint('https://contoh.example.com/v1x'),
+      'https://contoh.example.com/v1x/v1/chat/completions'
     );
   });
 });

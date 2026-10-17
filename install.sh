@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 echo ""
 echo -e "${GRAY}  ================================================================${NC}"
 echo -e "${YELLOW}${BOLD}     bAIwor Code — Asisten Coding AI Punakawan Banyumasan          ${NC}"
-echo -e "${BOLD}     'Jiwa Punakawan, Pikiran AI, Ati Banyumas'                   ${NC}"
+echo -e "${BOLD}     'Jiwa Punakawan, Pikiran AI, Guardian Banyumas'              ${NC}"
 echo -e "${GRAY}  ================================================================${NC}"
 echo ""
 

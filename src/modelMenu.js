@@ -3,6 +3,7 @@ import * as p from '@clack/prompts';
 import { getConfig, saveConfig, maskSecret } from './config.js';
 import { login, logout, PROVIDERS } from './auth/index.js';
 import { CLI_USER_AGENT } from './branding.js';
+import { listAliases, activeAliasName, switchToModel } from './modelAlias.js';
 
 function cleanUrl(urlStr) {
   try {
@@ -222,7 +223,18 @@ export async function runModelMenu() {
       optionNumber++;
     }
 
-    // 4. Menu Aksi di bagian bawah
+    // 4. Model aliases (switch langsung tanpa sub-menu, gaya Hermes)
+    const activeAlias = activeAliasName(config);
+    for (const a of listAliases(config)) {
+      const suffix = a.name === activeAlias ? chalk.green.bold(' ← currently active') : '';
+      selectOptions.push({
+        value: `alias_${a.name}`,
+        label: `${optionNumber}. ⚡ ${chalk.yellow.bold(a.name)} ${chalk.dim('→')} ${a.provider}/${a.model}${suffix}`,
+      });
+      optionNumber++;
+    }
+
+    // 5. Menu Aksi di bagian bawah
     selectOptions.push({
       value: 'action_add_custom',
       label: chalk.hex('#38BDF8')('+ Custom endpoint (enter URL manually)'),
@@ -246,6 +258,22 @@ export async function runModelMenu() {
     });
 
     if (p.isCancel(choice) || choice === 'action_leave') {
+      return;
+    }
+
+    // Aksi: Model alias — switch langsung tanpa sub-menu
+    if (choice.startsWith('alias_')) {
+      const aliasName = choice.slice('alias_'.length);
+      const res = switchToModel(aliasName);
+      if (!res.ok) {
+        console.log(chalk.red(`\n  ❌ ${res.error}\n`));
+        continue;
+      }
+      p.outro(
+        chalk.green(
+          `✓ Model aktif: ${res.target.model} · provider ${res.target.provider} (alias "${aliasName}")`
+        )
+      );
       return;
     }
 

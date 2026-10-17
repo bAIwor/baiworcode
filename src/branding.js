@@ -20,4 +20,7 @@ export const USER_AGENT = `${APP_NAME.replace(/\s+/g, '-')}/${VERSION}`;
 export const CLI_USER_AGENT = `bAIwor-cli/${VERSION}`;
 
 /** Tagline resmi (filosofi Punakawan Banyumasan). */
-export const TAGLINE = 'Saka Bawor dadi bAIwor — Jiwa Punakawan, Pikiran AI, Ati Banyumas';
+export const TAGLINE = 'Saka Bawor dadi bAIwor — Jiwa Punakawan, Pikiran AI, Guardian Banyumas';
+
+/** Nama badan hukum di balik bAIwor Code (tampil di banner & pesan keluar). */
+export const COMPANY = 'PT. bAIwor Agentic Indonesia';

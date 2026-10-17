@@ -9,7 +9,7 @@ function Write-BaworHeader {
     Write-Host ""
     Write-Host "  ================================================================" -ForegroundColor DarkGray
     Write-Host "     bAIwor Code - Asisten Coding AI Punakawan Banyumasan          " -ForegroundColor Yellow
-    Write-Host "     'Jiwa Punakawan, Pikiran AI, Ati Banyumas'                   " -ForegroundColor White
+    Write-Host "     'Jiwa Punakawan, Pikiran AI, Guardian Banyumas'              " -ForegroundColor White
     Write-Host "  ================================================================" -ForegroundColor DarkGray
     Write-Host ""
 }

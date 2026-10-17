@@ -4,7 +4,7 @@ import { conversationSession } from './conversation.js';
 import { streamChatCompletion } from './client.js';
 import { TOOL_DEFINITIONS, executeTool } from '../tools/index.js';
 import { todoStore, resetTodoStore } from '../tools/todoTool.js';
-import { renderTimelineByMode } from './timeline.js';
+import { renderTimelineByMode, renderTodoChecklist, formatTodoProgress } from './timeline.js';
 import { LiveActivity } from './liveActivity.js';
 import { AnswerStyler } from './answerStyle.js';
 import { createOutputWriter } from './outputWriter.js';
@@ -454,10 +454,13 @@ export async function handleUserChat(promptText) {
           // `todo_list` mengembalikan JSON untuk dibaca model, bukan untuk
           // mata pengguna. Di sini ia diganti checklist sungguhan supaya
           // progres ini benar-benar terlihat oleh manusia.
-          const todoItems = fnName === 'todo_list' && toolResult.success ? todoStore.read() : [];
-          const todoDetail = renderTodoChecklist(todoItems, {
-            useColor: Boolean(process.stdout.isTTY),
-          });
+          const isTodoTool = fnName === 'todo_list' && toolResult.success;
+          const todoItems = isTodoTool ? todoStore.read() : [];
+          const todoDetail = isTodoTool
+            ? renderTodoChecklist(todoItems, {
+                useColor: Boolean(process.stdout.isTTY),
+              })
+            : undefined;
 
           const event = {
             name: fnName,

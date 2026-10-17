@@ -20,7 +20,7 @@ export const PROVIDERS = {
     models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
     setupGuide:
       'Buat OAuth 2.0 Client ID (Desktop App) di Google Cloud Console (https://console.cloud.google.com/apis/credentials) atau atur BAIWOR_GEMINI_CLIENT_ID.',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
   },
 };
 

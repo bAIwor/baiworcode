@@ -1,18 +1,19 @@
 # 🎭 bAIwor Code
 
-> *"Saka Bawor dadi bAIwor — Jiwa Punakawan, Pikiran AI, Ati Banyumas"*  
+> *"Saka Bawor dadi bAIwor — Jiwa Punakawan, Pikiran AI, Guardian Banyumas"*  
 > **Official Website:** [baiwor.my.id](https://baiwor.my.id) · **Bonus Token AI:** [agentik.my.id](https://agentik.my.id)
 
 CLI coding agent pintar berbahasa Indonesia — ngobrol santai di terminal, dan bAIwor langsung bekerja di berkas proyekmu.
 
 ```text
-       ╭───▲───╮        ██████╗  █████╗ ██╗██╗    ██╗ ██████╗ ██████╗     ██████╗ ██████╗ ██████╗ ███████╗
-     ▄▀▀   │   ▀▀▄      ██╔══██╗██╔══██╗██║██║    ██║██╔═══██╗██╔══██╗    ██╔════╝██╔═══██╗██╔══██╗██╔════╝
-   ( (O) ( o ) (O) )    ██████╔╝███████║██║██║ █╗ ██║██║   ██║██████╔╝    ██║     ██║   ██║██║  ██║█████╗  
-   ▄███████████████▄    ██╔══██╗██╔══██║██║██║███╗██║██║   ██║██╔══██╗    ██║     ██║   ██║██║  ██║██╔══╝  
-   █ █ █ █ █ █ █ █ █    ██████╔╝██║  ██║██║╚███╔███╔╝╚██████╔╝██║  ██║    ╚██████╗╚██████╔╝██████╔╝███████╗
-    ▀█████████████▀     ╚═════╝ ╚═╝  ╚═╝╚═╝ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
-       ╰───┴───╯      
+     ╭───▲───╮                                   PT. bAIwor Agentic Indonesia
+   ▄▀▀   │   ▀▀▄     ██████╗  █████╗ ██╗██╗    ██╗ ██████╗ ██████╗     ██████╗ ███████╗ ██████╗ ███████╗
+ ( (O) ( o ) (O) )   ██╔══██╗██╔══██╗██║██║    ██║██╔═══██╗██╔══██╗    ██╔════╝██╔═══██╗██╔══██╗██╔════╝
+ ▄███████████████▄   ██████╔╝███████║██║██║ █╗ ██║██║   ██║██████╔╝    ██║     ██║   ██║██║  ██║█████╗  
+ █ █ █ █ █ █ █ █ █   ██╔══██╗██╔══██║██║██║███╗██║██║   ██║██╔══██╗    ██║     ██║   ██║██║  ██║██╔══╝  
+  ▀█████████████▀    ██████╔╝██║  ██║██║╚███╔███╔╝╚██████╔╝██║  ██║    ╚██████╗╚██████╔╝██████╔╝███████╗
+     ╰───┴───╯       ╚═════╝ ╚═╝  ╚═╝╚═╝ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
+                          🎭 "Saka Bawor dadi bAIwor — Jiwa Punakawan, Pikiran AI, Guardian Banyumas"
 ```
 
 ---
@@ -125,9 +126,17 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Pesan `tool` tidak pernah dilepas dari pesan `assistant` yang memanggilnya, karena pasangan yang terpotong akan membuat provider menolak request.
   - Peringatan muncul dan menyarankan `/clear` saat konteks tinggal sedikit.
   - **Angkanya adalah estimasi** (sekitar 4 karakter per token), bukan hitungan token dari provider: sebagian endpoint tidak mengirim `usage`, dan model kustom tidak punya angka jendela konteks yang bisa dikutip dengan jujur. Karena itu label selalu ditandai `≈`.
-- **Navigasi Perintah Cerdas (Slash Commands)**:
+- **Navigasi Perintah Cerdas (Slash Commands & Subcommands)**:
   - Ketik `/` untuk memunculkan menu dropdown perintah secara real-time.
-  - Navigasi dengan tombol panah (`↑` / `↓`), auto-complete dengan `Tab`, eksekusi dengan `Enter`, batal dengan `Esc`.
+  - Navigasi cepat dengan tombol panah (`↑` / `↓`).
+  - **Auto-complete presisi dengan `Tab`**: Menekan `Tab` langsung melengkapi nama perintah/subperintah ke dalam frame input dan menutup dropdown secara instan, siap dieksekusi via `Enter` atau ditambah argumen kustom.
+  - Dukungan subperintah bertingkat untuk `/timeline` (`compact` / `detail`), `/session` (`list`, `resume`, `delete`, `clear`), dan `/skill` (`list`, `info`).
+  - Riwayat prompt cerdas: tombol panah `↑` / `↓` saat dropdown tertutup memanggil kembali riwayat perintah sebelumnya.
+- **Aturan Proyek Otomatis (Project Rules Engine)**:
+  - Otomatis mendeteksi dan menerapkan panduan koding proyek dari `BAIWORS.md`, `BAIWORS.local.md`, atau berkas aturan di `.baiwor/rules/*.md`.
+  - bAIwor otomatis mematuhi standar arsitektur, konvensi penamaan, dan batasan teknologi yang kamu tetapkan untuk proyekmu tanpa perlu diingatkan berulang kali.
+- **Sistem Keahlian & Plugin (.baiwor/skills)**:
+  - Kelola instruksi spesifik domain dan modul keahlian di `.baiwor/skills/` untuk memperkaya wawasan bAIwor dalam menangani alur kerja khusus timmu.
 - **Arsitektur Autentikasi & Provider**:
   - **Google Gemini OAuth** via PKCE (loopback + S256) — login tanpa menyimpan API key di disk.
   - **Agentik AI** sebagai provider bawaan (endpoint OpenAI-compatible + bonus token).
@@ -164,24 +173,65 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `/help` — Panduan bantuan & daftar perintah
 - `/plan [instruksi]` — Mode arsitek semAIr: susun rencana & analisis tanpa ubah kode (read-only + checklist)
 - `/compact` — Ringkas konteks percakapan untuk menghemat ruang token
+- `/timeline [compact|detail]` — Ganti mode tampilan timeline: compact (satu baris cepat) atau detail (pohon lengkap)
 - `/session [list|resume|delete|clear]` — Kelola sesi percakapan proyek (daftar sesi, lanjutkan, hapus satu, atau hapus semua)
+- `/skill [list|info]` — Kelola modul keahlian & plugin (`.baiwor/skills`)
+- `/rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
 - `/status` — Status konfigurasi, provider aktif, **latency**, dan sesi login
-- `/model` — Ganti model AI & provider tanpa keluar aplikasi
-- `/provider` — Alias untuk perintah `/model`
+- `/model [target]` — Ganti model AI & provider. Tanpa argumen membuka menu; dengan argumen switch langsung: `/model <alias>` atau `/model <provider>/<model>`. Kelola alias: `/model alias list|add|remove`
+- `/provider [target]` — Alias untuk perintah `/model`
 - `/login` — Login ke provider OAuth (Google Gemini)
 - `/logout` — Logout dari sesi provider OAuth
 - `/clear` — Bersihkan layar & reset riwayat percakapan
 - `/reset` — Reset konteks percakapan tanpa membersihkan layar
-- `/exit` — Keluar dari bAIwor Code
+- `/exit` — Keluar dari bAIwor Code (alias: `/q`, `/quit`)
+- `/q` — Keluar dari bAIwor Code (alias `/exit`)
 
 ### Perintah Langsung CLI
 - `baiworcode [prompt...]` — Kirim satu prompt langsung lalu keluar (non-interaktif)
 - `baiworcode plan [prompt...]` — Rancang rencana arsitektur & solusi langsung dari terminal luar
-- `baiworcode session [list|resume|delete|clear]` — Kelola riwayat sesi proyek (lihat, lanjut, hapus satu, atau hapus semua)
+- `baiworcode session [list|resume|delete|clear]` — Kelola riwayat sesi proyek (lihat, lanjutkan, hapus satu, atau hapus semua)
+- `baiworcode skill [action] [target]` — Kelola modul keahlian & plugin (`.baiwor/skills`)
+- `baiworcode rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
 - `baiworcode status` — Status konfigurasi dan sesi login
-- `baiworcode model` — Buka menu kelola model dan endpoint
+- `baiworcode model [target]` — Tanpa argumen: menu kelola model/provider. Dengan argumen: switch langsung (`baiworcode model step`, `baiworcode model stepfun/step-5-preview`, `baiworcode model alias add ...`)
+- `baiworcode provider [target]` — Alias untuk perintah `model`
 - `baiworcode login [provider]` — Login langsung ke provider OAuth
 - `baiworcode logout [provider]` — Logout langsung dari provider OAuth
+
+### ⚡ Model Aliases — Switch Model Sekali Ketik
+
+Selain menu interaktif, model & provider bisa di-switch langsung pakai nama pendek (alias) atau short form `provider/model`:
+
+```bash
+baiworcode model step                        # lewat alias tersimpan
+baiworcode model stepfun/step-5-preview      # short form: provider/model
+baiworcode model gemini                      # alias bawaan (Google Gemini)
+baiworcode model agentik                     # alias bawaan (Agentik AI)
+```
+
+Kelola alias (tersimpan di `~/.baiwor/config.json`, key `modelAliases`):
+
+```bash
+baiworcode model alias list                                    # lihat semua alias
+baiworcode model alias add step stepfun/step-5-preview          # simpan alias baru
+baiworcode model alias remove step                             # hapus alias
+```
+
+Di dalam mode interaktif, cara pakainya sama — cukup `/model step`, `/model alias list`, dan seterusnya. Alias bentuk panjang (dengan `baseUrl` + `apiKey` sendiri) bisa disunting langsung di `config.json` untuk endpoint kustom yang butuh kredensial terpisah:
+
+```json
+{
+  "modelAliases": {
+    "theta": {
+      "model": "theta-1",
+      "provider": "custom",
+      "baseUrl": "https://theta.example.com/v1",
+      "apiKey": "${THETA_API_KEY}"
+    }
+  }
+}
+```
 
 ---
 

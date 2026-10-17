@@ -7,7 +7,11 @@ export function buildChatEndpoint(baseUrl) {
   if (url.endsWith('/chat/completions')) {
     return url;
   }
-  if (url.endsWith('/v1')) {
+  // Base URL yang sudah membawa segmen versi (…/v1, …/v1beta, …/v2alpha) —
+  // termasuk bila masih punya segmen sesudahnya, mis. Google Gemini memakai
+  // …/v1beta/openai — cukup dilanjutkan /chat/completions. Menyuntik /v1
+  // lagi akan menghasilkan path yang tidak ada (404).
+  if (/\/(v\d+(?:beta|alpha|rc)?)(?=\/|$)/.test(url)) {
     return `${url}/chat/completions`;
   }
   return `${url}/v1/chat/completions`;
