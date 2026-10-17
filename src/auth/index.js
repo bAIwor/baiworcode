@@ -107,7 +107,7 @@ export async function login(providerId) {
       message: 'Pilih provider yang ingin di-login:',
       options: Object.values(PROVIDERS).map((prov) => ({
         value: prov.id,
-        label: `${prov.name} ▸ (${prov.desc})`,
+        label: prov.desc ? `${prov.name} ▸ (${prov.desc})` : prov.name,
       })),
     });
 
@@ -123,7 +123,7 @@ export async function login(providerId) {
 
   if (provider.method === 'agy') {
     const s = p.spinner();
-    s.start('Memeriksa status Antigravity CLI (agy) & sesi Google AI Pro...');
+    s.start('Memeriksa status Antigravity CLI (agy)...');
 
     const agyExe = process.env.ANTIGRAVITY_AGENTAPI_EXE || 'agy';
     let isAvailable = false;
@@ -138,11 +138,11 @@ export async function login(providerId) {
 
     if (!isAvailable) {
       s.stop(chalk.red('✗ Antigravity CLI (agy) belum terdeteksi atau belum login.'));
-      console.log(chalk.yellow('  Pastikan Antigravity CLI sudah terpasang dan login dengan akun Google AI Pro Anda.'));
+      console.log(chalk.yellow('  Pastikan Antigravity CLI sudah terpasang dan login dengan akun Google Anda.'));
       return null;
     }
 
-    s.stop(chalk.green('✓ Terhubung ke Antigravity CLI (Google AI Pro aktif)!'));
+    s.stop(chalk.green('✓ Terhubung ke Antigravity CLI (Akun Google aktif)!'));
 
     const modelChoice = await p.select({
       message: `Pilih model aktif untuk ${provider.name}:`,
@@ -418,11 +418,11 @@ export function authStatus() {
     const isLoggedIn = isAgy
       ? Boolean((auth && (auth.active || auth.connectedAt)) || (config.activeType === 'agy' && config.activeProvider === prov.name))
       : Boolean(auth && (auth.accessToken || auth.apiKey));
-    const tokenVal = isAgy ? 'Google AI Pro (agy)' : (auth?.accessToken || auth?.apiKey || '');
+    const tokenVal = isAgy ? 'Google OAuth (agy)' : (auth?.accessToken || auth?.apiKey || '');
     const masked = isAgy ? 'agy cli (local session)' : maskSecret(tokenVal);
     const expiresAt = auth?.expiresAt || null;
 
-    let expiryStatus = isAgy ? 'Aktif (Google AI Pro)' : 'Aktif';
+    let expiryStatus = isAgy ? 'Aktif (Sesi Google)' : 'Aktif';
     if (expiresAt) {
       if (Date.now() >= expiresAt) {
         expiryStatus = 'Kedaluwarsa';

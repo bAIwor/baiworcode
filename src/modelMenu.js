@@ -193,7 +193,7 @@ export async function runModelMenu() {
       optionNumber++;
     }
 
-    // 2. Google OAuth & AI Pro (Google Antigravity & Google Gemini)
+    // 2. Google OAuth (Google Antigravity & Google Gemini)
     const googleActiveProv = Object.values(PROVIDERS).find((prov) => {
       const isAgy = prov.method === 'agy';
       return isAgy
@@ -208,12 +208,8 @@ export async function runModelMenu() {
     const geminiAuth = config.oauth?.['google-gemini'];
     const agyLoggedIn = Boolean(agyAuth && (agyAuth.active || agyAuth.connectedAt));
     const geminiLoggedIn = Boolean(geminiAuth && (geminiAuth.accessToken || geminiAuth.apiKey));
-    const googleLoggedInBadges = [];
-    if (agyLoggedIn) googleLoggedInBadges.push('Google AI Pro');
-    if (geminiLoggedIn) googleLoggedInBadges.push('AI Studio');
-    const googleBadge = googleLoggedInBadges.length > 0
-      ? chalk.cyan.dim(` [${googleLoggedInBadges.join(' | ')}]`)
-      : '';
+    const isAnyGoogleLoggedIn = agyLoggedIn || geminiLoggedIn;
+    const googleBadge = isAnyGoogleLoggedIn ? chalk.cyan.dim(' [Logged In]') : '';
 
     selectOptions.push({
       value: 'group_google',
@@ -285,11 +281,12 @@ export async function runModelMenu() {
         const isLoggedIn = isAgy
           ? Boolean(authData && (authData.active || authData.connectedAt))
           : Boolean(authData && (authData.accessToken || authData.apiKey));
-        const badge = isLoggedIn ? chalk.cyan.dim(isAgy ? ' [Google AI Pro]' : ' [Logged In]') : '';
+        const badge = isLoggedIn ? chalk.cyan.dim(' [Logged In]') : '';
         const activeSuffix = isActive ? chalk.green.bold(` ← currently active (${config.activeModel})`) : '';
+        const descText = prov.desc ? ` ▸ (${prov.desc})` : '';
         return {
           value: `oauth_${prov.id}`,
-          label: `${idx + 1}. ${prov.name} ▸ (${prov.desc})${badge}${activeSuffix}`,
+          label: `${idx + 1}. ${prov.name}${descText}${badge}${activeSuffix}`,
         };
       });
 
@@ -299,7 +296,7 @@ export async function runModelMenu() {
       });
 
       const pickedGoogle = await p.select({
-        message: 'Pilih varian Google (OAuth / Google AI Pro):',
+        message: 'Pilih varian Google (OAuth):',
         options: googleOptions,
       });
 
@@ -352,7 +349,7 @@ export async function runModelMenu() {
         config.activeProvider === provObj.name ? config.activeModel : provObj.defaultModel;
 
       const subChoice = await p.select({
-        message: `Kelola ${chalk.bold(provObj.name)} (${chalk.green(isAgy ? 'Google AI Pro Active' : 'Logged In')}):`,
+        message: `Kelola ${chalk.bold(provObj.name)} (${chalk.green('Logged In')}):`,
         options: [
           {
             value: 'activate',
