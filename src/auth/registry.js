@@ -7,7 +7,7 @@ export const PROVIDERS = {
   'google-gemini': {
     id: 'google-gemini',
     name: 'Google Gemini',
-    desc: 'Google Account OAuth / Gemini CLI',
+    desc: 'Google AI Studio (API Key) / Google Account OAuth (PKCE)',
     method: 'pkce',
     authEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenEndpoint: 'https://oauth2.googleapis.com/token',
@@ -17,9 +17,9 @@ export const PROVIDERS = {
       config?.oauth?.['google-gemini']?.clientId ||
       '',
     defaultModel: 'gemini-2.0-flash',
-    models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+    models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
     setupGuide:
-      'Buat OAuth 2.0 Client ID (Desktop App) di Google Cloud Console (https://console.cloud.google.com/apis/credentials) atau atur BAIWOR_GEMINI_CLIENT_ID.',
+      'Paling mudah & gratis: gunakan API Key dari https://aistudio.google.com/apikey.\n     Untuk login akun Google di browser: daftarkan OAuth Client ID (Desktop App) di Google Cloud Console (https://console.cloud.google.com/apis/credentials).',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
   },
 };

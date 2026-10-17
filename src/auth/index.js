@@ -71,6 +71,7 @@ export async function getAccessToken(providerId) {
 
   // Jika menggunakan API key fallback
   if (auth.apiKey) return auth.apiKey;
+  if (providerId === 'google-gemini' && process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
   if (!auth.accessToken) return null;
 
   // Cek apakah token hampir kedaluwarsa (< 60 detik)
@@ -123,20 +124,24 @@ export async function login(providerId) {
   // Jika Client ID kosong, beri petunjuk dan tawarkan opsi
   if (!clientId) {
     console.log();
-    console.log(chalk.yellow.bold(`  ℹ️  Konfigurasi Client ID untuk ${provider.name}:`));
+    console.log(chalk.yellow.bold(`  ℹ️  Konfigurasi ${provider.name}:`));
     console.log(chalk.gray(`     ${provider.setupGuide}`));
     console.log();
 
+    const envKey = provider.id === 'google-gemini' ? process.env.GEMINI_API_KEY : null;
+
     const opt = await p.select({
-      message: `Client ID untuk ${provider.name} belum tersedia. Pilih langkah:`,
+      message: `Pilih metode otentikasi untuk ${provider.name}:`,
       options: [
         {
-          value: 'input_client_id',
-          label: '✎ Masukkan Client ID OAuth milik Anda',
+          value: 'api_key_fallback',
+          label: envKey
+            ? `🔑 Gunakan GEMINI_API_KEY dari environment (${maskSecret(envKey)})`
+            : '🔑 Gunakan API Key (Rekomendasi: Gratis & Instan via aistudio.google.com)',
         },
         {
-          value: 'api_key_fallback',
-          label: '🔑 Gunakan API Key secara langsung (Fallback)',
+          value: 'input_client_id',
+          label: '🌐 Masukkan OAuth 2.0 Client ID Desktop (Google Cloud Console)',
         },
         {
           value: 'cancel',
@@ -164,14 +169,26 @@ export async function login(providerId) {
       });
       config = getConfig();
     } else if (opt === 'api_key_fallback') {
-      const apiKey = await p.password({
-        message: `Masukkan API Key untuk ${provider.name}:`,
-        mask: '•',
-        validate(val) {
-          if (!val || !val.trim()) return 'API Key tidak boleh kosong';
-        },
-      });
-      if (p.isCancel(apiKey)) return null;
+      let apiKey = envKey;
+      if (apiKey) {
+        const useEnv = await p.confirm({
+          message: `Ditemukan GEMINI_API_KEY di environment (${maskSecret(apiKey)}). Gunakan kunci ini?`,
+          initialValue: true,
+        });
+        if (p.isCancel(useEnv)) return null;
+        if (!useEnv) apiKey = null;
+      }
+      if (!apiKey) {
+        const inputKey = await p.password({
+          message: `Masukkan API Key untuk ${provider.name} (dapatkan di https://aistudio.google.com/apikey):`,
+          mask: '•',
+          validate(val) {
+            if (!val || !val.trim()) return 'API Key tidak boleh kosong';
+          },
+        });
+        if (p.isCancel(inputKey)) return null;
+        apiKey = inputKey.trim();
+      }
 
       // Pilih model
       const modelChoice = await p.select({
