@@ -125,6 +125,25 @@ describe('PlanMode: Mode Perencanaan & Dry-Run (/plan)', () => {
       assert.ok(!out.includes('✓ Desain skema DB'));
       assert.ok(!out.includes('○ Tulis unit tests'));
     });
+
+    it('menampilkan aktor semAIr di header, bukan hanya di pohon aktivitas', () => {
+      const out = renderTodoWidget(sampleTodos, { useColor: false });
+      assert.ok(out.includes('semAIr'), 'header harus menyebut semAIr');
+      assert.ok(out.includes('🧭 semAIr · Todo list 1/5'));
+    });
+
+    it('selalu menampilkan SEMUA item tanpa auto-collapse walau daftarnya panjang', () => {
+      const banyak = Array.from({ length: 12 }, (_, i) => ({
+        id: String(i + 1),
+        content: `Tugas ${i + 1}`,
+        status: i === 0 ? 'in_progress' : 'pending',
+      }));
+      const out = renderTodoWidget(banyak, { useColor: false, isCompact: false, showDetails: true });
+      for (let i = 1; i <= 12; i++) {
+        assert.ok(out.includes(`Tugas ${i}`), `Tugas ${i} harus ikut tampil`);
+      }
+      assert.ok(!out.includes('more'), 'tidak boleh ada ringkasan "+N more" (tanpa auto-collapse)');
+    });
   });
 
   describe('Punakawan Roles: Spesialisasi Peran Tim AI', () => {

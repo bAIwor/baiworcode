@@ -47,6 +47,34 @@ export class TodoStore {
   }
 
   /**
+   * Mengosongkan seluruh daftar tugas.
+   *
+   * @returns {boolean} true bila memang ada item yang dihapus.
+   */
+  clear() {
+    if (this.items.length === 0) return false;
+    this.items = [];
+    this.revision += 1;
+    return true;
+  }
+
+  /**
+   * Menghapus daftar HANYA bila semua itemnya sudah "settled" — yakni
+   * `completed` atau `cancelled`. Dipanggil di awal giliran baru supaya daftar
+   * yang sudah tuntas tidak terus menggantung di widget (gejala "0/3" nyangkut).
+   * Adaptasi perilaku `clearSettled` dari MiniMax Code.
+   *
+   * @returns {boolean} true bila daftar dibersihkan.
+   */
+  clearSettled() {
+    if (this.items.length === 0) return false;
+    const allSettled = this.items.every(
+      (item) => item.status === 'completed' || item.status === 'cancelled'
+    );
+    return allSettled ? this.clear() : false;
+  }
+
+  /**
    * Menulis daftar tugas. Bila validasi gagal, daftar lama TIDAK berubah.
    */
   write(todos, merge = false) {

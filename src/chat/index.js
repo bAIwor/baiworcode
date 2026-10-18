@@ -4,6 +4,12 @@ import { conversationSession } from './conversation.js';
 import { streamChatCompletion } from './client.js';
 import { TOOL_DEFINITIONS, executeTool } from '../tools/index.js';
 import { todoStore, resetTodoStore } from '../tools/todoTool.js';
+import {
+  summarizeTodos,
+  shouldInjectTodoReminder,
+  getTodoReminderInterval,
+  buildTodoReminder,
+} from './todoReminder.js';
 import { renderTimelineByMode, renderTodoChecklist, formatTodoProgress } from './timeline.js';
 import { LiveActivity } from './liveActivity.js';
 import { AnswerStyler } from './answerStyle.js';
@@ -112,6 +118,10 @@ export function resetConversation() {
 export async function handleUserChat(promptText) {
   const query = (promptText || '').trim();
   if (!query) return;
+
+  // 0. Buang daftar tugas yang sudah tuntas (semua item completed/cancelled)
+  // di awal giliran baru agar widget tidak terus menampilkan mis. "0/3".
+  todoStore.clearSettled();
 
   // 1. Ambil kredensial provider aktif
   let credentials;
@@ -409,7 +419,22 @@ export async function handleUserChat(promptText) {
       }
 
       const result = await runModelTurn({
-        messages: conversationSession.getMessages(),
+        messages: (() => {
+          // Pengingat penyelesaian tugas (adaptasi `<task-completion-reminder>`):
+          // bila masih ada item todo aktif, tagih model secara berkala agar tidak
+          // menyatakan tuntas sebelum semua item beres. Pesan ini SEMENTARA —
+          // tidak disimpan ke riwayat — dan dikirim sebagai role 'user' supaya
+          // diterima luas oleh endpoint OpenAI-compatible.
+          const stats = summarizeTodos(todoStore.read());
+          if (stats.active === 0) return conversationSession.getMessages();
+          if (!shouldInjectTodoReminder(currentTurn, getTodoReminderInterval())) {
+            return conversationSession.getMessages();
+          }
+          return [
+            ...conversationSession.getMessages(),
+            { role: 'user', content: buildTodoReminder(stats) },
+          ];
+        })(),
         tools: TOOL_DEFINITIONS,
         spinnerText:
           currentTurn === 1

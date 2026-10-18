@@ -174,8 +174,8 @@ export const WIDGET_TODO_ICONS = {
 
 /**
  * Merender Todo List Widget interaktif dengan header format bAIwor Code:
- * Format lengkap : "Todo list {done}/{total} · {remaining} remaining · Ctrl+T {compact|expand}"
- * Format ringkas : "Todo list {done}/{total}"
+ * Format lengkap : "🧭 semAIr · Todo list {done}/{total} · {remaining} remaining · Ctrl+T {compact|expand}"
+ * Format ringkas : "🧭 semAIr · Todo list {done}/{total}"
  * Default selalu menampilkan SEMUA item tugas (show all).
  *
  * @param {Array<{id?:string, content?:string, status?:string}>} items
@@ -198,13 +198,18 @@ export function renderTodoWidget(items, { useColor = true, isCompact = todoCompa
     gray: (s) => (useColor ? `\x1b[90m${s}\x1b[39m` : String(s)),
     green: (s) => (useColor ? `\x1b[32m${s}\x1b[39m` : String(s)),
     yellow: (s) => (useColor ? `\x1b[33m${s}\x1b[39m` : String(s)),
+    // Kuning emas Tim Punakawan (sama dengan palette.gold) — identitas semAIr.
+    gold: (s) => (useColor ? `\x1b[38;2;236;201;75m${s}\x1b[39m` : String(s)),
     strikethrough: (s) => (useColor ? `\x1b[9m${s}\x1b[29m` : String(s)),
   };
 
   const dot = c.gray('·');
+  // Daftar tugas disusun oleh semAIr (Sang Arsitek). Nama aktor ditampilkan di
+  // header supaya identitasnya terbaca walau tidak ada node di pohon aktivitas.
+  const actor = `${c.gold(c.bold('🧭 semAIr'))} ${dot} `;
   const header = showDetails
-    ? `${c.bold('Todo list')} ${completed}/${total} ${dot} ${remaining} remaining ${dot} ${c.dim(`Ctrl+T ${actionLabel}`)}`
-    : `${c.bold('Todo list')} ${completed}/${total}`;
+    ? `${actor}${c.bold('Todo list')} ${completed}/${total} ${dot} ${remaining} remaining ${dot} ${c.dim(`Ctrl+T ${actionLabel}`)}`
+    : `${actor}${c.bold('Todo list')} ${completed}/${total}`;
 
   if (isCompact) {
     const active = list.find((i) => i.status === 'in_progress');
