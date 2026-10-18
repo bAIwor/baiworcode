@@ -206,49 +206,6 @@ export async function handleUserChat(promptText) {
 
   process.on('SIGINT', sigintHandler);
 
-  // Pasang listener tombol ESC di TTY untuk membatalkan streaming / eksekusi aktif
-  let isEscAttached = false;
-  let wasRawMode = false;
-  const onStdinData = (chunk) => {
-    // Tombol ESC murni (\x1b) tanpa karakter escape lanjutan
-    if (chunk.length === 1 && chunk[0] === 0x1b) {
-      abortCurrentChat();
-    } else if (chunk.length === 1 && chunk[0] === 0x03) {
-      // Tombol Ctrl+C dalam raw mode (byte 0x03)
-      sigintHandler();
-    }
-  };
-
-  const setupEscListener = () => {
-    if (process.stdin.isTTY && !isEscAttached) {
-      try {
-        wasRawMode = Boolean(process.stdin.isRaw);
-        if (!wasRawMode && typeof process.stdin.setRawMode === 'function') {
-          process.stdin.setRawMode(true);
-        }
-        if (typeof process.stdin.resume === 'function') {
-          process.stdin.resume();
-        }
-        process.stdin.on('data', onStdinData);
-        isEscAttached = true;
-      } catch {}
-    }
-  };
-
-  const removeEscListener = () => {
-    if (isEscAttached) {
-      try {
-        process.stdin.removeListener('data', onStdinData);
-        if (!wasRawMode && process.stdin.isTTY && typeof process.stdin.setRawMode === 'function') {
-          process.stdin.setRawMode(false);
-        }
-      } catch {}
-      isEscAttached = false;
-    }
-  };
-
-  setupEscListener();
-
   // 5. Agentic Loop (maksimal MAX_AGENT_TURNS putaran interaksi model-tool)
   let currentTurn = 0;
   let hasFirstTurnSucceeded = false;
@@ -496,20 +453,14 @@ export async function handleUserChat(promptText) {
 
           const shouldSuspend = toolMayPrompt(fnName, parsedArgs);
           const liveIndex = live.addTool(fnName, parsedArgs);
-          if (shouldSuspend) {
-            removeEscListener();
-            live.suspend();
-          }
+          if (shouldSuspend) live.suspend();
 
           // Eksekusi tool handler sambil mengukur durasi
           const startedAt = Date.now();
           const toolResult = await executeTool(fnName, rawArgs, { signal: controller.signal });
           const durationMs = Date.now() - startedAt;
 
-          if (shouldSuspend) {
-            live.resume();
-            setupEscListener();
-          }
+          if (shouldSuspend) live.resume();
 
           // `todo_list` mengembalikan JSON untuk dibaca model, bukan untuk
           // mata pengguna. Di sini ia diganti checklist sungguhan supaya
@@ -652,7 +603,6 @@ export async function handleUserChat(promptText) {
   } finally {
     stopThinkingSpinner();
     live.stop();
-    removeEscListener();
     isStreamingActive = false;
     activeAbortController = null;
     process.removeListener('SIGINT', sigintHandler);

@@ -270,6 +270,7 @@ export class Conversation {
     this.sessionId = data.id;
     this.sessionTitle = data.title || null;
     this.messages = data.messages;
+    repairLegacyAssistantReasoning(this.messages);
     return true;
   }
 
@@ -287,8 +288,36 @@ export class Conversation {
     this.sessionId = data.id;
     this.sessionTitle = data.title || null;
     this.messages = data.messages;
+    repairLegacyAssistantReasoning(this.messages);
     return true;
   }
+}
+
+/**
+ * Memperbaiki pesan asisten dari sesi lama yang belum membukukan
+ * `reasoning_content`.
+ *
+ * Model penalaran (Reflection, DeepSeek R1, maupun reasoning model lain)
+ * menolak payload dengan error "Missing required parameter: reasoning_content"
+ * bila salah satu pesan asisten tidak membawanya. Tanpa perbaikan di sini,
+ * setiap giliran pada sesi resume membayar satu request 400 terbuang sebelum
+ * auto-recovery di `client.js` berhasil. Perbaikan mengisi string kosong `''`
+ * — sama seperti patch auto-recovery — hanya pada pesan yang memang belum
+ * punya propertinya; reasoning asli tidak pernah diganggu.
+ *
+ * @param {Array} messages - Array pesan (dimutasi di tempat)
+ * @returns {number} Jumlah pesan asisten yang diperbaiki
+ */
+export function repairLegacyAssistantReasoning(messages) {
+  if (!Array.isArray(messages)) return 0;
+  let repaired = 0;
+  for (const m of messages) {
+    if (m && m.role === 'assistant' && typeof m.reasoning_content !== 'string') {
+      m.reasoning_content = '';
+      repaired += 1;
+    }
+  }
+  return repaired;
 }
 
 // Instance sesi percakapan tunggal untuk sesi CLI aktif

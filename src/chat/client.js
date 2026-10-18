@@ -147,6 +147,12 @@ export function buildChatEndpoint(baseUrl) {
  */
 export const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 400;
+// Batas diam stream (idle watchdog): jika TIDAK ADA byte yang datang selama
+// durasi ini, stream dianggap macet dan diperpotong dengan TimeoutError.
+// Tanpa ini, `reader.read()` bisa menunggu selamanya ketika proxy/provider
+// menggantung koneksi tanpa menutupnya — pengguna mendapat spinner yang
+// berputar tanpa akhir (perasaan "freeze") padahal tidak ada data yang jalan.
+export const DEFAULT_STALL_TIMEOUT_MS = 180000;
 
 /** Status HTTP yang layak dicoba ulang — murni gangguan sementara server. */
 function isRetryableStatus(status) {
@@ -243,6 +249,10 @@ async function requestWithRetry(url, init, { maxRetries, retryDelayMs }) {
  * @param {Function} [options.onReasoning] - Callback setiap token reasoning/thinking tiba
  * @param {number} [options.maxRetries] - Jumlah percobaan ulang untuk gangguan sesaat (default 2)
  * @param {number} [options.retryDelayMs] - Jeda dasar backoff dalam ms (default 400)
+ * @param {number} [options.stallTimeoutMs] - Batas diam stream tanpa byte baru
+ *   (idle watchdog). Default 180000 (3 menit). Timer direset setiap kali byte
+ *   datang — termasuk keep-alive SSE — sehingga stream sehat tidak pernah
+ *   salah didenda; hanya koneksi yang benar-benar macet yang dipotong.
  * @returns {Promise<{ content: string, reasoning: string, tool_calls: Array|null, completed: boolean }>}
  */
 export async function streamChatCompletion({
@@ -255,6 +265,7 @@ export async function streamChatCompletion({
   onReasoning,
   maxRetries = DEFAULT_MAX_RETRIES,
   retryDelayMs = DEFAULT_RETRY_DELAY_MS,
+  stallTimeoutMs = DEFAULT_STALL_TIMEOUT_MS,
 }) {
   if (credentials.type === 'agy') {
     return await streamAgyCompletion({
@@ -468,7 +479,42 @@ export async function streamChatCompletion({
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      /**
+       * Idle watchdog: `reader.read()` murni menunggu byte berikutnya dan
+       * tidak punya batas waktu. Koneksi yang menggentung (proxy mati saat
+       * upstream masih menyala, jaringan berubah tanpa membunuh TCP, dsb.)
+       * membuat panggilan ini menggantung selamanya — spinner terus berputar
+       * dan pengguna merasakan freeze. Promise.race memastikan kita selalu
+       * menang: byte datang atau timer berakhir lebih dulu.
+       *
+       * Timer direset pada SETIAP chunk yang berhasil dibaca, jadi selama
+       * provider mengirim apa pun (termasuk keep-alive ': ping'), stream
+       * dianggap hidup; hanya diam total yang dipotong.
+       */
+      let stallTimer = null;
+      const result = await Promise.race([
+        reader.read(),
+        new Promise((_, reject) => {
+          stallTimer = setTimeout(() => {
+            try {
+              const stallErr = new Error(
+                `Stream macet — tidak ada data selama ${(stallTimeoutMs / 1000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} detik. ` +
+                `Kemungkinan provider/proxy menggantung koneksi. Coba kirim ulang.`
+              );
+              stallErr.name = 'TimeoutError';
+              // Rejection HARUS lebih dulu: kalau reader.cancel() dieksekusi
+              // lebih dulu, read yang pending justru bangun sebagai done:true
+              // dan race menyimpulkan "stream wajar berakhir" — tanpa error.
+              reject(stallErr);
+              // Lepaskan koneksi agar socket tidak menggantung di latar belakang.
+              reader.cancel().catch(() => {});
+            } catch {}
+          }, stallTimeoutMs);
+        }),
+      ]).finally(() => {
+        if (stallTimer) clearTimeout(stallTimer);
+      });
+      const { done, value } = result;
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
@@ -524,6 +570,15 @@ export async function streamChatCompletion({
       const finalToolCalls = accumulatedToolCalls.filter(Boolean);
       abortErr.partialToolCalls = finalToolCalls.length > 0 ? finalToolCalls : null;
       throw abortErr;
+    }
+    if (err.name === 'TimeoutError') {
+      // Stream macet dibunuh watchdog: jawaban yang sudah tercetak sebelum
+      // terpotong tetap dilampirkan agar pemanggil bisa memanfaatkannya
+      // (mis. menyimpan ke histori) dan pesan error jelas berada di bagian mana.
+      err.partialContent = fullContent;
+      err.partialReasoning = fullReasoning;
+      const finalToolCalls = accumulatedToolCalls.filter(Boolean);
+      err.partialToolCalls = finalToolCalls.length > 0 ? finalToolCalls : null;
     }
     throw err;
   }
