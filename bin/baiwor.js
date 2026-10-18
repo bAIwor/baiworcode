@@ -16,6 +16,8 @@ import {
   setTimelineMode,
   getAccessMode,
   setAccessMode,
+  getAgentMode,
+  setAgentMode,
   getTinyFishApiKey,
   saveTinyFishApiKey,
 } from '../src/config.js';
@@ -27,7 +29,7 @@ import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
 import { handleUserChat, resetConversation, conversationSession } from '../src/chat/index.js';
-import { buildPlanUserPrompt } from '../src/chat/planMode.js';
+import { buildPlanUserPrompt, agentModeLabel, describeAgentMode } from '../src/chat/planMode.js';
 import {
   accessModeLabel,
   accessModeOptions,
@@ -422,6 +424,7 @@ const HELP_USAGE = {
   '/login': '/login [provider]',
   '/logout': '/logout [provider]',
   '/access': '/access [safe|full]',
+  '/plan': '/plan [instruksi]',
 };
 
 function showHelp() {
@@ -461,15 +464,33 @@ function showHelp() {
   console.log(`    ${dim('dan riwayat dipangkas otomatis bila mulai penuh — pakai /compact atau /clear.')}`);
   console.log();
   console.log(gold.bold('  ⌨️  Pintasan Papan Ketik:'));
-  console.log(`    ${chalk.cyan('Shift+Tab')}  ${dim('─ ganti mode izin perintah (Safe ⇄ Full access), sama seperti /access')}`);
+  console.log(`    ${chalk.cyan('Shift+Tab')}  ${dim('─ ganti agen: Build (boleh ubah kode) ⇄ Plan (read-only) — sama seperti /plan')}`);
   console.log(`    ${chalk.cyan('Ctrl+T')}     ${dim('─ ringkas / bentangkan daftar tugas (Todo list)')}`);
   console.log(`    ${chalk.cyan('Tab')}        ${dim('─ buka daftar perintah "/" saat kotak input masih kosong')}`);
   console.log(`    ${chalk.cyan('↑ / ↓')}      ${dim('─ panggil kembali perintah yang pernah diketik')}`);
+  console.log(`    ${dim('Mode izin perintah (Safe ⇄ Full access) diatur lewat')} ${chalk.cyan('/access')}${dim('.')}`);
   console.log();
   console.log(chalk.gray('  💡 Ketik langsung pertanyaan atau instruksi coding apa saja untuk chat dengan bAIwor!'));
   console.log();
   console.log(chalk.gray('  🌐 Website official  : ') + chalk.cyan(WEBSITE));
   console.log(chalk.gray('  🎁 Bonus token/credit: ') + chalk.cyan(BONUS_WEBSITE) + chalk.dim(' (kode kupon "baiworcode")\n'));
+}
+
+/**
+ * Menampilkan agen yang baru aktif beserta penjelasannya.
+ *
+ * @param {'build'|'plan'} mode
+ */
+function tampilkanModeAgen(mode) {
+  console.log(chalk.green.bold(`\n  ✔ Agen aktif: ${agentModeLabel(mode)}`));
+  console.log(chalk.gray(`     ${describeAgentMode(mode)}`));
+  console.log(
+    chalk.gray('     Ganti kapan saja: Shift+Tab di prompt, atau ') +
+      chalk.cyan('/plan') +
+      chalk.gray(' dan ') +
+      chalk.cyan('/build') +
+      chalk.gray('.\n')
+  );
 }
 
 /**
@@ -805,24 +826,31 @@ async function startInteractive(opts = {}) {
         showHelp();
         break;
       case '/plan': {
-        let planPrompt = arg;
-        if (!planPrompt) {
-          const inputPrompt = await p.text({
-            message: 'Mode Perencanaan semAIr — masukkan instruksi atau fitur yang ingin dirancang:',
-            placeholder: 'Misal: buatkan sistem autentikasi JWT dan middleware',
-          });
-          if (p.isCancel(inputPrompt) || !inputPrompt?.trim()) {
-            break;
-          }
-          planPrompt = inputPrompt.trim();
+        // Tanpa argumen: mode Plan MENEMPEL dinyalakan/dimatikan — padanan
+        // `agent.cycle` (Shift+Tab) di opencode. Dengan argumen: mode Plan
+        // dinyalakan lalu instruksinya langsung dikerjakan di mode tersebut.
+        if (!arg) {
+          const next = getAgentMode() === 'plan' ? 'build' : 'plan';
+          setAgentMode(next);
+          tampilkanModeAgen(next);
+          break;
         }
-        await handleUserChat(buildPlanUserPrompt(planPrompt));
+
+        setAgentMode('plan');
+        tampilkanModeAgen('plan');
+        await handleUserChat(arg);
         try {
           conversationSession.saveToDisk({
             model: config.activeModel,
             provider: config.activeProvider,
           });
         } catch {}
+        break;
+      }
+      case '/build': {
+        // Jalan pintas keluar dari mode arsitek read-only.
+        setAgentMode('build');
+        tampilkanModeAgen('build');
         break;
       }
       case '/access':
@@ -832,7 +860,8 @@ async function startInteractive(opts = {}) {
         const current = getAccessMode();
 
         // Tanpa argumen: tampilkan pilihan interaktif. Pemula tidak perlu
-        // menghafal nama mode maupun pintasan rahasia Shift+Tab.
+        // menghafal nama mode; mode izin sengaja tidak diberi pintasan keyboard
+        // supaya Shift+Tab bebas dipakai untuk ganti agen (Build ⇄ Plan).
         if (!requested && !arg) {
           const picked = await p.select({
             message: `Mode izin perintah (aktif: ${accessModeLabel(current)})`,
@@ -858,7 +887,7 @@ async function startInteractive(opts = {}) {
         setAccessMode(requested);
         console.log(chalk.green.bold(`\n  ✔ Mode izin perintah: ${accessModeLabel(requested)}`));
         console.log(chalk.gray(`     ${describeAccessMode(requested)}`));
-        console.log(chalk.gray('     Bisa juga diganti kapan saja dengan pintasan Shift+Tab di prompt.\n'));
+        console.log(chalk.gray('     Agen (Build/Plan) diganti dengan Shift+Tab di prompt.\n'));
         break;
       }
       case '/compact': {

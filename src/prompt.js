@@ -7,7 +7,7 @@ import { theme } from './theme.js';
 import { renderStatusLine, frameRules, terminalWidth } from './statusLine.js';
 import { todoStore } from './tools/todoTool.js';
 import { renderTodoWidget, toggleTodoCompactMode, getTodoCompactMode } from './chat/planMode.js';
-import { CONFIG_DIR, getAccessMode, setAccessMode } from './config.js';
+import { CONFIG_DIR, getAgentMode, setAgentMode } from './config.js';
 
 // ---------------------------------------------------------------------------
 // Manajemen state stdin untuk seluruh prompt @clack/core (@clack/prompts).
@@ -189,7 +189,8 @@ loadPromptHistory();
 
 export const COMMANDS = [
   { name: '/help', desc: 'Menampilkan panduan perintah & bantuan' },
-  { name: '/plan', desc: 'Mode arsitek semAIr: susun rencana & analisis tanpa ubah kode' },
+  { name: '/plan', desc: 'Nyalakan/matikan mode arsitek semAIr (read-only): rencana tanpa ubah kode' },
+  { name: '/build', desc: 'Kembali ke mode builder: boleh ubah berkas & jalankan perintah' },
   { name: '/access', desc: 'Mode izin perintah: Safe (selalu tanya) atau Full access (langsung jalan)' },
   { name: '/compact', desc: 'Ringkas konteks percakapan untuk menghemat token' },
   { name: '/timeline', desc: 'Ganti tampilan aktivitas: compact (satu baris) / detail (pohon)' },
@@ -762,13 +763,17 @@ export class SlashTextPrompt extends TextPrompt {
         return;
       }
 
-      // 3b. Tombol Shift+Tab: siklus mode akses normal <-> full.
-      //     Label di status line ikut berganti via renderStatusLine, sehingga
-      //     perubahan mode selalu terlihat pada frame yang digambar ulang.
+      // 3b. Tombol Shift+Tab: siklus agen utama Build <-> Plan — padanan
+      //     `agent.cycle` di opencode. Label di status line ikut berganti via
+      //     renderStatusLine, sehingga mode aktif selalu terlihat pada frame
+      //     yang digambar ulang.
+      //     Mode izin (Safe/Full access) sekarang dikelola lewat perintah
+      //     /access, supaya Shift+Tab dipakai untuk hal yang paling sering
+      //     berganti: menulis kode atau sekadar merencanakan.
       const isShiftTab =
         key?.name === 'tab' && key?.shift === true && !key?.ctrl;
       if (isShiftTab) {
-        setAccessMode(getAccessMode() === 'full' ? 'normal' : 'full');
+        setAgentMode(getAgentMode() === 'plan' ? 'build' : 'plan');
         this.render();
         return;
       }

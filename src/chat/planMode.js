@@ -148,6 +148,59 @@ export function buildPlanUserPrompt(promptText) {
   return `${PLAN_SYSTEM_INSTRUCTION}\n\n[Instruksi Perencanaan]:\n${clean}`;
 }
 
+/* ------------------------------------------------------------------ *
+ * Agen utama (Build ⇄ Plan)
+ *
+ * Padanan perpindahan agen `agent.cycle` (Shift+Tab) milik opencode: mode
+ * ini MENEMPEL antar-giliran, bukan sekadar pembungkus satu prompt.
+ * ------------------------------------------------------------------ */
+
+/** Agen utama yang dikenal bAIwor Code. */
+export const AGENT_MODES = ['build', 'plan'];
+
+/** Label pendek untuk status line. */
+export function agentModeLabel(mode) {
+  return mode === 'plan' ? 'Plan' : 'Build';
+}
+
+/** Penjelasan singkat untuk pemula. */
+export function describeAgentMode(mode) {
+  return mode === 'plan'
+    ? 'Mode arsitek: hanya membaca, mencari, dan menyusun rencana — tidak boleh menulis berkas.'
+    : 'Mode builder: boleh menulis/mengubah berkas dan menjalankan perintah.';
+}
+
+/** Apakah tool ini dilarang saat agen berada di mode Plan (arsitek read-only). */
+export function isToolBlockedInPlanMode(name) {
+  return !PLAN_ALLOWED_TOOLS.includes(String(name || ''));
+}
+
+/** Pesan penolakan yang dibaca model saat mencoba memakai tool terlarang di mode Plan. */
+export function planModeBlockMessage(name) {
+  return (
+    `Error: tool "${name}" tidak tersedia di mode Plan (arsitek read-only). ` +
+    `Mode Plan hanya boleh memakai: ${PLAN_ALLOWED_TOOLS.join(', ')}. ` +
+    'Sajikan rencana kepada pengguna, lalu minta ia berpindah ke mode Build ' +
+    'dengan Shift+Tab (atau perintah /build) sebelum berkas diubah.'
+  );
+}
+
+/**
+ * Menyaring definisi tool sesuai agen yang aktif.
+ *
+ * Mode Plan hanya mengirim tool read-only ke model — jadi model tidak sekadar
+ * "diminta" tidak menulis, melainkan tidak diberi kemampuan menulis sama sekali.
+ *
+ * @param {Array} definitions
+ * @param {'build'|'plan'} agentMode
+ * @returns {Array}
+ */
+export function filterToolsForAgentMode(definitions, agentMode) {
+  const list = Array.isArray(definitions) ? definitions : [];
+  if (agentMode !== 'plan') return list;
+  return list.filter((def) => PLAN_ALLOWED_TOOLS.includes(def?.function?.name));
+}
+
 /** Status global mode compact untuk Todo widget (default: false / show all) */
 let todoCompactMode = false;
 

@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { getConfig, getAccessMode } from './config.js';
+import { getConfig, getAccessMode, getAgentMode } from './config.js';
 import { theme } from './theme.js';
 import { conversationSession } from './chat/conversation.js';
 import { getContextUsage, formatContextIndicator } from './chat/context.js';
@@ -107,8 +107,13 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
 
   const bar = chalk.gray('│');
 
-  const build = ({ detail, withProvider, withAccess, withPrefix }) => {
+  const build = ({ detail, withProvider, withAccess, withPrefix, withAgent = true }) => {
     const parts = [theme.info('~')];
+    // Agen aktif selalu tampil (kecuali di bentuk paling ringkas): pengguna
+    // harus langsung tahu kalau dirinya sedang di mode Plan yang read-only.
+    if (withAgent) {
+      parts.push(bar, getAgentMode() === 'plan' ? chalk.yellow.bold('Plan') : theme.text('Build'));
+    }
     // Label akses dinamis mengikuti config: 'full' → Full access (agenta bebas
     // menjalankan kelas confirm tanpa bertanya di TTY), 'normal' → Safe.
     if (withAccess) parts.push(bar, theme.text(getAccessMode() === 'full' ? 'Full access' : 'Safe'));
@@ -122,11 +127,11 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
   const budget = Math.max(20, (maxWidth ?? terminalWidth()) - indent.length);
 
   const levels = [
-    { detail: true, withProvider: true, withAccess: true, withPrefix: true },
-    { detail: false, withProvider: true, withAccess: true, withPrefix: true },
-    { detail: false, withProvider: false, withAccess: true, withPrefix: true },
-    { detail: false, withProvider: false, withAccess: true, withPrefix: false },
-    { detail: false, withProvider: false, withAccess: false, withPrefix: false },
+    { detail: true, withProvider: true, withAgent: true, withAccess: true, withPrefix: true },
+    { detail: false, withProvider: true, withAgent: true, withAccess: true, withPrefix: true },
+    { detail: false, withProvider: false, withAgent: true, withAccess: true, withPrefix: true },
+    { detail: false, withProvider: false, withAgent: true, withAccess: true, withPrefix: false },
+    { detail: false, withProvider: false, withAgent: false, withAccess: false, withPrefix: false },
   ];
 
   for (const level of levels) {

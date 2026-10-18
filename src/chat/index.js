@@ -21,7 +21,13 @@ import { classifyCommand } from '../tools/sandbox.js';
 import { getContextUsage, formatContextWarning } from './context.js';
 import { autoCompactConversation } from './compact.js';
 import { parseDeliverAssetsContent, renderDeliverableCard } from './deliverables.js';
-import { getTimelineMode } from '../config.js';
+import { getTimelineMode, getAgentMode } from '../config.js';
+import {
+  PLAN_SYSTEM_INSTRUCTION,
+  filterToolsForAgentMode,
+  isToolBlockedInPlanMode,
+  planModeBlockMessage,
+} from './planMode.js';
 
 export { conversationSession };
 
@@ -225,6 +231,11 @@ export async function handleUserChat(promptText) {
   let completedNaturally = false;
   let stuckLoop = false;
   const toolSignatureCounts = new Map();
+
+  // Agen utama (Build/Plan) dikunci sekali di awal giliran: peralihan yang
+  // terjadi di tengah giliran (lewat prompt) tidak boleh mengubah aturan main
+  // yang sedang berjalan.
+  const agentMode = getAgentMode();
 
   // Penegakan perencanaan (adaptasi aturan `todowrite` mcode): hitung tool yang
   // sudah dijalankan pada giliran ini, lalu tagih model menyusun `todo_list`
@@ -432,7 +443,15 @@ export async function handleUserChat(promptText) {
       extra.push({ role: 'user', content: buildTodoReminder(stats) });
     }
 
-    return extra.length > 0 ? [...base, ...extra] : base;
+    const outbound = extra.length > 0 ? [...base, ...extra] : base;
+
+    // Mode Plan: instruksi arsitek ditempel ke system prompt HANYA untuk
+    // permintaan ini — riwayat yang tersimpan tetap bersih sehingga instruksi
+    // tidak menumpuk saat pengguna kembali ke mode Build.
+    if (agentMode !== 'plan') return outbound;
+    return outbound.map((m, i) =>
+      i === 0 && m.role === 'system' ? { ...m, content: `${m.content}\n\n${PLAN_SYSTEM_INSTRUCTION}` } : m
+    );
   };
 
   try {
@@ -467,7 +486,7 @@ export async function handleUserChat(promptText) {
 
       const result = await runModelTurn({
         messages: buildOutboundMessages(),
-        tools: TOOL_DEFINITIONS,
+        tools: filterToolsForAgentMode(TOOL_DEFINITIONS, agentMode),
         spinnerText:
           currentTurn === 1
             ? 'semAIr sedang merancang strategi...'
@@ -525,9 +544,16 @@ export async function handleUserChat(promptText) {
           const liveIndex = live.addTool(fnName, parsedArgs);
           if (shouldSuspend) live.suspend();
 
+          // Penjaga mode Plan: tool tulis sudah tidak dikirim ke model di mode
+          // ini, tapi model masih bisa memanggilnya dari riwayat percakapan
+          // lama. Eksekusinya ditolak tegas — bukan sekadar diimbau di prompt.
+          const blockedInPlan = agentMode === 'plan' && isToolBlockedInPlanMode(fnName);
+
           // Eksekusi tool handler sambil mengukur durasi
           const startedAt = Date.now();
-          const toolResult = await executeTool(fnName, rawArgs, { signal: controller.signal });
+          const toolResult = blockedInPlan
+            ? { success: false, output: planModeBlockMessage(fnName) }
+            : await executeTool(fnName, rawArgs, { signal: controller.signal });
           const durationMs = Date.now() - startedAt;
           toolCallsThisTurn += 1;
 

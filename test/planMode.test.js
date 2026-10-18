@@ -1,11 +1,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import {
   isPlanCommand,
   extractPlanPrompt,
   getPlanAllowedTools,
   buildPlanUserPrompt,
   PLAN_ALLOWED_TOOLS,
+  agentModeLabel,
+  describeAgentMode,
+  filterToolsForAgentMode,
+  isToolBlockedInPlanMode,
+  planModeBlockMessage,
   renderTodoWidget,
   getTodoCompactMode,
   setTodoCompactMode,
@@ -14,6 +22,21 @@ import {
   getPunakawanRole,
   formatPunakawanBadge,
 } from '../src/chat/planMode.js';
+import { renderStatusLine } from '../src/statusLine.js';
+import { TOOL_DEFINITIONS } from '../src/tools/index.js';
+import { DEFAULT_CONFIG } from '../src/config.js';
+import {
+  bacaConfig,
+  buatHomeSementara,
+  envHome,
+  hapusHome,
+  tulisConfig,
+} from './tempHomeHelper.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const BIN = path.join(REPO_ROOT, 'bin', 'baiwor.js');
+const ANSI = /\x1b\[[0-9;]*m/g;
+const polos = (s) => s.replace(ANSI, '');
 
 describe('PlanMode: Mode Perencanaan & Dry-Run (/plan)', () => {
   describe('isPlanCommand', () => {
@@ -180,6 +203,114 @@ describe('PlanMode: Mode Perencanaan & Dry-Run (/plan)', () => {
       const badge = formatPunakawanBadge('bAIwor');
       assert.ok(badge.includes('bAIwor'));
       assert.ok(badge.includes('🔨'));
+    });
+  });
+});
+
+describe('Agen utama: Build ⇄ Plan (mode menempel antar-giliran)', () => {
+  describe('label & penjelasan', () => {
+    it('label pendek untuk status line', () => {
+      assert.equal(agentModeLabel('plan'), 'Plan');
+      assert.equal(agentModeLabel('build'), 'Build');
+      assert.equal(agentModeLabel('apa saja'), 'Build');
+    });
+
+    it('penjelasan menegaskan mode Plan tidak boleh menulis', () => {
+      assert.match(describeAgentMode('plan'), /tidak boleh menulis/);
+      assert.match(describeAgentMode('build'), /boleh menulis/);
+    });
+  });
+
+  describe('kebijakan tool mode Plan', () => {
+    it('hanya tool read-only yang diizinkan', () => {
+      for (const nama of PLAN_ALLOWED_TOOLS) {
+        assert.equal(isToolBlockedInPlanMode(nama), false, `${nama} harus diizinkan`);
+      }
+      for (const nama of ['write_file', 'edit_file', 'patch_file', 'run_command', 'delegate_task']) {
+        assert.equal(isToolBlockedInPlanMode(nama), true, `${nama} harus diblokir`);
+      }
+      assert.equal(isToolBlockedInPlanMode(''), true);
+      assert.equal(isToolBlockedInPlanMode(undefined), true);
+    });
+
+    it('pesan penolakan menyebut tool, daftar izin, dan cara pindah ke Build', () => {
+      const msg = planModeBlockMessage('write_file');
+      assert.match(msg, /write_file/);
+      assert.match(msg, /read_file/);
+      assert.match(msg, /Shift\+Tab/);
+    });
+
+    it('filterToolsForAgentMode hanya menyaring di mode Plan', () => {
+      const defs = [
+        { type: 'function', function: { name: 'read_file' } },
+        { type: 'function', function: { name: 'write_file' } },
+        { type: 'function', function: { name: 'todo_list' } },
+      ];
+      assert.equal(filterToolsForAgentMode(defs, 'build').length, 3);
+      assert.deepEqual(
+        filterToolsForAgentMode(defs, 'plan').map((d) => d.function.name),
+        ['read_file', 'todo_list']
+      );
+      assert.deepEqual(filterToolsForAgentMode(null, 'plan'), []);
+    });
+
+    it('daftar tool nyata tetap utuh di mode Build dan bebas tool tulis di mode Plan', () => {
+      assert.equal(
+        filterToolsForAgentMode(TOOL_DEFINITIONS, 'build').length,
+        TOOL_DEFINITIONS.length
+      );
+
+      const namaPlan = filterToolsForAgentMode(TOOL_DEFINITIONS, 'plan').map(
+        (d) => d.function.name
+      );
+      assert.ok(namaPlan.length > 0, 'mode Plan tetap punya tool baca');
+      for (const nama of namaPlan) {
+        assert.ok(
+          PLAN_ALLOWED_TOOLS.includes(nama),
+          `${nama} seharusnya tidak dikirim di mode Plan`
+        );
+      }
+      assert.ok(!namaPlan.includes('write_file'));
+      assert.ok(!namaPlan.includes('run_command'));
+    });
+  });
+
+  describe('integrasi CLI: /plan, /build, dan baris status', () => {
+    // Home sementara: config pengguna asli tidak boleh tersentuh, termasuk saat
+    // berkas tes lain berjalan paralel.
+    const jalankan = (perintah, configAwal = null) => {
+      const home = buatHomeSementara();
+      try {
+        if (configAwal) tulisConfig(home, configAwal);
+        const out = polos(
+          execFileSync(process.execPath, [BIN], {
+            input: `${perintah}\n`,
+            encoding: 'utf8',
+            timeout: 30_000,
+            env: envHome(home),
+          })
+        );
+        return { out, config: bacaConfig(home) };
+      } finally {
+        hapusHome(home);
+      }
+    };
+
+    it('/plan menyalakan mode Plan menempel, /build mematikannya', () => {
+      const nyala = jalankan('/plan');
+      assert.match(nyala.out, /Agen aktif: Plan/);
+      assert.match(nyala.out, /tidak boleh menulis berkas/);
+      assert.equal(nyala.config?.agentMode, 'plan', 'config harus menyimpan agentMode: "plan"');
+
+      const mati = jalankan('/build');
+      assert.match(mati.out, /Agen aktif: Build/);
+      assert.notEqual(mati.config?.agentMode, 'plan');
+    });
+
+    it('baris status menampilkan agen yang sedang aktif', () => {
+      const { out } = jalankan('/exit', { ...DEFAULT_CONFIG, agentMode: 'plan' });
+      assert.match(out, /~\s+│\s+Plan\s+│/);
+      assert.match(polos(renderStatusLine({ maxWidth: 140 })), /~\s+│\s+Build\s+│/);
     });
   });
 });

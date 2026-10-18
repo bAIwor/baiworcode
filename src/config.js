@@ -28,8 +28,12 @@ export const DEFAULT_CONFIG = {
   timelineMode: 'detail',
   // Mode akses: 'normal' (perintah berisiko selalu minta persetujuan) atau
   // 'full' (kelas confirm dilewati di TTY; kelas deny tetap ditolak).
-  // Diubah via Shift+Tab di prompt.
+  // Diubah via perintah /access di prompt.
   accessMode: 'normal',
+  // Agen utama: 'build' (boleh menulis berkas & menjalankan perintah) atau
+  // 'plan' (arsitek read-only — padanan mode Plan di opencode). Diubah via
+  // Shift+Tab di prompt, perintah /plan, atau /build.
+  agentMode: 'build',
   // Override destruktif SADAR (default: tertutup). Berisi daftar id aturan
   // merusak yang boleh dijalankan (mis. ['power'] untuk shutdown/reboot), atau
   // true untuk membuka semua. Env BAIWOR_ALLOW_DESTRUCTIVE menang atas ini.
@@ -199,6 +203,33 @@ export function setAccessMode(mode) {
     saveConfig({ accessMode: next });
   }
   return getAccessMode();
+}
+
+/**
+ * Mengembalikan agen utama yang aktif.
+ *
+ * Nilai tak dikenal jatuh ke 'build' supaya config yang rusak/salah ketik tidak
+ * pernah mengunci pengguna di mode arsitek (read-only) tanpa disadari.
+ *
+ * @returns {'build'|'plan'}
+ */
+export function getAgentMode() {
+  const raw = getConfig().agentMode;
+  return raw === 'plan' ? 'plan' : 'build';
+}
+
+/**
+ * Menyetel agen utama dan menyimpannya ke config agar bertahan antar-sesi.
+ *
+ * @param {'build'|'plan'} mode
+ * @returns {'build'|'plan'} agen yang benar-benar aktif setelah penyimpanan
+ */
+export function setAgentMode(mode) {
+  const next = mode === 'plan' ? 'plan' : 'build';
+  if (next !== getAgentMode()) {
+    saveConfig({ agentMode: next });
+  }
+  return getAgentMode();
 }
 
 export function saveConfig(partialConfig) {  try {
