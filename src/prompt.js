@@ -190,6 +190,7 @@ loadPromptHistory();
 export const COMMANDS = [
   { name: '/help', desc: 'Menampilkan panduan perintah & bantuan' },
   { name: '/plan', desc: 'Mode arsitek semAIr: susun rencana & analisis tanpa ubah kode' },
+  { name: '/access', desc: 'Mode izin perintah: Safe (selalu tanya) atau Full access (langsung jalan)' },
   { name: '/compact', desc: 'Ringkas konteks percakapan untuk menghemat token' },
   { name: '/timeline', desc: 'Ganti tampilan aktivitas: compact (satu baris) / detail (pohon)' },
   { name: '/session', desc: 'Kelola sesi percakapan (list, resume, delete, clear)' },
@@ -209,6 +210,10 @@ export const COMMANDS = [
 ];
 
 export const SUBCOMMANDS = {
+  '/access': [
+    { name: 'safe', desc: 'Selalu minta persetujuan sebelum perintah berisiko (disarankan)' },
+    { name: 'full', desc: 'Lewati persetujuan kelas "confirm" — perintah berbahaya tetap ditolak' },
+  ],
   '/timeline': [
     { name: 'compact', desc: 'Satu baris per langkah — alur cepat & ringkas' },
     { name: 'detail', desc: 'Pohon lengkap dengan argumen & ringkasan hasil' },

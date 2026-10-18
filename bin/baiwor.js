@@ -14,6 +14,8 @@ import {
   maskSecret,
   getTimelineMode,
   setTimelineMode,
+  getAccessMode,
+  setAccessMode,
   getTinyFishApiKey,
   saveTinyFishApiKey,
 } from '../src/config.js';
@@ -26,6 +28,12 @@ import { login, logout, authStatus } from '../src/auth/index.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
 import { handleUserChat, resetConversation, conversationSession } from '../src/chat/index.js';
 import { buildPlanUserPrompt } from '../src/chat/planMode.js';
+import {
+  accessModeLabel,
+  accessModeOptions,
+  describeAccessMode,
+  parseAccessModeArg,
+} from '../src/chat/accessMode.js';
 import { compactConversation } from '../src/chat/compact.js';
 import { listSessions, deleteSession, deleteAllSessions } from '../src/chat/sessionManager.js';
 import { discoverSkills, getSkill } from '../src/skills/skillManager.js';
@@ -413,6 +421,7 @@ function showBanner() {
 const HELP_USAGE = {
   '/login': '/login [provider]',
   '/logout': '/logout [provider]',
+  '/access': '/access [safe|full]',
 };
 
 function showHelp() {
@@ -450,6 +459,12 @@ function showHelp() {
   console.log(`    ${dim('Kembali ke tampilan penuh kapan saja dengan')} ${chalk.cyan('/timeline detail')}${dim('.')}`);
   console.log(`    ${dim('Baris "Context X% left" muncul setelah setiap jawaban. Angka itu perkiraan,')}`);
   console.log(`    ${dim('dan riwayat dipangkas otomatis bila mulai penuh — pakai /compact atau /clear.')}`);
+  console.log();
+  console.log(gold.bold('  ⌨️  Pintasan Papan Ketik:'));
+  console.log(`    ${chalk.cyan('Shift+Tab')}  ${dim('─ ganti mode izin perintah (Safe ⇄ Full access), sama seperti /access')}`);
+  console.log(`    ${chalk.cyan('Ctrl+T')}     ${dim('─ ringkas / bentangkan daftar tugas (Todo list)')}`);
+  console.log(`    ${chalk.cyan('Tab')}        ${dim('─ buka daftar perintah "/" saat kotak input masih kosong')}`);
+  console.log(`    ${chalk.cyan('↑ / ↓')}      ${dim('─ panggil kembali perintah yang pernah diketik')}`);
   console.log();
   console.log(chalk.gray('  💡 Ketik langsung pertanyaan atau instruksi coding apa saja untuk chat dengan bAIwor!'));
   console.log();
@@ -808,6 +823,42 @@ async function startInteractive(opts = {}) {
             provider: config.activeProvider,
           });
         } catch {}
+        break;
+      }
+      case '/access':
+      case '/akses':
+      case '/mode': {
+        let requested = parseAccessModeArg(arg);
+        const current = getAccessMode();
+
+        // Tanpa argumen: tampilkan pilihan interaktif. Pemula tidak perlu
+        // menghafal nama mode maupun pintasan rahasia Shift+Tab.
+        if (!requested && !arg) {
+          const picked = await p.select({
+            message: `Mode izin perintah (aktif: ${accessModeLabel(current)})`,
+            initialValue: current,
+            options: accessModeOptions(current),
+          });
+          if (p.isCancel(picked)) break;
+          requested = picked;
+        }
+
+        if (!requested) {
+          console.log(
+            chalk.yellow(`\n  ⚠️  Mode "${arg}" tidak dikenal.`) +
+              chalk.gray(' Pilih ') +
+              chalk.cyan('/access safe') +
+              chalk.gray(' atau ') +
+              chalk.cyan('/access full') +
+              '\n'
+          );
+          break;
+        }
+
+        setAccessMode(requested);
+        console.log(chalk.green.bold(`\n  ✔ Mode izin perintah: ${accessModeLabel(requested)}`));
+        console.log(chalk.gray(`     ${describeAccessMode(requested)}`));
+        console.log(chalk.gray('     Bisa juga diganti kapan saja dengan pintasan Shift+Tab di prompt.\n'));
         break;
       }
       case '/compact': {
