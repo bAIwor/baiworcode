@@ -10,28 +10,25 @@ import { renderTodoWidget, toggleTodoCompactMode, getTodoCompactMode } from './c
 import { CONFIG_DIR, getAccessMode, setAccessMode } from './config.js';
 
 // Proteksi global untuk seluruh prompt @clack/core (@clack/prompts)
-// Mencegah process.stdin paused, rawMode deadlock, dan terminal freeze pada Windows saat Esc / cancel beruntun
+// Menjamin input stream berstatus rawMode saat prompt aktif, dan ter-pause bersih
+// saat prompt ditutup agar tidak terjadi race condition / deadlock pada Windows ConPTY.
 if (typeof Prompt === 'function' && !Prompt.prototype._baiworStdinPatched) {
   Prompt.prototype._baiworStdinPatched = true;
 
   const origPrompt = Prompt.prototype.prompt;
   Prompt.prototype.prompt = function (...args) {
-    if (this.input && this.input.isTTY) {
-      if (typeof this.input.resume === 'function') {
+    const input = this.input || process.stdin;
+    if (input && input.isTTY) {
+      if (typeof input.setRawMode === 'function' && !input.isRaw) {
         try {
-          this.input.resume();
+          input.setRawMode(true);
         } catch {}
       }
-      if (typeof this.input.setRawMode === 'function' && !this.input.isRaw) {
+      if (typeof input.resume === 'function') {
         try {
-          this.input.setRawMode(true);
+          input.resume();
         } catch {}
       }
-    }
-    if (process.stdin && process.stdin.isTTY && typeof process.stdin.resume === 'function') {
-      try {
-        process.stdin.resume();
-      } catch {}
     }
     return origPrompt.apply(this, args);
   };
@@ -39,17 +36,18 @@ if (typeof Prompt === 'function' && !Prompt.prototype._baiworStdinPatched) {
   const origClose = Prompt.prototype.close;
   Prompt.prototype.close = function (...args) {
     const res = origClose.apply(this, args);
-    // Setelah prompt ditutup (submit atau cancel), pastikan stdin langsung di-resume
-    // agar tidak tertinggal dalam status pause / reading handle mati di Windows
-    if (this.input && this.input.isTTY && typeof this.input.resume === 'function') {
-      try {
-        this.input.resume();
-      } catch {}
-    }
-    if (process.stdin && process.stdin.isTTY && typeof process.stdin.resume === 'function') {
-      try {
-        process.stdin.resume();
-      } catch {}
+    const input = this.input || process.stdin;
+    if (input && input.isTTY) {
+      if (typeof input.setRawMode === 'function' && input.isRaw) {
+        try {
+          input.setRawMode(false);
+        } catch {}
+      }
+      if (typeof input.pause === 'function') {
+        try {
+          input.pause();
+        } catch {}
+      }
     }
     return res;
   };
@@ -941,11 +939,6 @@ export async function askBaiworInput(opts = {}) {
 
   if (process.stdin.isTTY) {
     try {
-      if (process.stdin.isPaused()) {
-        try {
-          process.stdin.resume();
-        } catch {}
-      }
       const promptInstance = new SlashTextPrompt({
         placeholder,
         defaultValue: '',
@@ -957,12 +950,6 @@ export async function askBaiworInput(opts = {}) {
       return input;
     } catch {
       // Fallback to readline below if TTY initialization fails
-    } finally {
-      if (process.stdin.isPaused()) {
-        try {
-          process.stdin.resume();
-        } catch {}
-      }
     }
   }
 
