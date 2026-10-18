@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { REASONING_CONTENT_PLACEHOLDER } from './reasoningPlaceholder.js';
 
 /**
  * Melakukan streaming chat completion melalui Antigravity CLI (agy)
@@ -255,6 +256,25 @@ async function requestWithRetry(url, init, { maxRetries, retryDelayMs }) {
  *   salah didenda; hanya koneksi yang benar-benar macet yang dipotong.
  * @returns {Promise<{ content: string, reasoning: string, tool_calls: Array|null, completed: boolean }>}
  */
+// Provider/model reasoning tertentu (mis. Reflection Beam) menuntut field
+// `reasoning_content` ADA DAN TIDAK KOSONG pada setiap pesan asisten lama.
+// Bukti uji langsung ke API Reflection:
+//   - field tidak ada        -> 400 missing_required_parameter
+//   - reasoning_content: ''  -> 400 (dianggap tetap "missing")
+//   - reasoning_content: ' ' -> 200 OK
+// Karena itu backfill WAJIB memakai placeholder non-kosong.
+const REASONING_BACKFILL_HOSTS = new Set();
+
+function backfillReasoningContent(messages) {
+  return messages.map((m) =>
+    m &&
+    m.role === 'assistant' &&
+    (typeof m.reasoning_content !== 'string' || m.reasoning_content.length === 0)
+      ? { ...m, reasoning_content: REASONING_CONTENT_PLACEHOLDER }
+      : m
+  );
+}
+
 export async function streamChatCompletion({
   credentials,
   messages,
@@ -280,9 +300,16 @@ export async function streamChatCompletion({
   }
 
   const url = buildChatEndpoint(credentials.baseUrl);
+
+  // Bila provider ini pernah menolak karena `reasoning_content` hilang, rapikan
+  // langsung di muka supaya tidak membuang satu request 400 + retry setiap turn.
+  const outgoingMessages = REASONING_BACKFILL_HOSTS.has(credentials.baseUrl)
+    ? backfillReasoningContent(messages)
+    : messages;
+
   const payload = {
     model: credentials.model,
-    messages,
+    messages: outgoingMessages,
     stream: true,
   };
 
@@ -322,8 +349,9 @@ export async function streamChatCompletion({
 
     // Auto-recovery untuk ketidakcocokan parameter reasoning_content antar-provider:
     // 1. Model reasoning (Reflection Beam, DeepSeek R1, Kimi) mewajibkan reasoning_content pada setiap pesan asisten.
-    //    Jika pesan asisten lama tidak membawanya (mis. hasil pemadatan konteks atau sesi lama), provider menolak.
-    //    Kita tambahkan reasoning_content: '' dan coba ulang sekali.
+    //    Jika pesan asisten lama tidak membawanya (mis. hasil pemadatan konteks, sesi lama, atau ganti model
+    //    dari model non-reasoning), provider menolak. Kita isi field itu dengan placeholder NON-KOSONG
+    //    lalu coba ulang sekali.
     const isReasoningRequiredError =
       /reasoning_content/i.test(errorDetail) &&
       /(?:missing|required|needs the reasoning|send back)/i.test(errorDetail);
@@ -335,12 +363,10 @@ export async function streamChatCompletion({
       (/reasoning_content/i.test(errorDetail) && /(?:unrecognized|not allowed|permitted|unexpected)/i.test(errorDetail));
 
     if (response.status === 400 && isReasoningRequiredError) {
-      const patchedMessages = payload.messages.map((m) => {
-        if (m.role === 'assistant' && typeof m.reasoning_content !== 'string') {
-          return { ...m, reasoning_content: '' };
-        }
-        return m;
-      });
+      // Tandai provider ini agar turn berikutnya langsung dirapikan di muka,
+      // lalu isi reasoning_content yang hilang dengan placeholder non-kosong.
+      REASONING_BACKFILL_HOSTS.add(credentials.baseUrl);
+      const patchedMessages = backfillReasoningContent(payload.messages);
       try {
         const retryRes = await requestWithRetry(
           url,

@@ -461,8 +461,8 @@ describe('Tahap 3A: Retry & Backoff Klien Streaming', () => {
     assert.equal(result.content, 'Pulih berhasil!');
     assert.equal(
       secondRequestPayload?.messages?.[1]?.reasoning_content,
-      '',
-      'Pesan asisten kedua harus otomatis dipatch dengan reasoning_content kosong'
+      ' ',
+      'Pesan asisten kedua harus dipatch dengan reasoning_content non-kosong (spasi)'
     );
   });
 

@@ -17,7 +17,7 @@ describe('reasoningRepair: perbaikan sesi lama tanpa reasoning_content', () => {
 
     const repaired = repairLegacyAssistantReasoning(messages);
     assert.equal(repaired, 1);
-    assert.equal(messages[2].reasoning_content, '');
+    assert.equal(messages[2].reasoning_content, ' ');
     // Reasoning asli TIDAK pernah diganggu
     assert.equal(messages[3].reasoning_content, 'pikiran asli');
     // Role lain tidak tersentuh
@@ -26,13 +26,22 @@ describe('reasoningRepair: perbaikan sesi lama tanpa reasoning_content', () => {
     assert.equal(messages[4].reasoning_content, undefined);
   });
 
-  it('tidak menimpa reasoning yang sudah berupa string (termasuk string kosong)', () => {
+  it('mengganti reasoning_content string kosong ("" tidak valid) dengan placeholder non-kosong', () => {
     const messages = [
       { role: 'assistant', content: 'A', reasoning_content: '' },
     ];
     const repaired = repairLegacyAssistantReasoning(messages);
+    assert.equal(repaired, 1);
+    assert.equal(messages[0].reasoning_content, ' ');
+  });
+
+  it('tidak menimpa reasoning asli yang sudah terisi', () => {
+    const messages = [
+      { role: 'assistant', content: 'A', reasoning_content: 'pikiran asli' },
+    ];
+    const repaired = repairLegacyAssistantReasoning(messages);
     assert.equal(repaired, 0);
-    assert.equal(messages[0].reasoning_content, '');
+    assert.equal(messages[0].reasoning_content, 'pikiran asli');
   });
 
   it('idempotent — memanggil ulang tidak mengubah apa pun', () => {
@@ -59,6 +68,6 @@ describe('reasoningRepair: perbaikan sesi lama tanpa reasoning_content', () => {
     const payload = conv.getMessages();
     const oldAssistant = payload.find((m) => m.role === 'assistant');
     assert.equal(typeof oldAssistant.reasoning_content, 'string');
-    assert.equal(oldAssistant.reasoning_content, '');
+    assert.ok(oldAssistant.reasoning_content.length > 0, 'placeholder tidak boleh kosong');
   });
 });

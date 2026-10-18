@@ -1,5 +1,6 @@
 import { getSystemPrompt } from './systemPrompt.js';
 import { estimateMessagesTokens, resolveContextWindow } from './context.js';
+import { REASONING_CONTENT_PLACEHOLDER } from './reasoningPlaceholder.js';
 import {
   generateSessionId,
   deriveSessionTitle,
@@ -301,9 +302,10 @@ export class Conversation {
  * menolak payload dengan error "Missing required parameter: reasoning_content"
  * bila salah satu pesan asisten tidak membawanya. Tanpa perbaikan di sini,
  * setiap giliran pada sesi resume membayar satu request 400 terbuang sebelum
- * auto-recovery di `client.js` berhasil. Perbaikan mengisi string kosong `''`
- * — sama seperti patch auto-recovery — hanya pada pesan yang memang belum
- * punya propertinya; reasoning asli tidak pernah diganggu.
+ * auto-recovery di `client.js` berhasil. Perbaikan mengisi placeholder
+ * NON-KOSONG — pada pesan yang belum punya propertinya MAUPUN yang masih
+ * berisi string kosong (yang juga ditolak provider); reasoning asli tidak
+ * pernah diganggu.
  *
  * @param {Array} messages - Array pesan (dimutasi di tempat)
  * @returns {number} Jumlah pesan asisten yang diperbaiki
@@ -312,8 +314,11 @@ export function repairLegacyAssistantReasoning(messages) {
   if (!Array.isArray(messages)) return 0;
   let repaired = 0;
   for (const m of messages) {
-    if (m && m.role === 'assistant' && typeof m.reasoning_content !== 'string') {
-      m.reasoning_content = '';
+    const isAssistant = m && m.role === 'assistant';
+    const invalidReasoning =
+      typeof m?.reasoning_content !== 'string' || m.reasoning_content.length === 0;
+    if (isAssistant && invalidReasoning) {
+      m.reasoning_content = REASONING_CONTENT_PLACEHOLDER;
       repaired += 1;
     }
   }
