@@ -138,7 +138,7 @@ export const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'run_command',
-      description: 'Mengeksekusi perintah shell / terminal di komputer pengguna (misal: "npm test", "git status", "node script.js"). Mendukung eksekusi asinkron di latar belakang (run_in_background: true) dan pemantauan status tugas via task_id.',
+      description: 'Mengeksekusi perintah shell / terminal di komputer pengguna (misal: "npm test", "git status", "node script.js"). Mendukung eksekusi asinkron di latar belakang (run_in_background: true) dan pemantauan status tugas via task_id. Batas waktu bawaan 60 detik; untuk perintah yang memang lama (mis. "mcode exec", "npm install", proses build) set timeout_ms lebih besar.',
       parameters: {
         type: 'object',
         properties: {
@@ -149,6 +149,10 @@ export const TOOL_DEFINITIONS = [
           cwd: {
             type: 'string',
             description: 'Direktori kerja tempat perintah dijalankan (opsional, default ke folder aktif pengguna).',
+          },
+          timeout_ms: {
+            type: 'integer',
+            description: 'Batas waktu eksekusi dalam milidetik (opsional). Bawaan 60000 (60 detik), maksimum 600000 (10 menit). Pakai nilai lebih besar untuk perintah yang memang lama, atau run_in_background: true bila perintahnya sangat panjang.',
           },
           run_in_background: {
             type: 'boolean',

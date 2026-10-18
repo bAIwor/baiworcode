@@ -12,6 +12,9 @@ import {
   getDefinitions,
   listToolsets,
   handleSearchFiles,
+  isHomeDirectory,
+  resolveCommandTimeout,
+  defaultReportsDir,
 } from '../src/tools/index.js';
 import {
   handleReadFile,
@@ -218,11 +221,22 @@ describe('Tahap 3B: Tool Dispatcher & JSON Argument Parser', () => {
   });
 
   it('harus memotong output yang melebihi batas budget karakter (A2/F5)', () => {
-    const hugeText = 'X'.repeat(50000);
-    const capped = capToolOutput(hugeText, 40000);
+    // Direktori spill dikarahkan ke folder sementara supaya PENGUJIAN tidak
+    // meninggalkan file sampah 50 KB di ~/.baiwor/reports milik pengguna.
+    const spillDir = fs.mkdtempSync(path.join(os.tmpdir(), 'baiwor-spill-'));
+    try {
+      const hugeText = 'X'.repeat(50000);
+      const capped = capToolOutput(hugeText, 40000, { reportsDir: spillDir });
 
-    assert.ok(capped.length < 50000);
-    assert.match(capped, /Output dipotong: 10000 karakter melebihi budget context/);
+      assert.ok(capped.length < 50000);
+      assert.match(capped, /Output dipotong: 10000 karakter melebihi budget context/);
+      // Output lengkap tetap tersimpan — tapi di folder uji, bukan di home pengguna.
+      assert.equal(fs.readdirSync(spillDir).length, 1, 'spill harus ditulis ke folder uji');
+      assert.equal(capToolOutput('pendek', 40000, { reportsDir: spillDir }), 'pendek');
+      assert.equal(fs.readdirSync(spillDir).length, 1, 'output pendek tidak boleh menulis spill');
+    } finally {
+      fs.rmSync(spillDir, { recursive: true, force: true });
+    }
   });
 
   it('harus mendukung pendaftaran tool baru via registerTool (F4)', async () => {
@@ -375,6 +389,75 @@ describe('search_files: pengaman ReDoS', () => {
     const res = await handleSearchFiles({ pattern: '(a+)+', path: '.' });
     assert.equal(res.success, false);
     assert.match(res.output, /ditolak/i);
+  });
+});
+
+describe('Penjaga workspace = direktori HOME', () => {
+  it('isHomeDirectory mengenali home dan menolak jalur lain', () => {
+    assert.equal(isHomeDirectory(os.homedir()), true);
+    assert.equal(isHomeDirectory(path.join(os.homedir(), 'baiworcode')), false);
+    assert.equal(isHomeDirectory(os.tmpdir()), false);
+  });
+
+  it('search_files tidak menelusuri direktori berisik milik home (AppData, .npm, ...)', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'baiwor-ignore-'));
+    try {
+      fs.mkdirSync(path.join(root, 'AppData'));
+      fs.writeFileSync(path.join(root, 'AppData', 'rahasia.txt'), 'x');
+      fs.mkdirSync(path.join(root, '.npm'));
+      fs.writeFileSync(path.join(root, '.npm', 'cache.txt'), 'x');
+      fs.mkdirSync(path.join(root, 'src'));
+      fs.writeFileSync(path.join(root, 'src', 'app.txt'), 'x');
+
+      const res = await handleSearchFiles({ target: 'files', pattern: '*.txt', path: root });
+      assert.equal(res.success, true);
+      assert.match(res.output, /app\.txt/);
+      assert.doesNotMatch(res.output, /rahasia\.txt/);
+      assert.doesNotMatch(res.output, /cache\.txt/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('run_command: batas waktu yang bisa dikonfigurasi', () => {
+  it('memakai bawaan 60 detik bila tidak ada permintaan khusus', () => {
+    assert.equal(resolveCommandTimeout(null, {}), 60000);
+    assert.equal(resolveCommandTimeout(undefined, {}), 60000);
+  });
+
+  it('menghormati env BAIWOR_RUN_COMMAND_TIMEOUT_MS dan mengabaikan nilai tak valid', () => {
+    assert.equal(resolveCommandTimeout(null, { BAIWOR_RUN_COMMAND_TIMEOUT_MS: '300000' }), 300000);
+    assert.equal(resolveCommandTimeout(null, { BAIWOR_RUN_COMMAND_TIMEOUT_MS: 'abc' }), 60000);
+    assert.equal(resolveCommandTimeout(null, { BAIWOR_RUN_COMMAND_TIMEOUT_MS: '-5' }), 60000);
+  });
+
+  it('argumen timeout_ms menang atas env, tapi tetap dijepit ke rentang aman', () => {
+    assert.equal(resolveCommandTimeout(120000, { BAIWOR_RUN_COMMAND_TIMEOUT_MS: '30000' }), 120000);
+    // Terlalu kecil → dinaikkan ke 1 detik; terlalu besar → dipotong ke 10 menit.
+    assert.equal(resolveCommandTimeout(10, {}), 1000);
+    assert.equal(resolveCommandTimeout(99999999, {}), 600000);
+  });
+
+  it('timeout_ms muncul di skema run_command agar model tahu cara memakainya', () => {
+    const def = TOOL_DEFINITIONS.find((t) => t.function.name === 'run_command');
+    assert.ok(def.function.parameters.properties.timeout_ms);
+    assert.match(def.function.parameters.properties.timeout_ms.description, /600000/);
+  });
+});
+
+describe('capToolOutput: tujuan spill bisa dikarahkan (isolasi pengujian)', () => {
+  it('menghormati env BAIWOR_REPORTS_DIR', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'baiwor-envdir-'));
+    const before = process.env.BAIWOR_REPORTS_DIR;
+    try {
+      process.env.BAIWOR_REPORTS_DIR = dir;
+      assert.equal(defaultReportsDir(), dir);
+    } finally {
+      if (before === undefined) delete process.env.BAIWOR_REPORTS_DIR;
+      else process.env.BAIWOR_REPORTS_DIR = before;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

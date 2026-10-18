@@ -10,8 +10,9 @@ import {
   stopBackgroundTask,
   listBackgroundTasks,
   clearBackgroundTasks,
+  resolveCommandTimeout,
 } from './handlers.js';
-import { handleSearchFiles } from './searchTool.js';
+import { handleSearchFiles, isHomeDirectory } from './searchTool.js';
 import { handleTodoList } from './todoTool.js';
 import { handleWebFetch, handleWebSearch, handleWebAutomate } from './webTool.js';
 import { handleDiagnostics } from './diagnosticsTool.js';
@@ -28,6 +29,7 @@ import {
   dispatchTool,
   capToolOutput,
   MAX_TOOL_OUTPUT_CHARS,
+  defaultReportsDir,
   listToolsets,
   clearRegistry,
 } from './registry.js';
@@ -86,9 +88,12 @@ export {
   dispatchTool,
   capToolOutput,
   MAX_TOOL_OUTPUT_CHARS,
+  defaultReportsDir,
   listToolsets,
   clearRegistry,
   handleSearchFiles,
+  isHomeDirectory,
+  resolveCommandTimeout,
   handleTodoList,
   handleWebFetch,
   handleWebSearch,

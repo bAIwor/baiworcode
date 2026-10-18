@@ -14,6 +14,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { resolveSafePath } from './handlers.js';
 
@@ -33,6 +34,23 @@ const IGNORE_DIRS = new Set([
   '.venv',
   'venv',
   '__pycache__',
+  // Direktori besar/berisik khas direktori HOME. Tanpa ini, pencarian yang
+  // dijalankan dari home (mis. cwd = C:\Users\<nama>) menelusuri AppData dan
+  // puluhan ribu berkas sistem — lambat dan hasilnya nyaris tak berguna.
+  'AppData',
+  'Application Data',
+  'Local Settings',
+  '$RECYCLE.BIN',
+  'System Volume Information',
+  '.npm',
+  '.local',
+  '.minimax',
+  '.minimax-code',
+  '.gradle',
+  '.m2',
+  '.cargo',
+  '.rustup',
+  '.docker',
 ]);
 
 /** Ekstensi yang hampir pasti biner — dilewati agar tidak menghasilkan sampah. */
@@ -156,6 +174,17 @@ function walk(rootDir, visit, shouldStop) {
   }
 }
 
+/** Memeriksa apakah `dirPath` adalah direktori home pengguna (akar yang sangat luas). */
+export function isHomeDirectory(dirPath = process.cwd()) {
+  try {
+    const a = path.resolve(dirPath).toLowerCase();
+    const b = path.resolve(os.homedir()).toLowerCase();
+    return a === b;
+  } catch {
+    return false;
+  }
+}
+
 function toRelative(target, baseDir) {
   const rel = path.relative(baseDir, target);
   return (rel || path.basename(target)).split(path.sep).join('/');
@@ -197,6 +226,13 @@ export async function handleSearchFiles({
   const baseDir = process.cwd();
   const globRe = fileGlob ? globToRegExp(fileGlob) : null;
 
+  // Pencarian dari direktori HOME hampir selalu berujung lambat dan berisik.
+  // Beri peringatan supaya model (dan pengguna) mempersempit lokasi pencarian.
+  const homeNote = isHomeDirectory(root)
+    ? '⚠️ Pencarian dijalankan dari direktori HOME (seluruh folder pengguna). Ini lambat dan hasilnya sangat luas — sebutkan subfolder yang lebih spesifik (mis. "baiworcode/src") agar hasilnya cepat dan tajam.'
+    : '';
+  const withNote = (out) => (homeNote ? `${homeNote}\n\n${out}` : out);
+
   // ---------- Mode: cari nama berkas ----------
   if (mode === 'files') {
     const nameRe = globToRegExp(pattern);
@@ -215,7 +251,7 @@ export async function handleSearchFiles({
     }
 
     if (matches.length === 0) {
-      return { success: true, output: `Tidak ada berkas yang cocok dengan pola '${pattern}'.` };
+      return { success: true, output: withNote(`Tidak ada berkas yang cocok dengan pola '${pattern}'.`) };
     }
 
     const shown = matches.slice(0, MAX_MATCHES);
@@ -223,7 +259,7 @@ export async function handleSearchFiles({
       matches.length > shown.length
         ? `\n\n… [Menampilkan ${shown.length} dari ${matches.length} berkas yang cocok]`
         : '';
-    return { success: true, output: `${shown.join('\n')}${footer}` };
+    return { success: true, output: withNote(`${shown.join('\n')}${footer}`) };
   }
 
   // ---------- Mode: cari isi berkas ----------
@@ -281,7 +317,9 @@ export async function handleSearchFiles({
   if (results.length === 0) {
     return {
       success: true,
-      output: `Tidak ada kecocokan untuk '${pattern}' (${filesSearched} berkas dipindai di ${toRelative(root, baseDir) || '.'}).`,
+      output: withNote(
+        `Tidak ada kecocokan untuk '${pattern}' (${filesSearched} berkas dipindai di ${toRelative(root, baseDir) || '.'}).`
+      ),
     };
   }
 
@@ -289,5 +327,5 @@ export async function handleSearchFiles({
     ? `\n\n… [Dibatasi pada ${MAX_MATCHES} kecocokan pertama. Persempit pola atau path untuk hasil lebih spesifik]`
     : `\n\n[${results.length} kecocokan dari ${filesSearched} berkas]`;
 
-  return { success: true, output: `${results.join('\n')}${footer}` };
+  return { success: true, output: withNote(`${results.join('\n')}${footer}`) };
 }

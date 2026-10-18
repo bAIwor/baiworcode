@@ -31,6 +31,7 @@ import { listSessions, deleteSession, deleteAllSessions } from '../src/chat/sess
 import { discoverSkills, getSkill } from '../src/skills/skillManager.js';
 import { discoverRules } from '../src/rules/ruleManager.js';
 import { resetTodoStore } from '../src/tools/todoTool.js';
+import { isHomeDirectory } from '../src/tools/searchTool.js';
 import { renderStatusLine } from '../src/statusLine.js';
 import { resolveActiveCredentials } from '../src/auth/resolve.js';
 import { applyHelpStyle, helpHeader, helpFooter } from '../src/cliHelp.js';
@@ -703,6 +704,30 @@ async function handleMcpCommand(arg = '') {
   console.log(chalk.gray('\n  Gunakan /mcp refresh untuk memuat ulang koneksi server.\n'));
 }
 
+/**
+ * Memperingatkan bila baiworcode dijalankan dari direktori HOME.
+ *
+ * Home bukan "proyek": seluruh folder pengguna (AppData, Downloads, node_modules
+ * berbagai aplikasi) ikut dianggap workspace. Akibatnya `search_files` /
+ * `list_directory` menjelajahi puluhan ribu berkas yang tak relevan — lambat,
+ * boros konteks, dan menyesatkan model.
+ *
+ * @returns {boolean} true bila peringatan ditampilkan.
+ */
+function warnIfHomeDirectory() {
+  if (!isHomeDirectory()) return false;
+  console.log(
+    chalk.yellow.bold('\n  ⚠️  baiworcode dijalankan dari direktori HOME: ') + chalk.yellow(process.cwd())
+  );
+  console.log(
+    chalk.gray('     Seluruh folder pengguna dianggap workspace — pencarian jadi lambat & sangat luas.')
+  );
+  console.log(
+    chalk.gray(`     Sebaiknya masuk ke folder proyek dulu, mis.: ${chalk.cyan('cd baiworcode && bcode')}\n`)
+  );
+  return true;
+}
+
 async function startInteractive(opts = {}) {
   // Cegah sistem operasi langsung mematikan proses saat Ctrl+C ditekan di terminal
   process.on('SIGINT', () => {});
@@ -715,6 +740,8 @@ async function startInteractive(opts = {}) {
   if (!opts.skipBanner) {
     showBanner();
   }
+
+  warnIfHomeDirectory();
 
   while (true) {
     const config = getConfig();
@@ -1137,6 +1164,7 @@ program
       if (resumed) {
         showResumedBanner();
       }
+      warnIfHomeDirectory();
       await handleUserChat(fullPrompt);
       try {
         const config = getConfig();

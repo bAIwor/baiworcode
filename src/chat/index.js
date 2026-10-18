@@ -9,6 +9,9 @@ import {
   shouldInjectTodoReminder,
   getTodoReminderInterval,
   buildTodoReminder,
+  shouldInjectPlanningNudge,
+  getPlanNudgeThreshold,
+  buildPlanningReminder,
 } from './todoReminder.js';
 import { renderTimelineByMode, renderTodoChecklist, formatTodoProgress } from './timeline.js';
 import { LiveActivity } from './liveActivity.js';
@@ -223,6 +226,13 @@ export async function handleUserChat(promptText) {
   let stuckLoop = false;
   const toolSignatureCounts = new Map();
 
+  // Penegakan perencanaan (adaptasi aturan `todowrite` mcode): hitung tool yang
+  // sudah dijalankan pada giliran ini, lalu tagih model menyusun `todo_list`
+  // bila ia menumpuk banyak tool tanpa rencana apa pun.
+  const planningNudgeThreshold = getPlanNudgeThreshold();
+  let toolCallsThisTurn = 0;
+  let lastPlanNudgeAt = 0;
+
   /** Sidik jari rangkaian tool satu putaran (nama + argumen), urutan diabaikan. */
   const toolCallSignature = (calls) =>
     calls
@@ -388,6 +398,43 @@ export async function handleUserChat(promptText) {
     );
   };
 
+  /**
+   * Menyusun daftar pesan yang dikirim ke model untuk satu putaran.
+   *
+   * Riwayat percakapan bisa ditambah pengingat SEMENTARA (tidak ikut disimpan ke
+   * riwayat), dikirim sebagai pesan `user` mengikuti pola yang sudah dipakai
+   * `requestFinalAnswer` agar diterima luas oleh endpoint OpenAI-compatible:
+   *
+   *   1. `<planning-reminder>` — model menumpuk tool tanpa pernah menyusun rencana.
+   *   2. `<task-completion-reminder>` — masih ada item todo aktif dan intervalnya tiba.
+   */
+  const buildOutboundMessages = () => {
+    const base = conversationSession.getMessages();
+    const extra = [];
+    const stats = summarizeTodos(todoStore.read());
+
+    if (
+      stats.total === 0 &&
+      shouldInjectPlanningNudge({
+        toolCalls: toolCallsThisTurn,
+        lastNudgeAt: lastPlanNudgeAt,
+        threshold: planningNudgeThreshold,
+      })
+    ) {
+      extra.push({
+        role: 'user',
+        content: buildPlanningReminder({ toolCalls: toolCallsThisTurn }),
+      });
+      lastPlanNudgeAt = toolCallsThisTurn;
+    }
+
+    if (stats.active > 0 && shouldInjectTodoReminder(currentTurn, getTodoReminderInterval())) {
+      extra.push({ role: 'user', content: buildTodoReminder(stats) });
+    }
+
+    return extra.length > 0 ? [...base, ...extra] : base;
+  };
+
   try {
     while (currentTurn < MAX_AGENT_TURNS) {
       currentTurn++;
@@ -419,29 +466,27 @@ export async function handleUserChat(promptText) {
       }
 
       const result = await runModelTurn({
-        messages: (() => {
-          // Pengingat penyelesaian tugas (adaptasi `<task-completion-reminder>`):
-          // bila masih ada item todo aktif, tagih model secara berkala agar tidak
-          // menyatakan tuntas sebelum semua item beres. Pesan ini SEMENTARA —
-          // tidak disimpan ke riwayat — dan dikirim sebagai role 'user' supaya
-          // diterima luas oleh endpoint OpenAI-compatible.
-          const stats = summarizeTodos(todoStore.read());
-          if (stats.active === 0) return conversationSession.getMessages();
-          if (!shouldInjectTodoReminder(currentTurn, getTodoReminderInterval())) {
-            return conversationSession.getMessages();
-          }
-          return [
-            ...conversationSession.getMessages(),
-            { role: 'user', content: buildTodoReminder(stats) },
-          ];
-        })(),
+        messages: buildOutboundMessages(),
         tools: TOOL_DEFINITIONS,
         spinnerText:
           currentTurn === 1
             ? 'semAIr sedang merancang strategi...'
             : 'bAIwor sedang menimbang & mengolah hasil tool...',
       });
-      hasFirstTurnSucceeded = true;
+      // Giliran pertama sudah terbukti berjalan → mulai simpan sesi SECARA
+      // INKREMENTAL. Sejak titik ini setiap pesan (assistant/tool) ditulis ke
+      // disk, sehingga kemajuan giliran panjang terlihat dan tidak hilang bila
+      // proses dibatalkan. Sengaja baru di sini: bila request pertama gagal,
+      // rollback pesan user tidak meninggalkan jejak setengah jadi.
+      // Hanya sekali per giliran — pemanggilan berulang akan mereset status
+      // "sudah mulai" dan menulis ulang seluruh berkas tiap putaran.
+      if (!hasFirstTurnSucceeded) {
+        hasFirstTurnSucceeded = true;
+        conversationSession.enableIncrementalSave({
+          model: credentials.model,
+          provider: credentials.provider,
+        });
+      }
 
       // Cek apakah model meminta pemanggilan tool (Function Calling)
       if (result.tool_calls && Array.isArray(result.tool_calls) && result.tool_calls.length > 0) {
@@ -484,6 +529,7 @@ export async function handleUserChat(promptText) {
           const startedAt = Date.now();
           const toolResult = await executeTool(fnName, rawArgs, { signal: controller.signal });
           const durationMs = Date.now() - startedAt;
+          toolCallsThisTurn += 1;
 
           if (shouldSuspend) live.resume();
 

@@ -5,6 +5,7 @@ import {
   generateSessionId,
   deriveSessionTitle,
   saveSession,
+  appendSessionMessage,
   loadSession,
   getLatestSession,
 } from './sessionManager.js';
@@ -28,6 +29,9 @@ export class Conversation {
   reset() {
     this.sessionId = generateSessionId();
     this.sessionTitle = null;
+    // Sesi baru = tidak ada persistensi inkremental yang menempel dari sesi lama.
+    this.incrementalSave = null;
+    this.incrementalStarted = false;
     this.messages = [
       {
         role: 'system',
@@ -55,10 +59,12 @@ export class Conversation {
    */
   addUserMessage(content) {
     if (!content || typeof content !== 'string') return;
-    this.messages.push({
+    const msg = {
       role: 'user',
       content: content.trim(),
-    });
+    };
+    this.messages.push(msg);
+    this._persistMessage(msg);
   }
 
   /**
@@ -92,6 +98,7 @@ export class Conversation {
       msg.reasoning_content = msgReasoning;
     }
     this.messages.push(msg);
+    this._persistMessage(msg);
     return msg;
   }
 
@@ -108,6 +115,7 @@ export class Conversation {
       msg.name = name;
     }
     this.messages.push(msg);
+    this._persistMessage(msg);
     return msg;
   }
 
@@ -254,6 +262,47 @@ export class Conversation {
       },
       { projectPath, baseConfigDir }
     );
+  }
+
+  /**
+   * Mengaktifkan penyimpanan sesi SECARA INKREMENTAL.
+   *
+   * Tanpa ini, sesi hanya ditulis ke disk setelah satu giliran agentic selesai
+   * sepenuhnya. Giliran panjang (puluhan panggilan tool, belasan menit) jadi tak
+   * terlihat sama sekali, dan seluruh kerjanya hilang begitu proses dibatalkan.
+   * Dengan mode ini setiap pesan baru langsung di-append ke berkas JSONL.
+   *
+   * @param {object} [options]
+   * @param {string} [options.model]
+   * @param {string} [options.provider]
+   * @param {string} [options.projectPath]
+   * @param {string} [options.baseConfigDir]
+   */
+  enableIncrementalSave({ model = null, provider = null, projectPath = process.cwd(), baseConfigDir = undefined } = {}) {
+    this.incrementalSave = { model, provider, projectPath, baseConfigDir };
+    this.incrementalStarted = false;
+  }
+
+  /**
+   * Menyimpan satu pesan secara best-effort. Pesan pertama memicu penulisan
+   * penuh (header + riwayat yang ada); pesan berikutnya cukup di-append.
+   *
+   * @param {object} msg
+   */
+  _persistMessage(msg) {
+    if (!this.incrementalSave || !msg) return;
+    if (this.getUserTurnCount() === 0) return;
+    const { model, provider, projectPath, baseConfigDir } = this.incrementalSave;
+    try {
+      if (!this.incrementalStarted) {
+        this.saveToDisk({ model, provider, projectPath, baseConfigDir });
+        this.incrementalStarted = true;
+        return;
+      }
+      appendSessionMessage(this.sessionId, msg, { projectPath, baseConfigDir });
+    } catch {
+      // Best-effort: kegagalan menulis tidak boleh menggagalkan giliran.
+    }
   }
 
   /**

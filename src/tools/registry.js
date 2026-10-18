@@ -17,18 +17,30 @@ const tools = new Map(); // name -> { name, toolset, schema, handler, check, max
  */
 export const MAX_TOOL_OUTPUT_CHARS = 40000;
 
+/** Direktori bawaan penyimpanan spill output tool. */
+export function defaultReportsDir() {
+  return process.env.BAIWOR_REPORTS_DIR || path.join(os.homedir(), '.baiwor', 'reports', 'tool-outputs');
+}
+
 /**
  * Memotong output yang melebihi budget konteks agar tidak membuat context window meluap,
  * dan menyimpan output lengkap ke disk (.baiwor/reports/tool-outputs/) agar tidak hilang.
+ *
+ * @param {string} text
+ * @param {number} [maxChars]
+ * @param {object} [options]
+ * @param {string} [options.reportsDir] - Tujuan penyimpanan spill. Kalau tidak diisi,
+ *   dipakai `BAIWOR_REPORTS_DIR` atau `~/.baiwor/reports/tool-outputs`. Parameter ini
+ *   penting agar PENGUJIAN tidak menulis sampah ke direktori home pengguna.
  */
-export function capToolOutput(text, maxChars = MAX_TOOL_OUTPUT_CHARS) {
+export function capToolOutput(text, maxChars = MAX_TOOL_OUTPUT_CHARS, options = {}) {
   if (!text || typeof text !== 'string') return String(text || '');
   if (text.length <= maxChars) return text;
   const cutCount = text.length - maxChars;
 
   let spillPath = '';
   try {
-    const reportsDir = path.join(os.homedir(), '.baiwor', 'reports', 'tool-outputs');
+    const reportsDir = options.reportsDir || defaultReportsDir();
     fs.mkdirSync(reportsDir, { recursive: true });
     const id = crypto.randomBytes(8).toString('hex');
     const fileName = `output-${Date.now()}-${id}.txt`;

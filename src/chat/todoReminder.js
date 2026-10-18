@@ -13,6 +13,72 @@
 export const DEFAULT_TODO_REMINDER_INTERVAL = 5;
 
 /**
+ * Jumlah panggilan tool bawaan sebelum model ditagih menyusun rencana, bila ia
+ * sama sekali belum memakai `todo_list`. Adaptasi aturan mcode yang menuntut
+ * `todowrite` wajib pada pekerjaan multi-langkah.
+ */
+export const DEFAULT_PLAN_NUDGE_TOOL_CALLS = 5;
+
+/**
+ * Membaca ambang nudge perencanaan dari environment.
+ * Nilai tidak valid / kosong jatuh ke {@link DEFAULT_PLAN_NUDGE_TOOL_CALLS}.
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {number}
+ */
+export function getPlanNudgeThreshold(env = process.env) {
+  const raw = env?.BAIWOR_PLAN_NUDGE_TOOL_CALLS;
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    return DEFAULT_PLAN_NUDGE_TOOL_CALLS;
+  }
+  const parsed = Number.parseInt(String(raw).trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PLAN_NUDGE_TOOL_CALLS;
+}
+
+/**
+ * Menentukan apakah model perlu ditagih menyusun rencana.
+ *
+ * Dipicu berulang tiap kelipatan `threshold` panggilan tool selama model belum
+ * menyusun daftar tugas sama sekali — jadi rencana tidak bisa "ditunda terus".
+ *
+ * @param {object} params
+ * @param {number} params.toolCalls - Jumlah tool yang sudah dieksekusi pada giliran ini.
+ * @param {number} params.lastNudgeAt - Nilai toolCalls saat nudge terakhir diberikan.
+ * @param {number} [params.threshold]
+ * @returns {boolean}
+ */
+export function shouldInjectPlanningNudge({
+  toolCalls = 0,
+  lastNudgeAt = 0,
+  threshold = DEFAULT_PLAN_NUDGE_TOOL_CALLS,
+} = {}) {
+  const calls = Number.isFinite(toolCalls) ? Math.floor(toolCalls) : 0;
+  const last = Number.isFinite(lastNudgeAt) ? Math.floor(lastNudgeAt) : 0;
+  const step =
+    Number.isFinite(threshold) && threshold > 0
+      ? Math.floor(threshold)
+      : DEFAULT_PLAN_NUDGE_TOOL_CALLS;
+  return calls - last >= step;
+}
+
+/**
+ * Menyusun teguran agar model menyusun rencana kerja lebih dulu.
+ *
+ * @param {object} params
+ * @param {number} params.toolCalls
+ * @returns {string}
+ */
+export function buildPlanningReminder({ toolCalls = 0 } = {}) {
+  return [
+    '<planning-reminder>',
+    `Kamu sudah menjalankan ${toolCalls} panggilan tool tanpa pernah menyusun rencana di \`todo_list\`.`,
+    'Berhenti sejenak dan panggil `todo_list` SEKARANG untuk memecah pekerjaan menjadi langkah-langkah konkret (minimal 3 item bila tugasnya multi-langkah).',
+    'Tandai tepat satu item sebagai `in_progress`, perbarui statusnya seiring progres, dan jangan mengakhiri giliran sebelum daftar itu tuntas atau diperbarui.',
+    '</planning-reminder>',
+  ].join(' ');
+}
+
+/**
  * Membaca interval pengingat dari environment.
  * Nilai tidak valid / kosong jatuh ke {@link DEFAULT_TODO_REMINDER_INTERVAL}.
  *

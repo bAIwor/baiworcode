@@ -313,5 +313,73 @@ describe('SessionManager: Manajemen Sesi Persisten', () => {
       assert.equal(convResume.getMessages()[1].content, 'Sesi hari ini');
     });
   });
+
+  describe('Persistensi inkremental: kemajuan giliran panjang tidak hilang', () => {
+    it('harus menulis pesan ke disk SEBELUM giliran selesai', async () => {
+      const { Conversation } = await import('../src/chat/conversation.js');
+      const conv = new Conversation();
+      const opts = { projectPath: testProjectDir, baseConfigDir: tempBaseDir };
+
+      // Belum ada apa-apa di disk.
+      const dir = getProjectSessionDir(testProjectDir, tempBaseDir);
+      assert.equal(fs.existsSync(path.join(dir, `${conv.sessionId}.jsonl`)), false);
+
+      conv.addUserMessage('Tolong audit proyek ini'); // belum aktif → tidak ditulis
+      assert.equal(fs.existsSync(path.join(dir, `${conv.sessionId}.jsonl`)), false);
+
+      conv.enableIncrementalSave({ model: 'Beam-1.0-501B-A23B', provider: 'Reflection', ...opts });
+      conv.addAssistantMessage('', [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: '{}' } }]);
+      conv.addToolResult('c1', 'isi berkas', 'read_file');
+
+      // Berkas sudah ada walau giliran agentic belum berakhir.
+      const filePath = path.join(dir, `${conv.sessionId}.jsonl`);
+      assert.equal(fs.existsSync(filePath), true, 'sesi harus sudah ditulis di tengah giliran');
+
+      let isi = fs.readFileSync(filePath, 'utf8').trim().split(/\r?\n/);
+      assert.equal(JSON.parse(isi[0]).type, 'session');
+      // header + system + user + assistant + hasil tool
+      assert.equal(isi.length, 5, 'seluruh riwayat harus sudah tertulis di tengah giliran');
+
+      // Pesan berikutnya di-append, bukan menulis ulang seluruh berkas.
+      conv.addAssistantMessage('Lanjut ya');
+      isi = fs.readFileSync(filePath, 'utf8').trim().split(/\r?\n/);
+      assert.equal(isi.length, 6);
+      assert.equal(JSON.parse(isi[5]).message.content, 'Lanjut ya');
+
+      // Muat ulang dari disk harus menghasilkan riwayat yang utuh.
+      const conv2 = new Conversation();
+      assert.equal(conv2.loadFromDisk(conv.sessionId, opts), true);
+      assert.equal(conv2.getMessages().length, conv.getMessages().length);
+      assert.equal(conv2.getMessages().at(-1).content, 'Lanjut ya');
+    });
+
+    it('tidak menulis apa pun selama persistensi belum diaktifkan', async () => {
+      const { Conversation } = await import('../src/chat/conversation.js');
+      const conv = new Conversation();
+      conv.addUserMessage('Gagal di provider, jadi harus di-rollback');
+      conv.removeLastUserMessage();
+
+      const dir = getProjectSessionDir(testProjectDir, tempBaseDir);
+      assert.equal(fs.existsSync(path.join(dir, `${conv.sessionId}.jsonl`)), false);
+    });
+
+    it('reset() mematikan persistensi inkremental dari sesi lama', async () => {
+      const { Conversation } = await import('../src/chat/conversation.js');
+      const conv = new Conversation();
+      const lama = conv.sessionId;
+      conv.enableIncrementalSave({ projectPath: testProjectDir, baseConfigDir: tempBaseDir });
+      conv.addUserMessage('pesan pertama');
+      conv.addAssistantMessage('balasan');
+
+      const dir = getProjectSessionDir(testProjectDir, tempBaseDir);
+      assert.equal(fs.existsSync(path.join(dir, `${lama}.jsonl`)), true);
+
+      conv.reset();
+      assert.equal(conv.incrementalSave, null);
+      assert.notEqual(conv.sessionId, lama);
+      conv.addAssistantMessage('pesan di sesi baru');
+      assert.equal(fs.existsSync(path.join(dir, `${conv.sessionId}.jsonl`)), false);
+    });
+  });
 });
 

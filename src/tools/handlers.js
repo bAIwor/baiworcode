@@ -446,10 +446,38 @@ function terminateProcessTree(child) {
 }
 
 /**
+ * Batas waktu bawaan perintah foreground (ms). Bisa ditimpa lewat env
+ * `BAIWOR_RUN_COMMAND_TIMEOUT_MS`, atau per pemanggilan lewat argumen
+ * `timeout_ms` dari model (mis. untuk `mcode exec`, `npm install`, atau build).
+ *
+ * @param {number|string|null} [timeoutMs] - Permintaan eksplisit dari pemanggil.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {number} Nilai final dalam ms, dijepit ke rentang [1s, 10m].
+ */
+export function resolveCommandTimeout(timeoutMs = null, env = process.env) {
+  const MIN_MS = 1000;
+  const MAX_MS = 600000; // 10 menit
+  const DEFAULT_MS = 60000;
+
+  let base = DEFAULT_MS;
+  const rawDefault = env?.BAIWOR_RUN_COMMAND_TIMEOUT_MS;
+  if (rawDefault !== undefined && rawDefault !== null && String(rawDefault).trim() !== '') {
+    const parsed = Number.parseInt(String(rawDefault).trim(), 10);
+    if (Number.isFinite(parsed) && parsed > 0) base = parsed;
+  }
+
+  let value = base;
+  const requested = Number(timeoutMs);
+  if (Number.isFinite(requested) && requested > 0) value = requested;
+
+  return Math.min(MAX_MS, Math.max(MIN_MS, Math.floor(value)));
+}
+
+/**
  * Handler untuk menjalankan perintah terminal.
  * Mendukung eksekusi foreground (standar) maupun background task runner (asinkron).
  *
- * @param {{command?:string, cwd?:string, run_in_background?:boolean, is_background?:boolean, action?:string, task_id?:string}} args
+ * @param {{command?:string, cwd?:string, run_in_background?:boolean, is_background?:boolean, action?:string, task_id?:string, timeout_ms?:number}} args
  * @param {{signal?:AbortSignal}} [options] - Signal pembatalan dari sesi chat.
  */
 export async function handleRunCommand({
@@ -459,6 +487,7 @@ export async function handleRunCommand({
   is_background = false,
   action = 'run',
   task_id = null,
+  timeout_ms = null,
 } = {}, options = {}) {
   // 1. Aksi stop / batalkan task latar belakang
   if (action === 'stop') {
@@ -689,17 +718,23 @@ export async function handleRunCommand({
       });
     });
 
-    // Batas waktu (60 detik) dikelola sendiri, bukan lewat opsi `timeout` milik
-    // exec(). Bawaan Node hanya membunuh shell langsung (cmd.exe) dan
-    // meninggalkan proses cucu (npm install di tengah npm test, dsb. tetap
-    // hidup). terminateProcessTree() memastikan seluruh pohon proses berhenti.
+    // Batas waktu dikelola sendiri, bukan lewat opsi `timeout` milik exec().
+    // Bawaan Node hanya membunuh shell langsung (cmd.exe) dan meninggalkan
+    // proses cucu (npm install di tengah npm test, dsb. tetap hidup).
+    // terminateProcessTree() memastikan seluruh pohon proses berhenti.
+    // Nilainya bisa dikonfigurasi (env / argumen `timeout_ms`) karena sebagian
+    // perintah sah-sah saja berjalan lama.
+    const timeoutMs = resolveCommandTimeout(timeout_ms);
+    const timeoutSec = Math.round(timeoutMs / 1000);
     killTimer = setTimeout(() => {
       terminateProcessTree(child);
       finish({
         success: false,
-        output: `Perintah dihentikan karena melebihi batas waktu 60 detik: ${command}`,
+        output:
+          `Perintah dihentikan karena melebihi batas waktu ${timeoutSec} detik: ${command}` +
+          ' Jika perintah ini memang lama, ulangi dengan argumen timeout_ms yang lebih besar (maksimum 600000 ms = 10 menit).',
       });
-    }, 60000);
+    }, timeoutMs);
 
     if (signal) {
       if (signal.aborted) {
