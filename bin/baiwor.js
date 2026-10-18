@@ -42,6 +42,12 @@ import { discoverSkills, getSkill } from '../src/skills/skillManager.js';
 import { discoverRules } from '../src/rules/ruleManager.js';
 import { resetTodoStore } from '../src/tools/todoTool.js';
 import { isHomeDirectory } from '../src/tools/searchTool.js';
+import {
+  resolveWorkspace,
+  switchWorkspace,
+  extractTargetAndPrompt,
+  getWorkspaceInfo,
+} from '../src/workspace.js';
 import { renderStatusLine } from '../src/statusLine.js';
 import { resolveActiveCredentials } from '../src/auth/resolve.js';
 import { applyHelpStyle, helpHeader, helpFooter } from '../src/cliHelp.js';
@@ -425,6 +431,8 @@ const HELP_USAGE = {
   '/logout': '/logout [provider]',
   '/access': '/access [safe|full]',
   '/plan': '/plan [instruksi]',
+  '/cd': '/cd <folder>',
+  '/workspace': '/workspace [folder]',
 };
 
 function showHelp() {
@@ -446,7 +454,8 @@ function showHelp() {
   console.log(gold.bold('  🚀 Mulai dari sini (Contoh untuk Pemula):'));
   console.log(`    ${chalk.cyan('baiworcode "jelaskan struktur proyek ini"')}`);
   console.log(`    ${chalk.cyan('baiworcode plan "rancang fitur baru"')}`);
-  console.log(`    ${chalk.cyan('baiworcode "perbaiki error di src/index.js"')}`);
+  console.log(`    ${chalk.cyan('baiworcode ./proyek-lain')}  ${dim('─ buka bAIwor di folder proyek tertentu')}`);
+  console.log(`    ${chalk.cyan('baiworcode -C /path/proyek "perbaiki bug"')}  ${dim('─ jalankan di folder target')}`);
   console.log(`    ${chalk.cyan('baiworcode -c')}  ${dim('atau')}  ${chalk.cyan('baiworcode --resume')}  ${dim('─ lanjutkan sesi terakhir')}`);
   console.log();
   console.log(gold.bold('  🧭 Cara Membaca Aktivitas Tim Punakawan:'));
@@ -890,6 +899,49 @@ async function startInteractive(opts = {}) {
         console.log(chalk.gray('     Agen (Build/Plan) diganti dengan Shift+Tab di prompt.\n'));
         break;
       }
+      case '/cd':
+      case '/workspace': {
+        if (mainCmd === '/workspace' && !arg) {
+          const info = getWorkspaceInfo();
+          console.log(chalk.cyan.bold('\n  📁 Workspace Aktif: ') + chalk.white.bold(info.cwd));
+          if (info.isHome) {
+            console.log(chalk.yellow('     ⚠️ Direktori HOME pengguna — pencarian sangat luas & lambat.'));
+          }
+          console.log(chalk.gray(`     Sesi tersimpan : ${info.sessionCount} sesi proyek (.baiwor/sessions)`));
+          console.log(chalk.gray(`     Untuk ganti    : ${chalk.cyan('/cd <path>')} atau ${chalk.cyan('/workspace <path>')}\n`));
+          break;
+        }
+
+        let targetPath = arg;
+        if (!targetPath) {
+          const inputPath = await p.text({
+            message: 'Masukkan path folder kerja (workspace) baru:',
+            placeholder: 'Contoh: ../proyek-lain atau D:\\projects\\app',
+          });
+          if (p.isCancel(inputPath) || !inputPath?.trim()) {
+            break;
+          }
+          targetPath = inputPath.trim();
+        }
+
+        const res = switchWorkspace(targetPath);
+        if (!res.ok) {
+          console.log(chalk.red.bold(`\n  ❌ ${res.error}\n`));
+          break;
+        }
+
+        // Reset percakapan dan todoStore agar tidak mencampur konteks proyek lama
+        resetConversation();
+        resetTodoStore();
+        conversationSession.clearHistory();
+
+        console.log(chalk.green.bold('\n  ✔ Workspace aktif berpindah ke: ') + chalk.cyan.bold(res.newCwd));
+        console.log(chalk.gray(`     (sebelumnya: ${res.oldCwd})`));
+        console.log(chalk.gray('     Konteks percakapan & todo list di-reset untuk ruang kerja baru.'));
+        warnIfHomeDirectory();
+        console.log();
+        break;
+      }
       case '/compact': {
         const res = await compactConversation(conversationSession);
         if (!res.compacted) {
@@ -1209,6 +1261,28 @@ async function startInteractive(opts = {}) {
   }
 }
 
+// Scan opsi -C / --cwd / -d / --dir lebih awal agar seluruh subcommand
+// (seperti `session list`, `plan`, dsb) juga otomatis berjalan di workspace target.
+let earlyWorkspaceSwitched = false;
+for (let i = 0; i < process.argv.length; i++) {
+  const arg = process.argv[i];
+  let targetVal = null;
+  if ((arg === '-C' || arg === '--cwd' || arg === '-d' || arg === '--dir') && i + 1 < process.argv.length) {
+    targetVal = process.argv[i + 1];
+  } else if (arg.startsWith('--cwd=') || arg.startsWith('--dir=')) {
+    targetVal = arg.split('=')[1];
+  }
+  if (targetVal) {
+    const res = switchWorkspace(targetVal);
+    if (!res.ok) {
+      console.error(chalk.red.bold(`\n  ❌ ${res.error}\n`));
+      process.exit(1);
+    }
+    earlyWorkspaceSwitched = true;
+    break;
+  }
+}
+
 const program = new Command();
 
 // `--help` dibuat berwarna & bermerek: header/footer hanya untuk help utama,
@@ -1221,11 +1295,22 @@ program
   .name('baiworcode')
   .description(`${APP_NAME} v${VERSION} — ${WEBSITE.replace(/^https?:\/\//, '')}`)
   .version(VERSION, '-v, --version')
+  .option('-C, --cwd <dir>', 'Tentukan folder kerja (workspace) aktif')
+  .option('-d, --dir <dir>', 'Alias untuk --cwd')
   .option('-c, --continue', 'Lanjutkan sesi percakapan terakhir')
   .option('-r, --resume', 'Alias untuk --continue')
   .option('-s, --session <id>', 'Lanjutkan sesi percakapan tertentu berdasarkan ID')
-  .argument('[prompt...]', 'Pertanyaan atau instruksi coding langsung')
+  .argument('[targetOrPrompt...]', 'Folder target (bila ada) dan/atau instruksi coding langsung')
   .action(async (promptParts, options = {}) => {
+    const { targetDir, prompt: fullPrompt } = extractTargetAndPrompt(promptParts, options);
+    if (targetDir && !earlyWorkspaceSwitched) {
+      const res = switchWorkspace(targetDir);
+      if (!res.ok) {
+        console.error(chalk.red.bold(`\n  ❌ ${res.error}\n`));
+        process.exit(1);
+      }
+    }
+
     let resumed = false;
     if (options.session) {
       resumed = conversationSession.loadFromDisk(options.session);
@@ -1239,8 +1324,7 @@ program
       }
     }
 
-    if (promptParts && promptParts.length > 0) {
-      const fullPrompt = promptParts.join(' ');
+    if (fullPrompt && fullPrompt.length > 0) {
       if (resumed) {
         showResumedBanner();
       }

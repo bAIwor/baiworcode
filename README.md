@@ -189,6 +189,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `/compact` — Ringkas konteks percakapan untuk menghemat ruang token
 - `/timeline [compact|detail]` — Ganti mode tampilan timeline: compact (satu baris cepat) atau detail (pohon lengkap)
 - `/session [list|resume|delete|clear]` — Kelola sesi percakapan proyek (daftar sesi, lanjutkan, hapus satu, atau hapus semua)
+- `/cd <folder>` — Pindah folder kerja (workspace) aktif secara langsung di dalam sesi
+- `/workspace [folder]` — Lihat status ruang kerja aktif atau ganti folder kerja
 - `/skill [list|info]` — Kelola modul keahlian & plugin (`.baiwor/skills`)
 - `/rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
 - `/status` — Status konfigurasi, provider aktif, **latency**, dan sesi login
@@ -204,7 +206,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `/q` — Keluar dari bAIwor Code (alias `/exit`)
 
 ### Perintah Langsung CLI
-- `baiworcode [prompt...]` — Kirim satu prompt langsung lalu keluar (non-interaktif)
+- `baiworcode [folder] [prompt...]` — Buka bAIwor di folder proyek tertentu atau jalankan instruksi coding langsung
+- `baiworcode -C, --cwd <folder>` — Tentukan folder kerja (workspace) aktif (alias: `-d`, `--dir`)
 - `baiworcode plan [prompt...]` — Rancang rencana arsitektur & solusi langsung dari terminal luar
 - `baiworcode session [list|resume|delete|clear]` — Kelola riwayat sesi proyek (lihat, lanjutkan, hapus satu, atau hapus semua)
 - `baiworcode skill [action] [target]` — Kelola modul keahlian & plugin (`.baiwor/skills`)

@@ -57,6 +57,8 @@ export function helpFooter() {
     chalk.hex('#FBBF24').bold('  CONTOH CEPAT'),
     `    ${chalk.cyan(`${APP_SLUG} "jelaskan struktur proyek ini"`)}`,
     `    ${chalk.cyan(`${APP_SLUG} plan "rancang sistem auth JWT"`)}`,
+    `    ${chalk.cyan(`${APP_SLUG} ./proyek-lain`)}${chalk.gray(' → buka di folder proyek tertentu')}`,
+    `    ${chalk.cyan(`${APP_SLUG} -C /path/proyek "perbaiki bug"`)}`,
     `    ${cmd(`${APP_SLUG} model`)}${chalk.gray('→ pilih provider & model')}`,
     `    ${cmd(`${APP_SLUG} session`)}${chalk.gray('→ kelola riwayat sesi proyek')}`,
     `    ${cmd(`${APP_SLUG} status`)}${chalk.gray('→ cek kredensial & latency')}`,

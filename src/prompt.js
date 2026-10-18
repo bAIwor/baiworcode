@@ -195,6 +195,8 @@ export const COMMANDS = [
   { name: '/compact', desc: 'Ringkas konteks percakapan untuk menghemat token' },
   { name: '/timeline', desc: 'Ganti tampilan aktivitas: compact (satu baris) / detail (pohon)' },
   { name: '/session', desc: 'Kelola sesi percakapan (list, resume, delete, clear)' },
+  { name: '/cd', desc: 'Pindah folder kerja (workspace) aktif: /cd <folder>' },
+  { name: '/workspace', desc: 'Lihat status atau ganti folder kerja (workspace) aktif' },
   { name: '/skill', desc: 'Kelola modul keahlian & plugin (.baiwor/skills)' },
   { name: '/rules', desc: 'Lihat aturan koding aktif (BAIWORS.md / .baiwor/rules)' },
   { name: '/status', desc: 'Status konfigurasi & model AI aktif' },
