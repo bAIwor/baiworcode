@@ -30,6 +30,10 @@ export const DEFAULT_CONFIG = {
   // 'full' (kelas confirm dilewati di TTY; kelas deny tetap ditolak).
   // Diubah via Shift+Tab di prompt.
   accessMode: 'normal',
+  // Override destruktif SADAR (default: tertutup). Berisi daftar id aturan
+  // merusak yang boleh dijalankan (mis. ['power'] untuk shutdown/reboot), atau
+  // true untuk membuka semua. Env BAIWOR_ALLOW_DESTRUCTIVE menang atas ini.
+  destructiveAllow: [],
   // TinyFish Web Intelligence: API Key untuk Search, Fetch (anti-bot & JS), dan Web Automate
   tinyfishApiKey: '',
   // Model Context Protocol (MCP): daftar server terdaftar { <name>: { type, url?, command?, args?, headers? } }

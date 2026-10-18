@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
-import { analyzeCommand, classifyCommand, isSubPath, isSensitivePath, isPathAllowed } from '../src/tools/sandbox.js';
+import { analyzeCommand, classifyCommand, isSubPath, isSensitivePath, isPathAllowed, parseDestructiveAllowlist, isDestructiveAllowed, DANGEROUS_RULE_IDS } from '../src/tools/sandbox.js';
 import { handleRunCommand } from '../src/tools/handlers.js';
 
 const WORKSPACE = process.cwd();
@@ -232,5 +232,83 @@ describe('Sandbox A5: integrasi handleRunCommand', () => {
     assert.equal(res.success, false);
     assert.match(res.output, /dibatalkan/i);
     assert.ok(elapsed < 4000, `harusnya berhenti cepat, tetapi ${elapsed}ms`);
+  });
+});
+
+describe('Sandbox: override destruktif sadar (id aturan + allowlist)', () => {
+  it('menyertakan ruleId pada penolakan dangerous-command', () => {
+    const v = analyzeCommand('sudo shutdown -h now', { workspace: WORKSPACE });
+    assert.equal(v.allowed, false);
+    assert.equal(v.category, 'dangerous-command');
+    assert.equal(v.ruleId, 'power');
+
+    const r = classifyCommand('git push --force origin main', { workspace: WORKSPACE });
+    assert.equal(r.decision, 'deny');
+    assert.equal(r.ruleId, 'git-force-push');
+
+    assert.ok(DANGEROUS_RULE_IDS.includes('power'));
+    assert.ok(DANGEROUS_RULE_IDS.includes('rm-root'));
+  });
+
+  it('parseDestructiveAllowlist menangani env/config dengan benar', () => {
+    assert.deepEqual([...parseDestructiveAllowlist('power', undefined)], ['power']);
+    assert.deepEqual([...parseDestructiveAllowlist(undefined, ['git-force-push'])], ['git-force-push']);
+    // env kosong -> jatuh ke config
+    assert.deepEqual([...parseDestructiveAllowlist('', ['power'])], ['power']);
+    // env menang atas config
+    assert.deepEqual([...parseDestructiveAllowlist('power', ['rm-root'])], ['power']);
+    // daftar dipisah koma + normalisasi huruf besar
+    assert.deepEqual([...parseDestructiveAllowlist('POWER, git-force-push', undefined)], [
+      'power',
+      'git-force-push',
+    ]);
+    // pembuka semua / penutup
+    assert.equal(parseDestructiveAllowlist('all', undefined), 'all');
+    assert.equal(parseDestructiveAllowlist('1', undefined), 'all');
+    assert.equal(parseDestructiveAllowlist(true, undefined), 'all');
+    assert.equal(parseDestructiveAllowlist(undefined, undefined).size, 0);
+    assert.equal(parseDestructiveAllowlist('none', undefined).size, 0);
+  });
+
+  it('isDestructiveAllowed hanya membuka dangerous-command yang diizinkan', () => {
+    const power = { category: 'dangerous-command', ruleId: 'power' };
+    const sensitive = { category: 'sensitive-path', ruleId: null };
+
+    assert.equal(isDestructiveAllowed(power, new Set(['power'])), true);
+    assert.equal(isDestructiveAllowed(power, new Set(['rm-root'])), false);
+    assert.equal(isDestructiveAllowed(power, 'all'), true);
+    assert.equal(isDestructiveAllowed(sensitive, 'all'), false, 'kelas lain tidak bisa dibuka');
+    assert.equal(isDestructiveAllowed(power, new Set()), false);
+  });
+
+  it('handleRunCommand: power ditolak default, lolos saat override sadar', async () => {
+    const denied = await handleRunCommand({ command: 'echo shutdown' });
+    assert.equal(denied.success, false);
+    assert.match(denied.output, /Ditolak oleh sandbox/);
+
+    const prev = process.env.BAIWOR_ALLOW_DESTRUCTIVE;
+    process.env.BAIWOR_ALLOW_DESTRUCTIVE = 'power';
+    try {
+      // `echo shutdown` aman (tidak benar-benar mematikan) tapi memicu aturan `power`.
+      const allowed = await handleRunCommand({ command: 'echo shutdown' });
+      assert.equal(allowed.success, true, allowed.output);
+      assert.match(allowed.output, /shutdown/);
+    } finally {
+      if (prev === undefined) delete process.env.BAIWOR_ALLOW_DESTRUCTIVE;
+      else process.env.BAIWOR_ALLOW_DESTRUCTIVE = prev;
+    }
+  });
+
+  it('handleRunCommand: override TIDAK membuka kelas deny lain (kredensial)', async () => {
+    const prev = process.env.BAIWOR_ALLOW_DESTRUCTIVE;
+    process.env.BAIWOR_ALLOW_DESTRUCTIVE = 'all';
+    try {
+      const res = await handleRunCommand({ command: 'cat ~/.ssh/id_rsa' });
+      assert.equal(res.success, false);
+      assert.match(res.output, /Ditolak oleh sandbox/);
+    } finally {
+      if (prev === undefined) delete process.env.BAIWOR_ALLOW_DESTRUCTIVE;
+      else process.env.BAIWOR_ALLOW_DESTRUCTIVE = prev;
+    }
   });
 });

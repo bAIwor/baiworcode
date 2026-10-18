@@ -3,9 +3,17 @@ import path from 'node:path';
 import { exec, spawn } from 'node:child_process';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { isSubPath, isSensitivePath, analyzeCommand, classifyCommand } from './sandbox.js';
+import chalk from 'chalk';
+import {
+  isSubPath,
+  isSensitivePath,
+  analyzeCommand,
+  classifyCommand,
+  parseDestructiveAllowlist,
+  isDestructiveAllowed,
+} from './sandbox.js';
 import { requestCommandApproval } from './approval.js';
-import { getAccessMode } from '../config.js';
+import { getAccessMode, getConfig } from '../config.js';
 import { applyEdit, applyEditList, applyUnifiedDiff } from './editUtil.js';
 
 // Helper path tetap diekspor dari modul ini agar kontrak lama tidak berubah.
@@ -524,10 +532,26 @@ export async function handleRunCommand({
   const classification = classifyCommand(command, { workspace: process.cwd() });
 
   if (classification.decision === 'deny') {
-    return {
-      success: false,
-      output: `Ditolak oleh sandbox bAIwor [${classification.category}]: ${classification.reason}`,
-    };
+    // Override destruktif SADAR (default: TERTUTUP). Hanya kelas
+    // 'dangerous-command' yang bisa dibuka, dan hanya untuk id aturan yang
+    // disebut eksplisit oleh operator — via env BAIWOR_ALLOW_DESTRUCTIVE atau
+    // field config `destructiveAllow`. Kelas deny lain (kredensial,
+    // workspace-escape) tetap ditolak mutlak.
+    const allowlist = parseDestructiveAllowlist(
+      process.env.BAIWOR_ALLOW_DESTRUCTIVE,
+      getConfig().destructiveAllow
+    );
+    if (!isDestructiveAllowed(classification, allowlist)) {
+      return {
+        success: false,
+        output: `Ditolak oleh sandbox bAIwor [${classification.category}]: ${classification.reason}`,
+      };
+    }
+    console.log(
+      chalk.yellow.bold(
+        `  ⚠️  Override destruktif aktif [${classification.ruleId}]: ${classification.reason}`
+      )
+    );
   }
 
   if (classification.decision === 'confirm') {

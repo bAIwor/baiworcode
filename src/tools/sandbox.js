@@ -47,41 +47,56 @@ const SYSTEM_ALLOWED_PREFIXES =
     ? ['c:\\windows', 'c:\\program files']
     : ['/usr', '/bin', '/sbin', '/lib', '/lib64', '/opt', '/snap'];
 
-/** Pola perintah yang bersifat merusak dan tidak pernah wajar untuk agent coding. */
+/**
+ * Pola perintah yang bersifat merusak dan tidak pernah wajar untuk agent coding.
+ *
+ * Setiap aturan punya `id` stabil. Id ini dipakai oleh mekanisme override sadar
+ * (lihat `parseDestructiveAllowlist`) supaya operator bisa membuka SATU aturan
+ * tertentu tanpa membuka semua — mis. hanya `power` untuk shutdown.
+ */
 const DANGEROUS_RULES = [
   {
+    id: 'rm-root',
     re: /\brm\s+(?:-[a-zA-Z]+\s+)*(?:\/|~|\$HOME|%USERPROFILE%)(?:\s|$)/i,
     reason: 'menghapus direktori root/home secara rekursif',
   },
   {
+    id: 'del-drive',
     re: /\bdel\s+\/[a-z]*[sq][a-z]*\s+[a-z]:[\\/]?\s*(?:\s|$)/i,
     reason: 'menghapus seluruh isi drive',
   },
   {
+    id: 'format-drive',
     re: /\b(?:format|mkfs(?:\.\w+)?)\s+[a-z]:/i,
     reason: 'memformat drive',
   },
   {
+    id: 'dd-block-device',
     re: /\bdd\s+[^|;&]*\bof=\/dev\//i,
     reason: 'menulis langsung ke perangkat blok',
   },
   {
+    id: 'power',
     re: /\b(?:shutdown|reboot|halt|poweroff)\b/i,
     reason: 'mematikan atau me-reboot mesin',
   },
   {
+    id: 'pipe-to-shell',
     re: /\b(?:curl|wget)\b[^|;&]*\|\s*(?:sudo\s+)?(?:sh|bash|zsh|pwsh|powershell)\b/i,
     reason: 'menjalankan skrip dari internet secara langsung',
   },
   {
+    id: 'git-force-push',
     re: /\bgit\s+push\b[^|;&]*(?:--force|-f)(?:\s|$)/i,
     reason: 'force push — menimpa riwayat remote',
   },
   {
+    id: 'fork-bomb',
     re: /:\s*\(\s*\)\s*\{.*\|\s*:.*\}/,
     reason: 'fork bomb',
   },
   {
+    id: 'chmod-root',
     re: /\bchmod\s+-R\s+777\s+\/(?:\s|$)/i,
     reason: 'mengubah izin seluruh sistem',
   },
@@ -198,7 +213,12 @@ export const CONFIRM_RULES = [
 export function classifyCommand(command, options = {}) {
   const verdict = analyzeCommand(command, options);
   if (!verdict.allowed) {
-    return { decision: 'deny', category: verdict.category, reason: verdict.reason };
+    return {
+      decision: 'deny',
+      category: verdict.category,
+      reason: verdict.reason,
+      ruleId: verdict.ruleId ?? null,
+    };
   }
 
   const raw = String(command ?? '');
@@ -208,15 +228,64 @@ export function classifyCommand(command, options = {}) {
         decision: 'confirm',
         category: 'needs-approval',
         reason: `Perintah ini ${rule.reason}.`,
+        ruleId: null,
       };
     }
   }
 
-  return { decision: 'allow', category: null, reason: null };
+  return { decision: 'allow', category: null, reason: null, ruleId: null };
 }
 
-function deny(category, reason) {
-  return { allowed: false, category, reason };
+/** Daftar id aturan perintah merusak yang boleh dibuka lewat override. */
+export const DANGEROUS_RULE_IDS = DANGEROUS_RULES.map((rule) => rule.id);
+
+/**
+ * Mengurai izin override destruktif dari env/config menjadi Set id (atau 'all').
+ *
+ * Sengaja menerima nilai sebagai argumen (bukan membaca global) agar mudah diuji.
+ * Aturan:
+ *   - kosong / undefined / false / '' -> tidak ada yang diizinkan (Set kosong)
+ *   - true / '1' / 'true' / 'all' / '*' -> 'all' (SEMUA aturan merusak dibuka)
+ *   - string 'power,git-force-push' atau array ['power'] -> Set id tersebut
+ *
+ * Env (`BAIWOR_ALLOW_DESTRUCTIVE`) menang atas `config.destructiveAllow`.
+ */
+export function parseDestructiveAllowlist(envValue, configValue) {
+  const raw =
+    envValue !== undefined && envValue !== null && envValue !== '' ? envValue : configValue;
+
+  if (raw === undefined || raw === null || raw === false || raw === '') return new Set();
+  if (raw === true) return 'all';
+
+  if (typeof raw === 'string') {
+    const v = raw.trim().toLowerCase();
+    if (!v || v === '0' || v === 'false' || v === 'none') return new Set();
+    if (v === '1' || v === 'true' || v === 'all' || v === '*') return 'all';
+    return new Set(v.split(',').map((s) => s.trim()).filter(Boolean));
+  }
+
+  if (Array.isArray(raw)) {
+    return new Set(raw.map((s) => String(s).trim().toLowerCase()).filter(Boolean));
+  }
+
+  return new Set();
+}
+
+/**
+ * Apakah penolakan `dangerous-command` boleh diteruskan karena override sadar.
+ *
+ * Hanya kelas `dangerous-command` yang bisa dibuka. Kelas lain (kredensial,
+ * workspace-escape) TETAP ditolak mutlak — override ini tidak menembusnya.
+ */
+export function isDestructiveAllowed(classification, allowlist) {
+  if (!classification || classification.category !== 'dangerous-command') return false;
+  if (!classification.ruleId) return false;
+  if (allowlist === 'all') return true;
+  return allowlist instanceof Set && allowlist.has(classification.ruleId);
+}
+
+function deny(category, reason, ruleId = null) {
+  return { allowed: false, category, reason, ruleId };
 }
 
 /**
@@ -357,7 +426,7 @@ export function analyzeCommand(command, options = {}) {
   // 2. Pola perintah merusak
   for (const rule of DANGEROUS_RULES) {
     if (rule.re.test(raw)) {
-      return deny('dangerous-command', `Perintah ditolak karena ${rule.reason}.`);
+      return deny('dangerous-command', `Perintah ditolak karena ${rule.reason}.`, rule.id);
     }
   }
 
