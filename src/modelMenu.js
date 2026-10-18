@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
+import { spinner } from './spinner.js';
 import { getConfig, saveConfig, maskSecret } from './config.js';
 import { login, logout, PROVIDERS } from './auth/index.js';
 import { CLI_USER_AGENT } from './branding.js';
@@ -69,7 +70,7 @@ async function configureAgentikFlow(existingCp, customList, config) {
   const apiKey = (inputKey && inputKey.trim()) ? inputKey.trim() : currentKey;
 
   // 3. Probe daftar model dari server (endpoint /models)
-  const s = p.spinner();
+  const s = spinner();
   s.start(`Menghubungi ${cleanUrl(baseUrl)}/models...`);
 
   let fetchedModels = [];
@@ -559,7 +560,7 @@ export async function runModelMenu() {
         }
 
         if (subChoice === 'refresh_models') {
-          const s = p.spinner();
+          const s = spinner();
           s.start(`Menghubungi ${cleanUrl(cp.baseUrl)}/models...`);
 
           try {
@@ -744,7 +745,7 @@ export async function runModelMenu() {
       }
 
       if (subChoice === 'refresh_models') {
-        const s = p.spinner();
+        const s = spinner();
         s.start(`Menghubungi ${cleanUrl(cp.baseUrl)}/models...`);
 
         try {
@@ -845,7 +846,7 @@ export async function runModelMenu() {
       if (p.isCancel(apiKey)) continue;
 
       const cleanBase = baseUrl.trim().replace(/\/+$/, '');
-      const s = p.spinner();
+      const s = spinner();
       s.start(`Menghubungi ${cleanBase}/models...`);
 
       let fetchedModels = [];

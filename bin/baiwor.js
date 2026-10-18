@@ -68,25 +68,14 @@ function restoreTerminal() {
   } catch {}
 }
 
-// Watchdog: bila stdin sempat tertinggal dalam keadaan paused (race ConPTY pada
-// prompt beruntun seperti di /model), pulihkan otomatis ≤2 detik agar tombol
-// kembali berfungsi. Hanya bertindak bila memang paused — tidak mengganggu
-// prompt yang sedang aktif.
+// Keluar darurat universal: tekan Ctrl+C 3x dalam 1,5 detik untuk memaksa
+// keluar bahkan ketika prompt sedang raw mode (saat OS tidak lagi memancarkan
+// sinyal SIGINT, sehingga handler SIGINT di atas tidak pernah tercapai).
 if (process.stdin.isTTY) {
   try {
     readline.emitKeypressEvents(process.stdin);
   } catch {}
-  const stdinWatchdog = setInterval(() => {
-    try {
-      if (process.stdin.isPaused()) process.stdin.resume();
-    } catch {}
-  }, 2000);
-  if (typeof stdinWatchdog.unref === 'function') stdinWatchdog.unref();
 }
-
-// Keluar darurat universal: tekan Ctrl+C 3x dalam 1,5 detik untuk memaksa
-// keluar bahkan ketika prompt sedang raw mode (saat OS tidak lagi memancarkan
-// sinyal SIGINT, sehingga handler SIGINT di atas tidak pernah tercapai).
 let panicCtrlCCount = 0;
 let panicCtrlCTimer = null;
 process.stdin.on('keypress', (_str, key) => {

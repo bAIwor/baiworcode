@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
+import { spinner } from '../spinner.js';
 import { getConfig, saveConfig, maskSecret } from '../config.js';
 import { PROVIDERS } from './registry.js';
 import { runDeviceFlow } from './device.js';
@@ -122,7 +123,7 @@ export async function login(providerId) {
   }
 
   if (provider.method === 'agy') {
-    const s = p.spinner();
+    const s = spinner();
     s.start('Memeriksa status Antigravity CLI (agy)...');
 
     const agyExe = process.env.ANTIGRAVITY_AGENTAPI_EXE || 'agy';

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import chalk from 'chalk';
-import * as p from '@clack/prompts';
+import { spinner } from '../spinner.js';
 import { openBrowser } from './device.js';
 import { USER_AGENT } from '../branding.js';
 
@@ -102,7 +102,7 @@ export async function runPkceFlow(provider, clientId, clientSecret = '') {
         const redirectHost = provider.redirectHost || 'localhost';
         const redirectUri = `http://${redirectHost}:${port}${redirectPath}`;
 
-        const s = p.spinner();
+        const s = spinner();
         s.start('Menukarkan kode otorisasi dengan Access Token...');
 
         const tokenBody = new URLSearchParams({

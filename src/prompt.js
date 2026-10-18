@@ -9,23 +9,58 @@ import { todoStore } from './tools/todoTool.js';
 import { renderTodoWidget, toggleTodoCompactMode, getTodoCompactMode } from './chat/planMode.js';
 import { CONFIG_DIR, getAccessMode, setAccessMode } from './config.js';
 
-// Proteksi global untuk seluruh prompt @clack/core (@clack/prompts).
+// ---------------------------------------------------------------------------
+// Manajemen state stdin untuk seluruh prompt @clack/core (@clack/prompts).
 //
 // PENTING: blok ini TIDAK BOLEH mem-pause process.stdin. Pada Windows ConPTY,
-// memanggil pause()/resume() setiap kali prompt dibuka/ditutup membuat state
-// stdin balapan dengan prompt berikutnya dan bisa meninggalkan stdin dalam
-// keadaan paused tanpa listener 'keypress' — terminal membeku dan Ctrl+C pun
-// mati. Inilah penyebab freeze pada alur /model yang membuka banyak prompt
-// berurutan.
+// pause()/resume() yang dijalankan setiap buka/tutup prompt bisa balapan dengan
+// prompt berikutnya dan meninggalkan stdin dalam keadaan salah — terminal
+// membeku dan Ctrl+C pun mati.
 //
-// Yang dijamin di sini hanya satu: raw mode aktif selama prompt hidup. Siklus
-// penutupan (unpipe + setRawMode(false)) ditangani penuh oleh @clack/core.
+// Pendekatan yang dipakai:
+//   * prompt() hanya memastikan raw mode aktif (+ resume bila paused).
+//   * close() tidak menyentuh pause sama sekali.
+//   * Sebuah watchdog kecil menegakkan invariant setiap ~1,2 detik sehingga
+//     race ConPTY pulih sendiri, bukan menggantung permanen.
+// ---------------------------------------------------------------------------
+
+/** Jumlah prompt @clack/core yang sedang hidup. */
+let activePromptCount = 0;
+
+export function getActivePromptCount() {
+  return activePromptCount;
+}
+
+// Log diagnostik (hanya aktif bila BAIWOR_DEBUG_STDIN=1) untuk memburu freeze.
+const DEBUG_STDIN = Boolean(process.env.BAIWOR_DEBUG_STDIN);
+let debugStdinStream = null;
+function logStdin(event) {
+  if (!DEBUG_STDIN) return;
+  try {
+    if (!debugStdinStream) {
+      if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      debugStdinStream = fs.createWriteStream(path.join(CONFIG_DIR, 'debug-stdin.log'), {
+        flags: 'a',
+      });
+    }
+    const input = process.stdin;
+    let paused = 'n/a';
+    try {
+      paused = typeof input?.isPaused === 'function' ? String(input.isPaused()) : 'n/a';
+    } catch {}
+    debugStdinStream.write(
+      `${new Date().toISOString()} ${event} active=${activePromptCount} isRaw=${input?.isRaw} paused=${paused}\n`
+    );
+  } catch {}
+}
+
 if (typeof Prompt === 'function' && !Prompt.prototype._baiworStdinPatched) {
   Prompt.prototype._baiworStdinPatched = true;
 
   const origPrompt = Prompt.prototype.prompt;
   Prompt.prototype.prompt = function (...args) {
     const input = this.input || process.stdin;
+    activePromptCount++;
     if (input && input.isTTY) {
       if (typeof input.setRawMode === 'function' && !input.isRaw) {
         try {
@@ -43,7 +78,16 @@ if (typeof Prompt === 'function' && !Prompt.prototype._baiworStdinPatched) {
         } catch {}
       }
     }
+    logStdin('prompt()');
     return origPrompt.apply(this, args);
+  };
+
+  const origClose = Prompt.prototype.close;
+  Prompt.prototype.close = function (...args) {
+    const res = origClose.apply(this, args);
+    if (activePromptCount > 0) activePromptCount--;
+    logStdin('close()');
+    return res;
   };
 
   const origOnKeypress = Prompt.prototype.onKeypress;
@@ -64,6 +108,37 @@ if (typeof Prompt === 'function' && !Prompt.prototype._baiworStdinPatched) {
     return origOnKeypress.call(this, u, key);
   };
 }
+
+// Watchdog invariant stdin. Setiap ~1,2 detik:
+//   - ada prompt aktif  → stdin wajib raw mode & tidak paused
+//   - tidak ada prompt  → stdin wajib NON raw (agar Ctrl+C jadi SIGINT & bisa keluar)
+// Hanya bertindak bila state-nya memang salah, jadi tidak mengganggu saat normal.
+function enforceStdinInvariant() {
+  const input = process.stdin;
+  if (!input || !input.isTTY) return;
+  try {
+    if (activePromptCount > 0) {
+      if (typeof input.setRawMode === 'function' && !input.isRaw) {
+        input.setRawMode(true);
+        logStdin('watchdog:raw-on');
+      }
+      if (
+        typeof input.isPaused === 'function' &&
+        input.isPaused() &&
+        typeof input.resume === 'function'
+      ) {
+        input.resume();
+        logStdin('watchdog:resume');
+      }
+    } else if (typeof input.setRawMode === 'function' && input.isRaw) {
+      input.setRawMode(false);
+      logStdin('watchdog:raw-off');
+    }
+  } catch {}
+}
+
+const stdinInvariantTimer = setInterval(enforceStdinInvariant, 1200);
+if (typeof stdinInvariantTimer.unref === 'function') stdinInvariantTimer.unref();
 
 const HISTORY_FILE = path.join(CONFIG_DIR, 'history.json');
 const MAX_HISTORY = 200;

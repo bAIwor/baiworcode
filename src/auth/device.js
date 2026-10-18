@@ -1,6 +1,6 @@
 import { exec, execFile } from 'node:child_process';
 import chalk from 'chalk';
-import * as p from '@clack/prompts';
+import { spinner } from '../spinner.js';
 import { USER_AGENT } from '../branding.js';
 
 export function openBrowser(url) {
@@ -25,7 +25,7 @@ export function openBrowser(url) {
  * Menjalankan OAuth 2.0 Device Authorization Grant (RFC 8628)
  */
 export async function runDeviceFlow(provider, clientId) {
-  const s = p.spinner();
+  const s = spinner();
   s.start(`Menghubungi endpoint Device Authorization untuk ${provider.name}...`);
 
   let deviceData;
@@ -77,7 +77,7 @@ export async function runDeviceFlow(provider, clientId) {
   const targetUrl = completeUri || verificationUri;
   openBrowser(targetUrl);
 
-  const pollSpinner = p.spinner();
+  const pollSpinner = spinner();
   pollSpinner.start('Menunggu persetujuan Anda di peramban web...');
 
   while (Date.now() < deadline) {
