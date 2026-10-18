@@ -173,7 +173,7 @@ export const WIDGET_TODO_ICONS = {
 };
 
 /**
- * Merender Todo List Widget interaktif dengan header format MiniMax Code:
+ * Merender Todo List Widget interaktif dengan header format bAIwor Code:
  * Format lengkap : "Todo list {done}/{total} · {remaining} remaining · Ctrl+T {compact|expand}"
  * Format ringkas : "Todo list {done}/{total}"
  * Default selalu menampilkan SEMUA item tugas (show all).

@@ -389,7 +389,7 @@ export async function runModelMenu() {
       optionNumber++;
     }
 
-    // 4. Model aliases (switch langsung tanpa sub-menu, gaya Hermes)
+    // 4. Model aliases (switch langsung tanpa sub-menu)
     const activeAlias = activeAliasName(config);
     for (const a of listAliases(config)) {
       const suffix = a.name === activeAlias ? chalk.green.bold(' ← currently active') : '';

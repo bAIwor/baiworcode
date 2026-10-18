@@ -62,15 +62,33 @@ export class Conversation {
 
   /**
    * Menambahkan pesan balasan asisten (AI).
-   * Mendukung opsi tool_calls untuk persiapan Tahap 3B.
+   * Mendukung opsi tool_calls dan reasoning_content (untuk model penalaran/thinking).
+   *
+   * @param {string|object} content - Konten teks atau objek pesan lengkap
+   * @param {Array|null} [toolCalls=null] - Daftar tool_calls jika ada
+   * @param {string|null} [reasoningContent=null] - Konten reasoning/thinking jika ada
+   * @returns {object}
    */
-  addAssistantMessage(content, toolCalls = null) {
+  addAssistantMessage(content, toolCalls = null, reasoningContent = null) {
+    let msgContent = content;
+    let msgToolCalls = toolCalls;
+    let msgReasoning = reasoningContent;
+
+    if (content && typeof content === 'object' && !Array.isArray(content)) {
+      msgContent = content.content || '';
+      msgToolCalls = toolCalls || content.tool_calls || content.toolCalls || null;
+      msgReasoning = reasoningContent || content.reasoning_content || content.reasoning || null;
+    }
+
     const msg = {
       role: 'assistant',
-      content: content || '',
+      content: typeof msgContent === 'string' ? msgContent : '',
     };
-    if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
-      msg.tool_calls = toolCalls;
+    if (msgToolCalls && Array.isArray(msgToolCalls) && msgToolCalls.length > 0) {
+      msg.tool_calls = msgToolCalls;
+    }
+    if (msgReasoning && typeof msgReasoning === 'string' && msgReasoning.length > 0) {
+      msg.reasoning_content = msgReasoning;
     }
     this.messages.push(msg);
     return msg;
@@ -101,6 +119,7 @@ export class Conversation {
       if (m.tool_calls) copy.tool_calls = m.tool_calls;
       if (m.tool_call_id) copy.tool_call_id = m.tool_call_id;
       if (m.name) copy.name = m.name;
+      if (m.reasoning_content !== undefined) copy.reasoning_content = m.reasoning_content;
       return copy;
     });
   }

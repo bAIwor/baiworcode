@@ -4,7 +4,7 @@ import { APP_NAME, VERSION, TAGLINE } from '../branding.js';
 
 /**
  * Menjalankan bAIwor Code sebagai MCP Server melalui standar input/output (stdio).
- * Kompatibel dengan Claude Desktop, Cursor, Windsurf, dan klien MCP lainnya.
+ * Kompatibel dengan berbagai aplikasi dan klien MCP berstandar stdio.
  */
 export function startMcpServer() {
   const rl = readline.createInterface({

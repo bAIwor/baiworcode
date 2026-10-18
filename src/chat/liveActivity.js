@@ -40,8 +40,8 @@ function truncateAnsi(str, maxWidth) {
 /**
  * Blok aktivitas tool yang "hidup": digambar ulang di tempat sementara tool
  * berjalan, sehingga pengguna melihat langkah muncul satu per satu dengan
- * penanda berputar pada langkah yang sedang aktif — pola yang sama dipakai
- * CLI seperti opencode/MCode.
+ * penanda berputar pada langkah yang sedang aktif — pola khas antarmuka
+ * terminal bAIwor Code.
  *
  * Di luar TTY seluruh operasi gambar menjadi no-op (`enabled === false`);
  * pemanggil bertanggung jawab mencetak satu kali lewat `renderTimeline`.

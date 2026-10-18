@@ -7,7 +7,7 @@ import { theme } from './theme.js';
 import { renderStatusLine, frameRules, terminalWidth } from './statusLine.js';
 import { todoStore } from './tools/todoTool.js';
 import { renderTodoWidget, toggleTodoCompactMode, getTodoCompactMode } from './chat/planMode.js';
-import { CONFIG_DIR } from './config.js';
+import { CONFIG_DIR, getAccessMode, setAccessMode } from './config.js';
 
 // Proteksi global untuk seluruh prompt @clack/core (@clack/prompts)
 // Mencegah process.stdin paused, rawMode deadlock, dan terminal freeze pada Windows saat Esc / cancel beruntun
@@ -686,6 +686,17 @@ export class SlashTextPrompt extends TextPrompt {
         key?.sequence === '\u0014';
       if (isCtrlT) {
         toggleTodoCompactMode();
+        this.render();
+        return;
+      }
+
+      // 3b. Tombol Shift+Tab: siklus mode akses normal <-> full.
+      //     Label di status line ikut berganti via renderStatusLine, sehingga
+      //     perubahan mode selalu terlihat pada frame yang digambar ulang.
+      const isShiftTab =
+        key?.name === 'tab' && key?.shift === true && !key?.ctrl;
+      if (isShiftTab) {
+        setAccessMode(getAccessMode() === 'full' ? 'normal' : 'full');
         this.render();
         return;
       }

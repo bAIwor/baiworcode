@@ -99,6 +99,10 @@ export async function streamAgyCompletion({
       if (signal?.aborted) {
         const err = new Error('Streaming dihentikan oleh pengguna.');
         err.name = 'AbortError';
+        // Konsisten dengan path OpenAI-compatible: jawaban yang sudah terkumpul
+        // sebelum abort tetap dibawa agar bisa disimpan ke histori percakapan.
+        err.partialContent = fullContent;
+        err.partialReasoning = fullReasoning;
         return reject(err);
       }
       if (code !== 0 && !fullContent) {
@@ -276,7 +280,7 @@ export async function streamChatCompletion({
     payload.tool_choice = 'auto';
   }
 
-  const response = await requestWithRetry(
+  let response = await requestWithRetry(
     url,
     {
       method: 'POST',
@@ -305,10 +309,84 @@ export async function streamChatCompletion({
       }
     }
 
-    const error = new Error(errorDetail || `HTTP Error ${response.status}`);
-    error.status = response.status;
-    error.url = url;
-    throw error;
+    // Auto-recovery untuk ketidakcocokan parameter reasoning_content antar-provider:
+    // 1. Model reasoning (Reflection Beam, DeepSeek R1, Kimi) mewajibkan reasoning_content pada setiap pesan asisten.
+    //    Jika pesan asisten lama tidak membawanya (mis. hasil pemadatan konteks atau sesi lama), provider menolak.
+    //    Kita tambahkan reasoning_content: '' dan coba ulang sekali.
+    const isReasoningRequiredError =
+      /reasoning_content/i.test(errorDetail) &&
+      /(?:missing|required|needs the reasoning|send back)/i.test(errorDetail);
+
+    // 2. Gateway/proxy OpenAI yang kaku menolak request jika pesan membawa property di luar skema resmi.
+    //    Jika ditolak dengan 'Extra inputs are not permitted' terkait reasoning_content, kita buang property tersebut dan coba ulang sekali.
+    const isReasoningNotAllowedError =
+      /extra inputs are not permitted/i.test(errorDetail) ||
+      (/reasoning_content/i.test(errorDetail) && /(?:unrecognized|not allowed|permitted|unexpected)/i.test(errorDetail));
+
+    if (response.status === 400 && isReasoningRequiredError) {
+      const patchedMessages = payload.messages.map((m) => {
+        if (m.role === 'assistant' && typeof m.reasoning_content !== 'string') {
+          return { ...m, reasoning_content: '' };
+        }
+        return m;
+      });
+      try {
+        const retryRes = await requestWithRetry(
+          url,
+          {
+            method: 'POST',
+            headers: { ...credentials.headers },
+            body: JSON.stringify({ ...payload, messages: patchedMessages }),
+            signal,
+          },
+          { maxRetries: 0 }
+        );
+        if (retryRes.ok) {
+          response = retryRes;
+        } else {
+          try {
+            const retryJson = await retryRes.json();
+            errorDetail = retryJson?.error?.message || retryJson?.message || errorDetail;
+          } catch {}
+        }
+      } catch {}
+    } else if (response.status === 400 && isReasoningNotAllowedError) {
+      const strippedMessages = payload.messages.map((m) => {
+        if (m.role === 'assistant' && 'reasoning_content' in m) {
+          const copy = { ...m };
+          delete copy.reasoning_content;
+          return copy;
+        }
+        return m;
+      });
+      try {
+        const retryRes = await requestWithRetry(
+          url,
+          {
+            method: 'POST',
+            headers: { ...credentials.headers },
+            body: JSON.stringify({ ...payload, messages: strippedMessages }),
+            signal,
+          },
+          { maxRetries: 0 }
+        );
+        if (retryRes.ok) {
+          response = retryRes;
+        } else {
+          try {
+            const retryJson = await retryRes.json();
+            errorDetail = retryJson?.error?.message || retryJson?.message || errorDetail;
+          } catch {}
+        }
+      } catch {}
+    }
+
+    if (!response.ok) {
+      const error = new Error(errorDetail || `HTTP Error ${response.status}`);
+      error.status = response.status;
+      error.url = url;
+      throw error;
+    }
   }
 
   if (!response.body) {
@@ -442,6 +520,7 @@ export async function streamChatCompletion({
       const abortErr = new Error('Streaming dihentikan oleh pengguna.');
       abortErr.name = 'AbortError';
       abortErr.partialContent = fullContent;
+      abortErr.partialReasoning = fullReasoning;
       const finalToolCalls = accumulatedToolCalls.filter(Boolean);
       abortErr.partialToolCalls = finalToolCalls.length > 0 ? finalToolCalls : null;
       throw abortErr;

@@ -80,7 +80,7 @@ if [ -n "$INSTALLED_VER" ]; then
     echo -e "${GRAY}    Ketik salah satu perintah berikut di terminal Anda:${NC}"
     echo ""
     echo -e "    ${CYAN}baiwor${NC}              ${GRAY}-> Masuk ke mode interaktif Punakawan (REPL)${NC}"
-    echo -e "    ${CYAN}baiwor model${NC}        ${GRAY}-> Pilih model (👑 Agentik AI ⭐, Gemini, StepFun, dll)${NC}"
+    echo -e "    ${CYAN}baiwor model${NC}        ${GRAY}-> Pilih model (👑 Agentik AI ⭐, Google Gemini, Ollama, dll)${NC}"
     echo -e "    ${CYAN}baiwor status${NC}       ${GRAY}-> Cek status login, provider aktif, dan latency${NC}"
     echo -e "    ${CYAN}baiwor \"prompt...\"${NC}  ${GRAY}-> Tanya langsung atau suruh coding otomatis${NC}"
     echo ""

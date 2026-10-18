@@ -120,7 +120,7 @@ if ($installedVer) {
     Write-Host "    baiwor              " -NoNewline -ForegroundColor Cyan
     Write-Host "-> Masuk ke mode interaktif Punakawan (REPL)" -ForegroundColor Gray
     Write-Host "    baiwor model        " -NoNewline -ForegroundColor Cyan
-    Write-Host "-> Pilih model (Agentik AI, Gemini, StepFun, dll)" -ForegroundColor Gray
+    Write-Host "-> Pilih model (Agentik AI, Google Gemini, Ollama, dll)" -ForegroundColor Gray
     Write-Host "    baiwor status       " -NoNewline -ForegroundColor Cyan
     Write-Host "-> Cek status login, provider aktif, dan latency" -ForegroundColor Gray
     Write-Host "    baiwor [instruksi]  " -NoNewline -ForegroundColor Cyan

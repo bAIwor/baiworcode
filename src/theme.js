@@ -1,30 +1,26 @@
 import chalk from 'chalk';
 
 /**
- * Palet warna resmi tema `opencode` (mode gelap).
+ * Palet warna resmi tema bAIwor Code (mode gelap).
  *
- * Nilai hex di bawah disalin apa adanya dari sumber tema opencode:
- *   packages/tui/src/theme/assets/opencode.json
- * sehingga tampilan bAIwor Code benar-benar setara dengan TUI opencode —
- * bukan sekadar mirip. Semua elemen antarmuka (judul, kode, daftar, input
- * pengguna, status, diff) mengambil warna dari SATU sumber ini agar
- * konsisten dan mudah diubah di kemudian hari.
+ * Semua elemen antarmuka (judul, kode, daftar, input pengguna, status, diff)
+ * mengambil warna dari SATU sumber ini agar konsisten dan mudah diubah.
  */
 export const palette = Object.freeze({
-  // ---- hue dasar (token semantik) ----
-  primary: '#fab283', // oranye utama — pesan pengguna, item daftar
-  secondary: '#5c9cf5', // biru — penelusuran berkas
-  accent: '#9d7cd8', // ungu — judul markdown & kata kunci kode
-  error: '#e06c75', // merah — galat & perintah dijalankan
-  warning: '#f5a742', // oranye tua — peringatan, angka
-  success: '#7fd88f', // hijau — sukses, tulis/ubah berkas
-  info: '#56b6c2', // cyan — informasi, baca, enumerasi
-  gold: '#f5c451', // kuning emas — nama karakter Tim Punakawan AI
+  // ---- hue dasar (token semantik bAIwor Code Hibrida) ----
+  primary: '#f6ad55', // peach amber lembut — pesan pengguna, item daftar, prompt
+  secondary: '#63b3ed', // soft sky blue — penelusuran berkas, list, search
+  accent: '#b794f4', // lavender lembut — judul markdown & kata kunci kode
+  error: '#e53e3e', // bawor crimson — galat & konfirmasi perintah destruktif
+  warning: '#ecc94b', // emas wayang lembut — peringatan, angka
+  success: '#68d391', // pastel mint green — sukses, tulis/ubah berkas
+  info: '#4fd1c5', // soft teal/cyan — informasi, baca berkas, enumerasi
+  gold: '#ecc94b', // punakawan gold — nama karakter Tim Punakawan AI (semAIr, bAIwor, pAItruk, gAIreng)
   text: '#eeeeee', // teks utama
   textMuted: '#808080', // teks redup / komentar
   border: '#484848', // garis tepi
 
-  // ---- diff ----
+  // ---- diff (dipertahankan agar membaca kode tetap nyaman) ----
   diffAdded: '#4fd6be', // latar penanda tambah
   diffRemoved: '#c53b53', // latar penanda hapus
   diffContext: '#828bb8', // konteks tak berubah
@@ -33,30 +29,30 @@ export const palette = Object.freeze({
   diffHighlightRemoved: '#e26a75', // baris dihapus (terang)
 
   // ---- markdown ----
-  mdHeading: '#9d7cd8',
+  mdHeading: '#b794f4', // lavender lembut
   mdText: '#eeeeee',
-  mdLink: '#fab283',
-  mdLinkText: '#56b6c2',
-  mdCode: '#7fd88f',
-  mdBlockQuote: '#e5c07b',
-  mdEmph: '#e5c07b',
-  mdStrong: '#f5a742',
+  mdLink: '#f6ad55', // peach amber
+  mdLinkText: '#4fd1c5', // soft teal
+  mdCode: '#68d391', // mint green
+  mdBlockQuote: '#ecc94b', // punakawan gold
+  mdEmph: '#ecc94b',
+  mdStrong: '#f6ad55',
   mdHorizontalRule: '#808080',
-  mdListItem: '#fab283',
-  mdListEnumeration: '#56b6c2',
-  mdImage: '#fab283',
-  mdImageText: '#56b6c2',
+  mdListItem: '#f6ad55',
+  mdListEnumeration: '#4fd1c5',
+  mdImage: '#f6ad55',
+  mdImageText: '#4fd1c5',
   mdCodeBlock: '#eeeeee',
 
-  // ---- sintaks kode ----
+  // ---- sintaks kode (pastel harmonis tanpa meredupkan konten) ----
   synComment: '#808080',
-  synKeyword: '#9d7cd8',
-  synFunction: '#fab283',
-  synVariable: '#e06c75',
-  synString: '#7fd88f',
-  synNumber: '#f5a742',
-  synType: '#e5c07b',
-  synOperator: '#56b6c2',
+  synKeyword: '#b794f4',
+  synFunction: '#f6ad55',
+  synVariable: '#e53e3e',
+  synString: '#68d391',
+  synNumber: '#ecc94b',
+  synType: '#ecc94b',
+  synOperator: '#4fd1c5',
   synPunctuation: '#eeeeee',
 });
 
@@ -118,7 +114,7 @@ export const theme = {
 };
 
 /**
- * Mewarnai satu baris diff mengikuti konvensi opencode:
+ * Mewarnai satu baris diff mengikuti konvensi bAIwor Code:
  *   `+++` / `---`  → abu konteks (header berkas)
  *   `@@ … @@`      → header hunk
  *   `+…`           → hijau (baris ditambahkan)

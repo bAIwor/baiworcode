@@ -210,7 +210,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `baiworcode skill [action] [target]` — Kelola modul keahlian & plugin (`.baiwor/skills`)
 - `baiworcode rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
 - `baiworcode status` — Status konfigurasi dan sesi login
-- `baiworcode mcp` — Jalankan bAIwor Code sebagai MCP Server (stdio) untuk Claude Desktop / Cursor
+- `baiworcode mcp` — Jalankan bAIwor Code sebagai MCP Server (stdio) untuk berbagai klien MCP eksternal
 - `baiworcode model [target]` — Tanpa argumen: menu kelola model/provider. Dengan argumen: switch langsung (`baiworcode model step`, `baiworcode model stepfun/step-5-preview`, `baiworcode model alias add ...`)
 - `baiworcode provider [target]` — Alias untuk perintah `model`
 - `baiworcode login [provider]` — Login langsung ke provider OAuth
@@ -311,12 +311,12 @@ bAIwor Code dapat terhubung ke berbagai server MCP (baik via **remote HTTP** mau
   - `/mcp list` — Tampilkan seluruh server MCP dan daftar tool dinamis yang terhubung.
   - `/mcp refresh` — Muat ulang dan sambungkan kembali seluruh koneksi server MCP.
 
-#### 2. Sebagai MCP Server (Gunakan bAIwor Code di Claude Desktop / Cursor)
-bAIwor Code dapat bertindak sebagai server MCP berstandar stdio JSON-RPC 2.0 untuk mengekspos **14 tools bawaan bAIwor Code** ke aplikasi AI lain seperti **Claude Desktop**, **Cursor**, atau agen MCP lainnya:
+#### 2. Sebagai MCP Server (Gunakan bAIwor Code di Klien MCP Eksternal)
+bAIwor Code dapat bertindak sebagai server MCP berstandar stdio JSON-RPC 2.0 untuk mengekspos **14 tools bawaan bAIwor Code** ke berbagai aplikasi klien MCP eksternal:
 ```bash
 baiworcode mcp
 ```
-Contoh konfigurasi di `claude_desktop_config.json`:
+Contoh konfigurasi di file konfigurasi MCP klien Anda:
 ```json
 {
   "mcpServers": {

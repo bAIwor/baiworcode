@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { getConfig } from './config.js';
+import { getConfig, getAccessMode } from './config.js';
 import { theme } from './theme.js';
 import { conversationSession } from './chat/conversation.js';
 import { getContextUsage, formatContextIndicator } from './chat/context.js';
@@ -109,7 +109,9 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
 
   const build = ({ detail, withProvider, withAccess, withPrefix }) => {
     const parts = [theme.info('~')];
-    if (withAccess) parts.push(bar, theme.text('Full access'));
+    // Label akses dinamis mengikuti config: 'full' → Full access (agenta bebas
+    // menjalankan kelas confirm tanpa bertanya di TTY), 'normal' → Safe.
+    if (withAccess) parts.push(bar, theme.text(getAccessMode() === 'full' ? 'Full access' : 'Safe'));
     if (withPrefix && prefix) parts.push(bar, theme.info(prefix));
     parts.push(bar, theme.accent('✦'), theme.primary(model));
     if (withProvider) parts.push(chalk.gray('·'), theme.info(provider));

@@ -45,7 +45,7 @@ describe('StatusLine: Helper', () => {
 
   it('harus menyusun baris status lengkap', () => {
     const line = polos(renderStatusLine());
-    assert.match(line, /^\s+~\s+│\s+Full access\s+│/);
+    assert.match(line, /^\s+~\s+│\s+(?:Full access|Safe)\s+│/);
     assert.match(line, /✦/);
     assert.match(line, /Context \d+% left/);
   });
@@ -94,7 +94,7 @@ describe('Prompt: Layout Area Input', () => {
   it('harus menyisipkan satu baris kosong sebelum baris status', () => {
     const lines = render().split('\n');
     assert.equal(lines[3], '', 'harus ada baris kosong setelah garis bawah');
-    assert.match(lines[4], /~\s+│\s+Full access/);
+    assert.match(lines[4], /~\s+│\s+(?:Full access|Safe)/);
   });
 
   it('harus menampilkan baris status sebagai baris terakhir', () => {
@@ -312,7 +312,7 @@ describe('Prompt: Perilaku CLI Saat Dipipe', () => {
 
   it('harus tetap mencetak baris status saat keluaran dialihkan', () => {
     const out = polos(jalankan());
-    assert.match(out, /~\s+│\s+Full access/);
+    assert.match(out, /~\s+│\s+(?:Full access|Safe)/);
     assert.match(out, /Context \d+% left/);
   });
 
@@ -323,7 +323,7 @@ describe('Prompt: Perilaku CLI Saat Dipipe', () => {
   it('harus tidak menggambar dua baris status di mode pipe', () => {
     const out = polos(jalankan());
     // `split` dengan argumen string tidak mengurai escape, jadi harus pakai regex.
-    const kemunculan = out.match(/~\s+│\s+Full access/g) || [];
+    const kemunculan = out.match(/~\s+│\s+(?:Full access|Safe)/g) || [];
     assert.equal(kemunculan.length, 1, `baris status muncul ${kemunculan.length} kali`);
   });
 

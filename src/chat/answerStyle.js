@@ -3,7 +3,7 @@ import { theme, palette } from '../theme.js';
 
 /**
  * Pewarna jawaban asisten bergaya markdown, memakai palet resmi tema
- * `opencode` (lihat `src/theme.js`):
+ * bAIwor Code (lihat `src/theme.js`):
  *   - Judul: ungu (accent) tebal
  *   - Bullet list: oranye (primary), numbered: cyan (info)
  *   - Blockquote: kuning (yellow)

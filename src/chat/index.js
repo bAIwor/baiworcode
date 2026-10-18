@@ -186,18 +186,68 @@ export async function handleUserChat(promptText) {
     return classifyCommand(String(args.command), { workspace: process.cwd() }).decision === 'confirm';
   };
 
-  // 4. Inisialisasi AbortController & pasang listener SIGINT
+  // 4. Inisialisasi AbortController & pasang listener SIGINT + ESC
   const controller = new AbortController();
   activeAbortController = controller;
   isStreamingActive = true;
 
+  let lastSigintTime = 0;
   const sigintHandler = () => {
+    const now = Date.now();
+    if (now - lastSigintTime < 1000) {
+      process.stdout.write(chalk.red('\n\n  Keluar paksa (SIGINT ganda).\n\n'));
+      process.exit(130);
+    }
+    lastSigintTime = now;
     if (activeAbortController) {
       activeAbortController.abort();
     }
   };
 
   process.on('SIGINT', sigintHandler);
+
+  // Pasang listener tombol ESC di TTY untuk membatalkan streaming / eksekusi aktif
+  let isEscAttached = false;
+  let wasRawMode = false;
+  const onStdinData = (chunk) => {
+    // Tombol ESC murni (\x1b) tanpa karakter escape lanjutan
+    if (chunk.length === 1 && chunk[0] === 0x1b) {
+      abortCurrentChat();
+    } else if (chunk.length === 1 && chunk[0] === 0x03) {
+      // Tombol Ctrl+C dalam raw mode (byte 0x03)
+      sigintHandler();
+    }
+  };
+
+  const setupEscListener = () => {
+    if (process.stdin.isTTY && !isEscAttached) {
+      try {
+        wasRawMode = Boolean(process.stdin.isRaw);
+        if (!wasRawMode && typeof process.stdin.setRawMode === 'function') {
+          process.stdin.setRawMode(true);
+        }
+        if (typeof process.stdin.resume === 'function') {
+          process.stdin.resume();
+        }
+        process.stdin.on('data', onStdinData);
+        isEscAttached = true;
+      } catch {}
+    }
+  };
+
+  const removeEscListener = () => {
+    if (isEscAttached) {
+      try {
+        process.stdin.removeListener('data', onStdinData);
+        if (!wasRawMode && process.stdin.isTTY && typeof process.stdin.setRawMode === 'function') {
+          process.stdin.setRawMode(false);
+        }
+      } catch {}
+      isEscAttached = false;
+    }
+  };
+
+  setupEscListener();
 
   // 5. Agentic Loop (maksimal MAX_AGENT_TURNS putaran interaksi model-tool)
   let currentTurn = 0;
@@ -358,7 +408,7 @@ export async function handleUserChat(promptText) {
     }
 
     if (finalText) {
-      conversationSession.addAssistantMessage(finalText);
+      conversationSession.addAssistantMessage(finalText, null, wrap?.reasoning || undefined);
       process.stdout.write('\n\n');
       return;
     }
@@ -413,8 +463,12 @@ export async function handleUserChat(promptText) {
 
       // Cek apakah model meminta pemanggilan tool (Function Calling)
       if (result.tool_calls && Array.isArray(result.tool_calls) && result.tool_calls.length > 0) {
-        // Simpan pesan asisten beserta tool_calls ke histori
-        conversationSession.addAssistantMessage(result.content || '', result.tool_calls);
+        // Simpan pesan asisten beserta tool_calls dan reasoning ke histori
+        conversationSession.addAssistantMessage(
+          result.content || '',
+          result.tool_calls,
+          result.reasoning || undefined
+        );
 
         // Jarak antara uraian naratif dan blok tool. Di TTY, bila giliran ini
         // tidak mencetak teks/thinking sama sekali, baris spinner tadi sudah
@@ -442,14 +496,20 @@ export async function handleUserChat(promptText) {
 
           const shouldSuspend = toolMayPrompt(fnName, parsedArgs);
           const liveIndex = live.addTool(fnName, parsedArgs);
-          if (shouldSuspend) live.suspend();
+          if (shouldSuspend) {
+            removeEscListener();
+            live.suspend();
+          }
 
           // Eksekusi tool handler sambil mengukur durasi
           const startedAt = Date.now();
           const toolResult = await executeTool(fnName, rawArgs, { signal: controller.signal });
           const durationMs = Date.now() - startedAt;
 
-          if (shouldSuspend) live.resume();
+          if (shouldSuspend) {
+            live.resume();
+            setupEscListener();
+          }
 
           // `todo_list` mengembalikan JSON untuk dibaca model, bukan untuk
           // mata pengguna. Di sini ia diganti checklist sungguhan supaya
@@ -503,7 +563,11 @@ export async function handleUserChat(promptText) {
       }
 
       // Jika tidak ada tool calls, berarti respons akhir (final answer) sudah selesai
-      conversationSession.addAssistantMessage(result.content || '');
+      conversationSession.addAssistantMessage(
+        result.content || '',
+        null,
+        result.reasoning || undefined
+      );
 
       // Jika model menyertakan penanda <deliver-assets>, render kartu deliverable terminal
       if (result.content && /<deliver-assets>[\s\S]*?<\/deliver-assets>/i.test(result.content)) {
@@ -537,7 +601,11 @@ export async function handleUserChat(promptText) {
       process.stdout.write(chalk.yellow('\n  ⏹ [Dibatalkan oleh pengguna]\n\n'));
       // Jika sudah ada respons sebagian sebelum dibatalkan, simpan agar histori tetap utuh
       if (err.partialContent && err.partialContent.trim()) {
-        conversationSession.addAssistantMessage(err.partialContent.trim() + ' [Dibatalkan]');
+        conversationSession.addAssistantMessage(
+          err.partialContent.trim() + ' [Dibatalkan]',
+          err.partialToolCalls || null,
+          err.partialReasoning || undefined
+        );
       }
       return;
     }
@@ -584,6 +652,7 @@ export async function handleUserChat(promptText) {
   } finally {
     stopThinkingSpinner();
     live.stop();
+    removeEscListener();
     isStreamingActive = false;
     activeAbortController = null;
     process.removeListener('SIGINT', sigintHandler);

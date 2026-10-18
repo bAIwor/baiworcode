@@ -38,6 +38,16 @@ describe('Context: Estimasi Token', () => {
     assert.ok(estimateMessageTokens(besar) > estimateMessageTokens(kecil));
   });
 
+  it('harus menghitung reasoning_content sebagai bagian dari ukuran pesan', () => {
+    const tanpaReasoning = { role: 'assistant', content: 'Jawaban' };
+    const denganReasoning = {
+      role: 'assistant',
+      content: 'Jawaban',
+      reasoning_content: 'Langkah berpikir analitis mendalam '.repeat(20),
+    };
+    assert.ok(estimateMessageTokens(denganReasoning) > estimateMessageTokens(tanpaReasoning));
+  });
+
   it('harus menjumlahkan seluruh pesan', () => {
     const messages = [
       { role: 'system', content: 'a'.repeat(400) },
@@ -67,10 +77,13 @@ describe('Context: Resolusi Context Window', () => {
     assert.equal(resolveContextWindow('gpt-4o-mini'), 128000);
     assert.equal(resolveContextWindow('claude-sonnet-4'), 200000);
     assert.equal(resolveContextWindow('deepseek-r1'), 128000);
+    assert.equal(resolveContextWindow('Beam-1.0-501B-A23B'), 1000000);
+    assert.equal(resolveContextWindow('reflection-v1'), 1000000);
   });
 
   it('harus mencocokkan sebagian nama model tanpa memandang huruf besar-kecil', () => {
     assert.equal(resolveContextWindow('GEMINI-2.5-PRO'), 1000000);
+    assert.equal(resolveContextWindow('BEAM-1.0'), 1000000);
   });
 });
 

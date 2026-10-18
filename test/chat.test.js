@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { buildChatEndpoint, streamChatCompletion } from '../src/chat/client.js';
-import { isNetworkError } from '../src/chat/index.js';
+import { isNetworkError, abortCurrentChat } from '../src/chat/index.js';
 import { Conversation } from '../src/chat/conversation.js';
 import { getSystemPrompt } from '../src/chat/systemPrompt.js';
 
@@ -64,6 +64,33 @@ describe('Tahap 3A: Conversation Manager & Memory', () => {
     assert.equal(msgs[2].tool_call_id, 'call_123');
     assert.equal(msgs[2].name, 'read_file');
     assert.equal(msgs[2].content, 'console.log("hello")');
+  });
+
+  it('harus mendukung reasoning_content pada addAssistantMessage dan mempertahankannya di getMessages()', () => {
+    const conv = new Conversation();
+    conv.addUserMessage('Selesaikan puzzle ini');
+    conv.addAssistantMessage('Solusinya adalah 42', null, 'Mari analisa langkah demi langkah...');
+
+    const msgs = conv.getMessages();
+    assert.equal(msgs.length, 3);
+    assert.equal(msgs[2].role, 'assistant');
+    assert.equal(msgs[2].content, 'Solusinya adalah 42');
+    assert.equal(msgs[2].reasoning_content, 'Mari analisa langkah demi langkah...');
+  });
+
+  it('harus mendukung argumen objek fleksibel pada addAssistantMessage', () => {
+    const conv = new Conversation();
+    conv.addAssistantMessage({
+      content: 'Halo dari objek',
+      reasoning_content: 'Sedang menimbang jawaban',
+      tool_calls: [{ id: 'tc_1', type: 'function', function: { name: 'list_directory' } }],
+    });
+
+    const msgs = conv.getMessages();
+    assert.equal(msgs.length, 2);
+    assert.equal(msgs[1].content, 'Halo dari objek');
+    assert.equal(msgs[1].reasoning_content, 'Sedang menimbang jawaban');
+    assert.equal(msgs[1].tool_calls.length, 1);
   });
 
   it('harus memangkas pesan lama saat trim() dengan mempertahankan system prompt', () => {
@@ -381,6 +408,122 @@ describe('Tahap 3A: Retry & Backoff Klien Streaming', () => {
 
     srv.close();
     assert.equal(attempts, 1, '4xx bukan gangguan sesaat, tidak diulang');
+  });
+
+  it('harus otomatis memulihkan diri jika server menolak karena missing reasoning_content (Reflection/DeepSeek)', async () => {
+    let attempts = 0;
+    let secondRequestPayload = null;
+
+    const srv = http.createServer((req, res) => {
+      attempts += 1;
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        if (attempts === 1) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: {
+                message:
+                  "Missing required parameter: 'messages[1].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message.",
+              },
+            })
+          );
+        } else {
+          secondRequestPayload = JSON.parse(body);
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          });
+          res.write('data: {"choices":[{"delta":{"content":"Pulih berhasil!"}}]}\n\n');
+          res.write('data: [DONE]\n\n');
+          res.end();
+        }
+      });
+    });
+
+    await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
+    const port = srv.address().port;
+
+    const result = await streamChatCompletion({
+      credentials: { baseUrl: `http://127.0.0.1:${port}/v1`, headers: {}, model: 'Beam-1.0-501B-A23B' },
+      messages: [
+        { role: 'user', content: 'Halo' },
+        { role: 'assistant', content: 'Halo juga' }, // tidak membawa reasoning_content
+        { role: 'user', content: 'Lanjutkan' },
+      ],
+      retryDelayMs: 0,
+    });
+
+    srv.close();
+    assert.equal(attempts, 2, 'Harus mencoba ulang sekali setelah patching reasoning_content');
+    assert.equal(result.content, 'Pulih berhasil!');
+    assert.equal(
+      secondRequestPayload?.messages?.[1]?.reasoning_content,
+      '',
+      'Pesan asisten kedua harus otomatis dipatch dengan reasoning_content kosong'
+    );
+  });
+
+  it('harus otomatis memulihkan diri jika gateway OpenAI menolak karena Extra inputs are not permitted', async () => {
+    let attempts = 0;
+    let secondRequestPayload = null;
+
+    const srv = http.createServer((req, res) => {
+      attempts += 1;
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        if (attempts === 1) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: {
+                message: 'Extra inputs are not permitted (messages.1.reasoning_content)',
+              },
+            })
+          );
+        } else {
+          secondRequestPayload = JSON.parse(body);
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          });
+          res.write('data: {"choices":[{"delta":{"content":"Tersaring!"}}]}\n\n');
+          res.write('data: [DONE]\n\n');
+          res.end();
+        }
+      });
+    });
+
+    await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
+    const port = srv.address().port;
+
+    const result = await streamChatCompletion({
+      credentials: { baseUrl: `http://127.0.0.1:${port}/v1`, headers: {}, model: 'gpt-4o' },
+      messages: [
+        { role: 'user', content: 'Halo' },
+        { role: 'assistant', content: 'Halo', reasoning_content: 'pikiran lama' },
+      ],
+      retryDelayMs: 0,
+    });
+
+    srv.close();
+    assert.equal(attempts, 2, 'Harus mencoba ulang sekali setelah membuang reasoning_content');
+    assert.equal(result.content, 'Tersaring!');
+    assert.equal(
+      secondRequestPayload?.messages?.[1]?.reasoning_content,
+      undefined,
+      'Property reasoning_content harus dibuang saat retry'
+    );
+  });
+});
+
+describe('Pembatalan Chat (abortCurrentChat)', () => {
+  it('harus mengembalikan false bila tidak ada sesi streaming aktif', () => {
+    assert.equal(abortCurrentChat(), false);
   });
 });
 

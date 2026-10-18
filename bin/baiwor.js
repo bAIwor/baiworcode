@@ -35,8 +35,17 @@ import { resolveActiveCredentials } from '../src/auth/resolve.js';
 import { applyHelpStyle, helpHeader, helpFooter } from '../src/cliHelp.js';
 import { APP_NAME, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE, COMPANY } from '../src/branding.js';
 
-// Cegah sistem operasi langsung mematikan proses saat Ctrl+C ditekan di terminal
-process.on('SIGINT', () => {});
+// Cegah sistem operasi langsung mematikan proses saat Ctrl+C sekali di terminal,
+// namun eskalasikan ke keluar paksa bila ditekan 2 kali dalam 1 detik.
+let lastGlobalSigint = 0;
+process.on('SIGINT', () => {
+  const now = Date.now();
+  if (now - lastGlobalSigint < 1000) {
+    process.stdout.write(chalk.red('\n\n  Keluar paksa (SIGINT ganda).\n\n'));
+    process.exit(130);
+  }
+  lastGlobalSigint = now;
+});
 
 function stripAnsi(str) {
   return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
@@ -1319,7 +1328,7 @@ program
 
 program
   .command('mcp')
-  .description('Jalankan bAIwor Code sebagai MCP Server (stdio) untuk Claude Desktop / Cursor')
+  .description('Jalankan bAIwor Code sebagai MCP Server (stdio) untuk berbagai klien MCP eksternal')
   .action(() => {
     startMcpServer();
   });

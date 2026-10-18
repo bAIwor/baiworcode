@@ -3,7 +3,7 @@ import { getConfig, saveConfig } from './config.js';
 import { PROVIDERS } from './auth/registry.js';
 
 /**
- * Model aliases ala Hermes untuk bAIwor Code.
+ * Sistem model aliases untuk bAIwor Code.
  *
  * Ide intinya:
  *   1. Alias bernama  — `/model fav`, `/model step` → switch langsung tanpa menu.
@@ -107,7 +107,7 @@ export function parseAliasValue(value) {
     if (typeof value.apiKey === 'string' && value.apiKey.trim()) {
       target.apiKey = expandSecret(value.apiKey.trim());
     }
-    // Alternatif Hermes-style: key_env — nama environment variable yang
+    // Alternatif key_env — nama environment variable yang
     // menyimpan kunci, jadi rahasia tidak perlu ditulis di config.json.
     if (!target.apiKey && typeof value.key_env === 'string' && value.key_env.trim()) {
       const fromEnv = process.env[value.key_env.trim()];

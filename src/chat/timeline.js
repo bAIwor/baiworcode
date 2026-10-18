@@ -4,7 +4,7 @@ import { palette } from '../theme.js';
 const DEFAULT_SUMMARY_LEN = 80;
 
 /**
- * Warna nama tool per kategori, memakai token palet opencode (lihat
+ * Warna nama tool per kategori, memakai token palet tema bAIwor Code (lihat
  * `src/theme.js`):
  *   - baca (`read_file`)            → info (cyan)
  *   - telusur (`list`/`search`)     → secondary (biru)
@@ -12,9 +12,8 @@ const DEFAULT_SUMMARY_LEN = 80;
  *   - jalankan (`run_command`)      → error (merah)
  *   - rencana (`todo_list`)         → warning (oranye tua)
  *
- * Kategori yang sama memakai warna yang sama, sejalan dengan opencode yang
- * memetakan `edit`/`write` ke satu warna sukses dan `glob`/`grep`/`list`
- * ke satu warna info.
+ * Kategori yang sama memakai warna yang sama, sejalan dengan standar tema
+ * bAIwor Code yang memetakan jenis operasi ke warna semantik yang konsisten.
  */
 const TOOL_TINTS = {
   read_file: palette.info, // cyan — membaca
@@ -447,7 +446,7 @@ export function renderTimeline(
  * Mode tampilan timeline yang didukung.
  *
  * - `detail`  : pohon dua baris per node (argumen + ringkasan hasil).
- * - `compact` : satu baris per node, gaya CLI modern (MCode/opencode) —
+ * - `compact` : satu baris per node, gaya CLI bAIwor Code yang ringkas dan modern —
  *               hanya ikon status, aktor, nama tool, dan meta ringkas.
  *
  * @type {ReadonlyArray<'detail'|'compact'>}
@@ -473,7 +472,7 @@ export function resolveTimelineMode(value, fallback = 'detail') {
 /**
  * Merender timeline dalam mode ringkas: SATU baris per aktivitas.
  *
- * Dipinjam dari pola CLI modern (MCode) di mana tiap langkah cukup
+ * Pola tampilan ringkas di mana tiap langkah cukup
  * `├ ✓ Baca berkas · 120ms · 3 baris` — tanpa baris anak argumen/hasil,
  * sehingga alur kerja tetap terbaca utuh walau satu giliran memanggil
  * belasan tool. Identitas Tim Punakawan tetap dipertahankan di depannya.
@@ -510,8 +509,7 @@ export function renderTimelineCompact(
       const tint = c.hex(toolColorHex(ev.name));
       const toolName = (failed ? c.hex(palette.error) : tint)(c.bold(toolLabel(ev.name)));
 
-      // Aktor Punakawan tetap tampil (kuning emas) — beda dengan MCode yang
-      // hanya menampilkan nama tool — agar "siapa yang bertindak" tetap jelas.
+      // Aktor Punakawan tetap tampil (kuning emas) agar "siapa yang bertindak" tetap jelas.
       const punakawan = PUNAKAWAN_ROLES[ev.name];
       const actorPart = punakawan
         ? `${c.hex(PUNAKAWAN_COLORS[punakawan] || palette.gold)(c.bold(punakawan))} ${dot} `

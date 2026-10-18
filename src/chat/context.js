@@ -47,6 +47,8 @@ export const DEFAULT_CONTEXT_WINDOW = 128000;
  * Nilai yang tidak tercantum memakai DEFAULT_CONTEXT_WINDOW.
  */
 const CONTEXT_WINDOWS = [
+  { match: 'beam', window: 1000000 },
+  { match: 'reflection', window: 1000000 },
   { match: 'gemini', window: 1000000 },
   { match: 'gpt-4o', window: 128000 },
   { match: 'gpt-4.1', window: 1000000 },
@@ -104,6 +106,7 @@ export function estimateMessageTokens(message) {
   }
   if (message.name) total += estimateTokens(message.name);
   if (message.tool_call_id) total += estimateTokens(message.tool_call_id);
+  if (message.reasoning_content) total += estimateTokens(message.reasoning_content);
 
   // Setiap pesan membawa overhead role dan pembatas — kecil, tapi menumpuk.
   return total + 4;

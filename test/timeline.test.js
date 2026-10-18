@@ -15,6 +15,7 @@ import {
   PUNAKAWAN_ROLES,
   PUNAKAWAN_COLORS,
 } from '../src/chat/timeline.js';
+import { palette } from '../src/theme.js';
 
 describe('Timeline: Format Durasi', () => {
   it('harus menformat milidetik di bawah satu detik', () => {
@@ -266,20 +267,20 @@ describe('Timeline: Render Pohon', () => {
 });
 
 describe('Timeline: Warna Tool', () => {
-  it('harus memetakan tool ke warna kategori opencode CLI', () => {
-    // read = info (cyan), write/edit = success (hijau), run = error (merah),
-    // list/search = secondary (biru), todo = warning (oranye tua).
-    assert.equal(toolColorHex('read_file'), '#56b6c2');
-    assert.equal(toolColorHex('write_file'), '#7fd88f');
-    assert.equal(toolColorHex('edit_file'), '#7fd88f');
-    assert.equal(toolColorHex('run_command'), '#e06c75');
-    assert.equal(toolColorHex('list_directory'), '#5c9cf5');
-    assert.equal(toolColorHex('search_files'), '#5c9cf5');
-    assert.equal(toolColorHex('todo_list'), '#f5a742');
-    assert.equal(toolColorHex('patch_file'), '#7fd88f');
-    assert.equal(toolColorHex('webfetch'), '#56b6c2');
-    assert.equal(toolColorHex('websearch'), '#5c9cf5');
-    assert.equal(toolColorHex('diagnostics'), '#f5a742');
+  it('harus memetakan tool ke warna kategori palet tema bAIwor Code', () => {
+    // read = info, write/edit = success, run = error (bawor crimson),
+    // list/search = secondary, todo = warning (punakawan gold).
+    assert.equal(toolColorHex('read_file'), palette.info);
+    assert.equal(toolColorHex('write_file'), palette.success);
+    assert.equal(toolColorHex('edit_file'), palette.success);
+    assert.equal(toolColorHex('run_command'), palette.error);
+    assert.equal(toolColorHex('list_directory'), palette.secondary);
+    assert.equal(toolColorHex('search_files'), palette.secondary);
+    assert.equal(toolColorHex('todo_list'), palette.warning);
+    assert.equal(toolColorHex('patch_file'), palette.success);
+    assert.equal(toolColorHex('webfetch'), palette.info);
+    assert.equal(toolColorHex('websearch'), palette.secondary);
+    assert.equal(toolColorHex('diagnostics'), palette.warning);
   });
 
   it('harus memakai warna cadangan untuk tool tak dikenal', () => {

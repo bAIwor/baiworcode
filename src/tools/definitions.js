@@ -1,6 +1,6 @@
 /**
  * Definisi Tools / Functions berstandar OpenAI-compatible untuk bAIwor Code.
- * Didesain untuk model reasoning & coding (Agentik, StepFun, Google Gemini, dll).
+ * Didesain untuk model reasoning & coding (Agentik AI, Google Gemini, Ollama, dll).
  */
 
 export const TOOL_DEFINITIONS = [

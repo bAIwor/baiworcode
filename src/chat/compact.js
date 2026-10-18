@@ -134,6 +134,7 @@ export async function compactConversation(conversation, { summarizeFn = null, mo
     {
       role: 'assistant',
       content: 'Konteks sebelumnya telah dipahami dan disimpan. Silakan berikan instruksi selanjutnya, saya siap melanjutkan pekerjaan!',
+      reasoning_content: 'Konteks sebelumnya telah diringkas dan dipahami.',
     },
   ];
 

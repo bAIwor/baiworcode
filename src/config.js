@@ -20,12 +20,16 @@ export const DEFAULT_CONFIG = {
     },
   ],
   oauth: {},
-  // Model aliases ala Hermes: nama pendek → "provider/model" atau objek
+  // Model aliases bAIwor Code: nama pendek → "provider/model" atau objek
   // { model, provider, baseUrl?, apiKey? }. Dikelola via /model alias ...
   modelAliases: {},
   // Tampilan blok aktivitas tool: 'detail' (pohon dua baris) atau
   // 'compact' (satu baris per langkah, gaya CLI modern). Diubah via /timeline.
   timelineMode: 'detail',
+  // Mode akses: 'normal' (perintah berisiko selalu minta persetujuan) atau
+  // 'full' (kelas confirm dilewati di TTY; kelas deny tetap ditolak).
+  // Diubah via Shift+Tab di prompt.
+  accessMode: 'normal',
   // TinyFish Web Intelligence: API Key untuk Search, Fetch (anti-bot & JS), dan Web Automate
   tinyfishApiKey: '',
   // Model Context Protocol (MCP): daftar server terdaftar { <name>: { type, url?, command?, args?, headers? } }
@@ -166,6 +170,31 @@ export function setTimelineMode(mode) {
     saveConfig({ timelineMode: next });
   }
   return getTimelineMode();
+}
+
+/**
+ * Mengembalikan mode akses yang valid. Nilai tak dikenal jatuh ke 'normal'
+ * sehingga konfigurasi rusak/salah ketik tidak pernah membuka akses penuh.
+ *
+ * @returns {'normal'|'full'}
+ */
+export function getAccessMode() {
+  const raw = getConfig().accessMode;
+  return raw === 'full' ? 'full' : 'normal';
+}
+
+/**
+ * Menyetel mode akses dan menyimpannya ke config agar bertahan antar-sesi.
+ *
+ * @param {'normal'|'full'} mode
+ * @returns {'normal'|'full'} mode yang benar-benar aktif setelah penyimpanan
+ */
+export function setAccessMode(mode) {
+  const next = mode === 'full' ? 'full' : 'normal';
+  if (next !== getAccessMode()) {
+    saveConfig({ accessMode: next });
+  }
+  return getAccessMode();
 }
 
 export function saveConfig(partialConfig) {  try {

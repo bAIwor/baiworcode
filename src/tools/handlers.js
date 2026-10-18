@@ -5,6 +5,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { isSubPath, isSensitivePath, analyzeCommand, classifyCommand } from './sandbox.js';
 import { requestCommandApproval } from './approval.js';
+import { getAccessMode } from '../config.js';
 import { applyEdit, applyEditList, applyUnifiedDiff } from './editUtil.js';
 
 // Helper path tetap diekspor dari modul ini agar kontrak lama tidak berubah.
@@ -530,12 +531,19 @@ export async function handleRunCommand({
   }
 
   if (classification.decision === 'confirm') {
-    const approval = await requestCommandApproval(command, classification.reason);
-    if (!approval.approved) {
-      return {
-        success: false,
-        output: approval.message || `Perintah '${command}' dibatalkan oleh pengguna (butuh konfirmasi).`,
-      };
+    // Mode Full access di TTY: kelas confirm dilewati tanpa bertanya (HITL).
+    // Kelas deny TETAP ditolak — Full access tidak pernah membuka pintu bom.
+    // `options.tty` dipakai sebagai injeksi dalam pengujian; default ke stdin.
+    const tty = options?.tty ?? Boolean(process.stdin.isTTY);
+    const fullAccessTty = getAccessMode() === 'full' && Boolean(tty);
+    if (!fullAccessTty) {
+      const approval = await requestCommandApproval(command, classification.reason);
+      if (!approval.approved) {
+        return {
+          success: false,
+          output: approval.message || `Perintah '${command}' dibatalkan oleh pengguna (butuh konfirmasi).`,
+        };
+      }
     }
   }
 
@@ -607,6 +615,7 @@ export async function handleRunCommand({
     const shellOpt = isWindows ? (process.env.ComSpec || 'cmd.exe') : '/bin/bash';
 
     let settled = false;
+    let killTimer = null;
 
     const onAbort = () => {
       terminateProcessTree(child);
@@ -619,6 +628,10 @@ export async function handleRunCommand({
     const finish = (value) => {
       if (settled) return;
       settled = true;
+      if (killTimer) {
+        clearTimeout(killTimer);
+        killTimer = null;
+      }
       if (signal) signal.removeEventListener('abort', onAbort);
       resolve(value);
     };
@@ -626,7 +639,6 @@ export async function handleRunCommand({
     const child = exec(command, {
       cwd: executionCwd,
       shell: shellOpt,
-      timeout: 60000, // 60 detik
       maxBuffer: 10 * 1024 * 1024, // 10MB
     }, (error, stdout, stderr) => {
       const out = (stdout || '').trim();
@@ -652,6 +664,18 @@ export async function handleRunCommand({
         output: resultText || '(Perintah selesai tanpa output)',
       });
     });
+
+    // Batas waktu (60 detik) dikelola sendiri, bukan lewat opsi `timeout` milik
+    // exec(). Bawaan Node hanya membunuh shell langsung (cmd.exe) dan
+    // meninggalkan proses cucu (npm install di tengah npm test, dsb. tetap
+    // hidup). terminateProcessTree() memastikan seluruh pohon proses berhenti.
+    killTimer = setTimeout(() => {
+      terminateProcessTree(child);
+      finish({
+        success: false,
+        output: `Perintah dihentikan karena melebihi batas waktu 60 detik: ${command}`,
+      });
+    }, 60000);
 
     if (signal) {
       if (signal.aborted) {
