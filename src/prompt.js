@@ -9,9 +9,17 @@ import { todoStore } from './tools/todoTool.js';
 import { renderTodoWidget, toggleTodoCompactMode, getTodoCompactMode } from './chat/planMode.js';
 import { CONFIG_DIR, getAccessMode, setAccessMode } from './config.js';
 
-// Proteksi global untuk seluruh prompt @clack/core (@clack/prompts)
-// Menjamin input stream berstatus rawMode saat prompt aktif, dan ter-pause bersih
-// saat prompt ditutup agar tidak terjadi race condition / deadlock pada Windows ConPTY.
+// Proteksi global untuk seluruh prompt @clack/core (@clack/prompts).
+//
+// PENTING: blok ini TIDAK BOLEH mem-pause process.stdin. Pada Windows ConPTY,
+// memanggil pause()/resume() setiap kali prompt dibuka/ditutup membuat state
+// stdin balapan dengan prompt berikutnya dan bisa meninggalkan stdin dalam
+// keadaan paused tanpa listener 'keypress' — terminal membeku dan Ctrl+C pun
+// mati. Inilah penyebab freeze pada alur /model yang membuka banyak prompt
+// berurutan.
+//
+// Yang dijamin di sini hanya satu: raw mode aktif selama prompt hidup. Siklus
+// penutupan (unpipe + setRawMode(false)) ditangani penuh oleh @clack/core.
 if (typeof Prompt === 'function' && !Prompt.prototype._baiworStdinPatched) {
   Prompt.prototype._baiworStdinPatched = true;
 
@@ -24,32 +32,18 @@ if (typeof Prompt === 'function' && !Prompt.prototype._baiworStdinPatched) {
           input.setRawMode(true);
         } catch {}
       }
-      if (typeof input.resume === 'function') {
+      // Hanya resume bila memang sedang paused; jangan pernah pause di sini.
+      if (
+        typeof input.isPaused === 'function' &&
+        input.isPaused() &&
+        typeof input.resume === 'function'
+      ) {
         try {
           input.resume();
         } catch {}
       }
     }
     return origPrompt.apply(this, args);
-  };
-
-  const origClose = Prompt.prototype.close;
-  Prompt.prototype.close = function (...args) {
-    const res = origClose.apply(this, args);
-    const input = this.input || process.stdin;
-    if (input && input.isTTY) {
-      if (typeof input.setRawMode === 'function' && input.isRaw) {
-        try {
-          input.setRawMode(false);
-        } catch {}
-      }
-      if (typeof input.pause === 'function') {
-        try {
-          input.pause();
-        } catch {}
-      }
-    }
-    return res;
   };
 
   const origOnKeypress = Prompt.prototype.onKeypress;

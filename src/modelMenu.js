@@ -166,13 +166,9 @@ async function configureAgentikFlow(existingCp, customList, config) {
 
 async function handleGoogleSubmenu() {
   while (true) {
-    if (process.stdin.isPaused()) {
-      try {
-        process.stdin.resume();
-      } catch {}
-    }
-    await new Promise((r) => setTimeout(r, 20));
-
+    // Catatan: jangan mengelola pause/resume process.stdin di sini. Siklus hidup
+    // stdin ditangani oleh @clack/core + patch di src/prompt.js; mengutak-atiknya
+    // dari luar memicu race ConPTY yang membekukan terminal.
     const config = getConfig();
     const googleOptions = Object.values(PROVIDERS).map((prov, idx) => {
       const isAgy = prov.method === 'agy';
@@ -316,13 +312,8 @@ async function handleGoogleSubmenu() {
 
 export async function runModelMenu() {
   while (true) {
-    if (process.stdin.isPaused()) {
-      try {
-        process.stdin.resume();
-      } catch {}
-    }
-    await new Promise((r) => setTimeout(r, 20));
-
+    // Catatan: jangan mengelola pause/resume process.stdin di sini (lihat
+    // handleGoogleSubmenu di atas). Biarkan @clack/core menjaga stdin.
     const config = getConfig();
 
     console.log();

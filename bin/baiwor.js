@@ -6,6 +6,7 @@ import '../src/colors.js';
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import readline from 'node:readline';
 import * as p from '@clack/prompts';
 import {
   getConfig,
@@ -45,6 +46,84 @@ process.on('SIGINT', () => {
     process.exit(130);
   }
   lastGlobalSigint = now;
+});
+
+/* ------------------------------------------------------------------------ */
+/* Jaring pengaman terminal (anti-freeze)                                    */
+/* ------------------------------------------------------------------------ */
+// Memulihkan state terminal apa pun yang mungkin tertinggal (raw mode menyala,
+// kursor tersembunyi) sehingga aplikasi tidak pernah membeku permanen.
+function restoreTerminal() {
+  try {
+    if (
+      process.stdin.isTTY &&
+      typeof process.stdin.setRawMode === 'function' &&
+      process.stdin.isRaw
+    ) {
+      process.stdin.setRawMode(false);
+    }
+  } catch {}
+  try {
+    if (process.stdout.isTTY) process.stdout.write('\x1b[?25h'); // tampilkan kembali kursor
+  } catch {}
+}
+
+// Watchdog: bila stdin sempat tertinggal dalam keadaan paused (race ConPTY pada
+// prompt beruntun seperti di /model), pulihkan otomatis ≤2 detik agar tombol
+// kembali berfungsi. Hanya bertindak bila memang paused — tidak mengganggu
+// prompt yang sedang aktif.
+if (process.stdin.isTTY) {
+  try {
+    readline.emitKeypressEvents(process.stdin);
+  } catch {}
+  const stdinWatchdog = setInterval(() => {
+    try {
+      if (process.stdin.isPaused()) process.stdin.resume();
+    } catch {}
+  }, 2000);
+  if (typeof stdinWatchdog.unref === 'function') stdinWatchdog.unref();
+}
+
+// Keluar darurat universal: tekan Ctrl+C 3x dalam 1,5 detik untuk memaksa
+// keluar bahkan ketika prompt sedang raw mode (saat OS tidak lagi memancarkan
+// sinyal SIGINT, sehingga handler SIGINT di atas tidak pernah tercapai).
+let panicCtrlCCount = 0;
+let panicCtrlCTimer = null;
+process.stdin.on('keypress', (_str, key) => {
+  const isCtrlC = (key && key.name === 'c' && key.ctrl) || _str === '\u0003';
+  if (!isCtrlC) return;
+  panicCtrlCCount += 1;
+  if (panicCtrlCTimer) clearTimeout(panicCtrlCTimer);
+  panicCtrlCTimer = setTimeout(() => {
+    panicCtrlCCount = 0;
+    panicCtrlCTimer = null;
+  }, 1500);
+  if (panicCtrlCCount >= 3) {
+    restoreTerminal();
+    process.stdout.write(chalk.red('\n\n  Keluar paksa (Ctrl+C darurat 3x).\n\n'));
+    process.exit(130);
+  }
+});
+
+// Error tak terduga tidak boleh meninggalkan terminal dalam keadaan rusak.
+process.on('uncaughtException', (err) => {
+  restoreTerminal();
+  try {
+    process.stdout.write(chalk.red('\n\n  Terjadi error tak terduga. Terminal dipulihkan & keluar.\n'));
+    if (err && err.stack) process.stdout.write(chalk.gray(String(err.stack)) + '\n');
+  } catch {}
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  restoreTerminal();
+  try {
+    process.stdout.write(chalk.red('\n\n  Promise ditolak tanpa penanganan. Terminal dipulihkan & keluar.\n'));
+    if (reason && reason.stack) process.stdout.write(chalk.gray(String(reason.stack)) + '\n');
+  } catch {}
+  process.exit(1);
+});
+process.on('exit', () => {
+  restoreTerminal();
 });
 
 function stripAnsi(str) {

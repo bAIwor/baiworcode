@@ -947,16 +947,17 @@ describe('Prompt: Stdin Recovery & Anti-freeze Protections', () => {
     assert.equal(Prompt.prototype._baiworStdinPatched, true);
   });
 
-  it('prompt.close() harus mematikan rawMode dan menjeda input stream agar aman saat streaming', () => {
+  it('prompt.close() harus mematikan rawMode namun TIDAK mem-pause input stream (cegah race ConPTY)', () => {
     let isRaw = true;
     let paused = false;
+    let pauseCalled = false;
     const fakeInput = {
       isTTY: true,
       isRaw: true,
       setRawMode(val) { isRaw = val; this.isRaw = val; },
       on() {},
       off() {},
-      pause() { paused = true; },
+      pause() { paused = true; pauseCalled = true; },
       resume() { paused = false; },
       unpipe() {},
       removeListener() {},
@@ -975,7 +976,8 @@ describe('Prompt: Stdin Recovery & Anti-freeze Protections', () => {
     });
     prompt.close();
     assert.equal(isRaw, false, 'rawMode harus dimatikan setelah prompt ditutup');
-    assert.equal(paused, true, 'input stream harus di-pause setelah prompt ditutup');
+    assert.equal(paused, false, 'input stream TIDAK boleh di-pause setelah prompt ditutup');
+    assert.equal(pauseCalled, false, 'patch stdin tidak boleh memanggil pause() sama sekali');
   });
 
   it('Ctrl+C pada SlashTextPrompt baris kosong penekanan pertama memicu peringatan', () => {
