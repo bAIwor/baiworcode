@@ -63,6 +63,8 @@ import {
 import { renderStatusLine } from '../src/statusLine.js';
 import { resolveActiveCredentials } from '../src/auth/resolve.js';
 import { applyHelpStyle, helpHeader, helpFooter } from '../src/cliHelp.js';
+import { runDoctor } from '../src/doctor.js';
+import { runUpdate } from '../src/update.js';
 import { APP_NAME, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE, COMPANY } from '../src/branding.js';
 
 // Cegah sistem operasi langsung mematikan proses saat Ctrl+C sekali di terminal,
@@ -446,6 +448,8 @@ const HELP_USAGE = {
   '/cd': '/cd <folder>',
   '/workspace': '/workspace [folder]',
   '/sandbox': '/sandbox [status|exec|sync|open|screenshot|pause|resume|key]',
+  '/doctor': '/doctor',
+  '/update': '/update [sandbox]',
 };
 
 function showHelp() {
@@ -1382,6 +1386,14 @@ async function startInteractive(opts = {}) {
       case '/status':
         await printStatus();
         break;
+      case '/doctor':
+        await runDoctor();
+        break;
+      case '/update': {
+        const sub = (arg || '').trim().toLowerCase();
+        await runUpdate({ syncSandbox: sub === 'sandbox' || sub === 'all' });
+        break;
+      }
       case '/sandbox':
       case '/instabox':
         await handleSandboxCommand(arg);
@@ -1711,6 +1723,22 @@ program
   .description('Tampilkan status konfigurasi dan sesi login')
   .action(async () => {
     await printStatus();
+    process.exit(0);
+  });
+
+program
+  .command('doctor')
+  .description('Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox cloud')
+  .action(async () => {
+    await runDoctor();
+    process.exit(0);
+  });
+
+program
+  .command('update [target]')
+  .description('Perbarui bAIwor Code ke versi terbaru dari GitHub (opsional: update sandbox)')
+  .action(async (target) => {
+    await runUpdate({ syncSandbox: target === 'sandbox' || target === 'all' });
     process.exit(0);
   });
 

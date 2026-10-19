@@ -200,6 +200,8 @@ export const COMMANDS = [
   { name: '/skill', desc: 'Kelola modul keahlian & plugin (.baiwor/skills)' },
   { name: '/rules', desc: 'Lihat aturan koding aktif (BAIWORS.md / .baiwor/rules)' },
   { name: '/status', desc: 'Status konfigurasi & model AI aktif' },
+  { name: '/doctor', desc: 'Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox' },
+  { name: '/update', desc: 'Periksa & perbarui bAIwor Code ke versi terbaru dari GitHub' },
   { name: '/sandbox', desc: 'Kelola Cloud Sandbox InstaBox (MicroVM 4 vCPU / 8 GiB RAM)' },
   { name: '/tinyfish', desc: 'Kelola integrasi TinyFish (status, wallet, key, search, fetch)' },
   { name: '/mcp', desc: 'Kelola Model Context Protocol server & tool eksternal' },
@@ -251,6 +253,9 @@ export const SUBCOMMANDS = {
   '/mcp': [
     { name: 'list', desc: 'Tampilkan daftar MCP server & tool aktif' },
     { name: 'refresh', desc: 'Muat ulang & sambungkan kembali seluruh MCP server' },
+  ],
+  '/update': [
+    { name: 'sandbox', desc: 'Perbarui instalasi bAIwor Code di Cloud Sandbox InstaBox' },
   ],
 };
 
