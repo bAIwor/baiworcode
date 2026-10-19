@@ -232,6 +232,7 @@ function parseSessionFile(filePath) {
       if (lines.length === 0) return null;
 
       const firstObj = JSON.parse(lines[0]);
+      if (!firstObj || typeof firstObj !== 'object' || !firstObj.id) return null;
       const session = {
         id: firstObj.id,
         title: firstObj.title || 'Percakapan Tanpa Judul',

@@ -18,6 +18,7 @@ import { LiveActivity } from './liveActivity.js';
 import { AnswerStyler } from './answerStyle.js';
 import { createOutputWriter } from './outputWriter.js';
 import { classifyCommand } from '../tools/sandbox.js';
+import { resolveSafePath } from '../tools/handlers.js';
 import { getContextUsage, formatContextWarning } from './context.js';
 import { autoCompactConversation } from './compact.js';
 import { parseDeliverAssetsContent, renderDeliverableCard } from './deliverables.js';
@@ -202,7 +203,15 @@ export async function handleUserChat(promptText) {
   const toolMayPrompt = (fnName, args) => {
     if (fnName === 'ask_user') return true;
     if (fnName !== 'run_command' || !args || !args.command) return false;
-    return classifyCommand(String(args.command), { workspace: process.cwd() }).decision === 'confirm';
+    let ws = process.cwd();
+    if (args.cwd) {
+      try {
+        ws = resolveSafePath(args.cwd);
+      } catch {
+        ws = process.cwd();
+      }
+    }
+    return classifyCommand(String(args.command), { workspace: ws }).decision === 'confirm';
   };
 
   // 4. Inisialisasi AbortController & pasang listener SIGINT + ESC

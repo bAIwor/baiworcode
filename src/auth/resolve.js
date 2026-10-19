@@ -20,6 +20,14 @@ export async function resolveActiveCredentials() {
       throw new Error(`Custom provider '${config.activeProvider}' tidak ditemukan dalam konfigurasi.`);
     }
 
+    if (!cp.baseUrl || !cp.baseUrl.trim()) {
+      throw new Error(`Base URL untuk provider '${cp.name}' belum dikonfigurasi. Ketik /model untuk mengatur.`);
+    }
+
+    if (!cp.apiKey || !cp.apiKey.trim()) {
+      throw new Error(`API Key untuk provider '${cp.name}' belum dikonfigurasi. Silakan simpan API key di ~/.baiwor/config.json atau atur via /model.`);
+    }
+
     if (cp.baseUrl && cp.baseUrl.startsWith('http://')) {
       console.warn(
         chalk.yellow('  ⚠️  Peringatan Keamanan: Base URL menggunakan HTTP (tidak terenkripsi).')

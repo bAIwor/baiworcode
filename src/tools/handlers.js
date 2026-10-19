@@ -175,7 +175,8 @@ export async function handleWriteFile({ file_path, content }) {
   }
 
   fs.writeFileSync(resolved, content || '', 'utf8');
-  const linesCount = (content || '').split('\n').length;
+  const normalized = (content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const linesCount = !normalized ? 0 : normalized.endsWith('\n') ? normalized.slice(0, -1).split('\n').length : normalized.split('\n').length;
 
   return {
     success: true,
@@ -558,7 +559,7 @@ export async function handleRunCommand({
 
   // Penjaga sandbox perintah (A5) & Approval Gate (Tahap 5):
   // Mengklasifikasikan perintah menjadi: deny, confirm, atau allow.
-  const classification = classifyCommand(command, { workspace: process.cwd() });
+  const classification = classifyCommand(command, { workspace: executionCwd });
 
   if (classification.decision === 'deny') {
     // Override destruktif SADAR (default: TERTUTUP). Hanya kelas
