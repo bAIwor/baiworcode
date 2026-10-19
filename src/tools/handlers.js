@@ -4,6 +4,7 @@ import { exec, spawn } from 'node:child_process';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import chalk from 'chalk';
+import { theme } from '../theme.js';
 import {
   isSubPath,
   isSensitivePath,
@@ -601,11 +602,11 @@ export async function handleRunCommand({
         output: `Ditolak oleh sandbox bAIwor [${classification.category}]: ${classification.reason}`,
       };
     }
-    console.log(
-      chalk.yellow.bold(
-        `  ⚠️  Override destruktif aktif [${classification.ruleId}]: ${classification.reason}`
-      )
-    );
+  console.log(
+    theme.warning.bold(
+      `  ⚠️  Override destruktif aktif [${classification.ruleId}]: ${classification.reason}`
+    )
+  );
   }
 
   if (classification.decision === 'confirm') {

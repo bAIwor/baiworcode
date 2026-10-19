@@ -1,4 +1,4 @@
-import chalk from 'chalk';
+import { theme } from '../theme.js';
 
 /**
  * Logo Wajah Topeng bAIwor (Bawor Banyumasan).
@@ -11,13 +11,13 @@ export const BAWOR_LOGO = {
   cols: 19,
   rows: 7,
   color: [
-    chalk.whiteBright('     ╭───') + chalk.redBright.bold('▲') + chalk.whiteBright('───╮     '),
-    chalk.whiteBright('   ▄▀▀   ') + chalk.redBright('│') + chalk.whiteBright('   ▀▀▄   '),
-    chalk.whiteBright(' ( ') + chalk.redBright('(') + chalk.whiteBright.bold('O') + chalk.redBright(')') + ' ' + chalk.yellow('( o )') + ' ' + chalk.redBright('(') + chalk.whiteBright.bold('O') + chalk.redBright(')') + chalk.whiteBright(' ) '),
-    chalk.redBright(' ▄███████████████▄ '),
-    chalk.redBright(' █ ') + chalk.whiteBright.bold('█ █ █ █ █ █ █') + chalk.redBright(' █ '),
-    chalk.redBright('  ▀█████████████▀  '),
-    chalk.whiteBright('     ╰───┴───╯     '),
+    theme.textBright('     ╭───') + theme.error.bold('▲') + theme.textBright('───╮     '),
+    theme.textBright('   ▄▀▀   ') + theme.error('│') + theme.textBright('   ▀▀▄   '),
+    theme.textBright(' ( ') + theme.error('(') + theme.textBright.bold('O') + theme.error(')') + ' ' + theme.warning('( o )') + ' ' + theme.error('(') + theme.textBright.bold('O') + theme.error(')') + theme.textBright(' ) '),
+    theme.error(' ▄███████████████▄ '),
+    theme.error(' █ ') + theme.textBright.bold('█ █ █ █ █ █ █') + theme.error(' █ '),
+    theme.error('  ▀█████████████▀  '),
+    theme.textBright('     ╰───┴───╯     '),
   ],
   mono: [
     '     ╭───▲───╮     ',

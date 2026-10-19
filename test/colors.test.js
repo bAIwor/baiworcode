@@ -1,7 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import chalk from 'chalk';
-import { detectColorLevel, ensureColorSupport } from '../src/colors.js';
+import {
+  detectColorLevel,
+  ensureColorSupport,
+  createPainter,
+  NO_COLOR_PAINTER,
+} from '../src/colors.js';
 
 const tty = { isTTY: true };
 const notTty = { isTTY: false };
@@ -70,5 +75,87 @@ describe('Warna: Koreksi Level Chalk', () => {
       ensureColorSupport(tty, { NO_COLOR: '1' });
       assert.equal(chalk.level, 0);
     });
+  });
+});
+
+describe('Warna: NO_COLOR_PAINTER', () => {
+  it('harus mengembalikan teks apa adanya tanpa escape ANSI', () => {
+    assert.equal(NO_COLOR_PAINTER('bocah'), 'bocah');
+    assert.equal(NO_COLOR_PAINTER.bold('bocah'), 'bocah');
+    assert.ok(!NO_COLOR_PAINTER('bocah').includes('\u001b['));
+  });
+
+  it('harus menandai dirinya sebagai tidak terlihat', () => {
+    assert.equal(NO_COLOR_PAINTER.visible, false);
+  });
+
+  it('harus mendukung seluruh metode chalk dasar sebagai superset eksplisit', () => {
+    const methods = [
+      'bold',
+      'dim',
+      'italic',
+      'underline',
+      'strikethrough',
+      'inverse',
+      'hidden',
+      'reset',
+      'red',
+      'green',
+      'yellow',
+      'blue',
+      'magenta',
+      'cyan',
+      'white',
+      'gray',
+      'whiteBright',
+      'greenBright',
+      'yellowBright',
+      'redBright',
+      'cyanBright',
+      'blueBright',
+      'magentaBright',
+      'bgRed',
+      'bgGreen',
+      'bgYellow',
+      'bgBlue',
+      'bgMagenta',
+      'bgCyan',
+      'bgWhite',
+      'bgBlack',
+    ];
+    for (const m of methods) {
+      assert.equal(typeof NO_COLOR_PAINTER[m], 'function', `NO_COLOR_PAINTER.${m} harus ada`);
+      assert.equal(NO_COLOR_PAINTER[m]('x'), 'x');
+    }
+  });
+
+  it('harus punya constructor warna yang mengembalikan fungsi yang bisa dipanggil', () => {
+    for (const builder of ['hex', 'rgb', 'ansi256', 'bgHex']) {
+      assert.equal(typeof NO_COLOR_PAINTER[builder], 'function', `${builder} harus ada`);
+      const made = NO_COLOR_PAINTER[builder]('#38BDF8');
+      assert.equal(typeof made, 'function', `${builder}() harus mengembalikan fungsi`);
+      assert.equal(made('teks'), 'teks');
+    }
+  });
+});
+
+describe('Warna: createPainter', () => {
+  it('harus mengembalikan chalk saat mode berwarna aktif', () => {
+    assert.equal(createPainter(true), chalk);
+  });
+
+  it('harus mengembalikan NO_COLOR_PAINTER saat mode berwarna mati', () => {
+    assert.equal(createPainter(false), NO_COLOR_PAINTER);
+  });
+
+  it('harus default ke mode berwarna saat argumen tidak diberikan', () => {
+    assert.equal(createPainter(), chalk);
+  });
+
+  it('harus menghasilkan keluaran polos tanpa ANSI saat dimatikan', () => {
+    const p = createPainter(false);
+    const out = p.hex('#38BDF8')('Custom endpoint');
+    assert.equal(out, 'Custom endpoint');
+    assert.ok(!out.includes('\u001b['));
   });
 });

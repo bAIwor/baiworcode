@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import * as p from '@clack/prompts';
+import { theme } from './theme.js';
 import { spinner } from './spinner.js';
 import { getConfig, saveConfig, maskSecret } from './config.js';
 import { login, logout, PROVIDERS } from './auth/index.js';
@@ -37,9 +38,9 @@ async function configureAgentikFlow(existingCp, customList, config) {
 
   console.log();
   console.log(
-    chalk.gray('  🎁 Dapatkan bonus token/credit di: ') +
-      chalk.cyan('https://agentik.my.id') +
-      chalk.dim(' (kode kupon "baiworcode")')
+    theme.muted('  🎁 Dapatkan bonus token/credit di: ') +
+      theme.info('https://agentik.my.id') +
+      theme.muted(' (kode kupon "baiworcode")')
   );
   console.log();
 
@@ -180,8 +181,8 @@ async function handleGoogleSubmenu() {
       const isLoggedIn = isAgy
         ? Boolean(authData && (authData.active || authData.connectedAt))
         : Boolean(authData && (authData.accessToken || authData.apiKey));
-      const badge = isLoggedIn ? chalk.cyan.dim(' [Logged In]') : '';
-      const activeSuffix = isActive ? chalk.green.bold(` ← currently active (${config.activeModel})`) : '';
+      const badge = isLoggedIn ? theme.info.dim(' [Logged In]') : '';
+      const activeSuffix = isActive ? theme.success.bold(` ← currently active (${config.activeModel})`) : '';
       const descText = prov.desc ? ` ▸ (${prov.desc})` : '';
       return {
         value: `oauth_${prov.id}`,
@@ -191,7 +192,7 @@ async function handleGoogleSubmenu() {
 
     googleOptions.push({
       value: 'back',
-      label: chalk.gray('← Kembali'),
+      label: theme.muted('← Kembali'),
     });
 
     const pickedGoogle = await p.select({
@@ -318,8 +319,8 @@ export async function runModelMenu() {
     const config = getConfig();
 
     console.log();
-    console.log(`  ${chalk.dim('Current model:')}    ${chalk.cyan.bold(config.activeModel)}`);
-    console.log(`  ${chalk.dim('Active provider:')}  ${chalk.cyan.bold(config.activeProvider)}`);
+      console.log(`  ${theme.muted('Current model:')}    ${theme.info.bold(config.activeModel)}`);
+      console.log(`  ${theme.muted('Active provider:')}  ${theme.info.bold(config.activeProvider)}`);
     console.log();
 
     let optionNumber = 1;
@@ -337,7 +338,7 @@ export async function runModelMenu() {
       const displayUrl = cleanUrl(agentikCp.baseUrl);
       selectOptions.push({
         value: 'custom_Agentik',
-        label: `${optionNumber}. 👑 ${chalk.yellow.bold('Agentik AI')} ⭐ ${chalk.dim(`(${displayUrl})`)} — ${chalk.cyan(agentikCp.model)}${suffix}`,
+        label: `${optionNumber}. 👑 ${theme.warning.bold('Agentik AI')} ⭐ ${theme.muted(`(${displayUrl})`)} — ${theme.info(agentikCp.model)}${suffix}`,
       });
       optionNumber++;
     }
@@ -358,7 +359,7 @@ export async function runModelMenu() {
     const agyLoggedIn = Boolean(agyAuth && (agyAuth.active || agyAuth.connectedAt));
     const geminiLoggedIn = Boolean(geminiAuth && (geminiAuth.accessToken || geminiAuth.apiKey));
     const isAnyGoogleLoggedIn = agyLoggedIn || geminiLoggedIn;
-    const googleBadge = isAnyGoogleLoggedIn ? chalk.cyan.dim(' [Logged In]') : '';
+      const googleBadge = isAnyGoogleLoggedIn ? theme.info.dim(' [Logged In]') : '';
 
     selectOptions.push({
       value: 'group_google',
@@ -395,7 +396,7 @@ export async function runModelMenu() {
     // 5. Menu Aksi di bagian bawah
     selectOptions.push({
       value: 'action_add_custom',
-      label: chalk.hex('#38BDF8')('+ Custom endpoint (enter URL manually)'),
+      label: theme.cliLink('+ Custom endpoint (enter URL manually)'),
     });
 
     if (otherCustomList.length > 0) {
@@ -407,7 +408,7 @@ export async function runModelMenu() {
 
     selectOptions.push({
       value: 'action_leave',
-      label: chalk.gray('← Leave unchanged'),
+      label: theme.muted('← Leave unchanged'),
     });
 
     let choice = await p.select({

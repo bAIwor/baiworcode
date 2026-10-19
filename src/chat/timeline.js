@@ -1,5 +1,4 @@
-import chalk from 'chalk';
-import { NO_COLOR_PAINTER as NO_COLOR } from '../colors.js';
+import { createPainter } from '../colors.js';
 import { palette } from '../theme.js';
 
 const DEFAULT_SUMMARY_LEN = 80;
@@ -121,12 +120,10 @@ export function toolColorHex(name) {
 
 /**
  * Memilih pewarna sesuai kondisi terminal.
+ * Painter terpusat dari `colors.js` — sumber tunggal untuk seluruh modul
+ * yang butuh pewarna opsional.
  * @param {boolean} useColor
  */
-function painter(useColor) {
-  return useColor ? chalk : NO_COLOR;
-}
-
 /**
  * Memubah durasi milidetik menjadi label ringkas seperti `120ms` atau `1.4s`.
  * Durasi di bawah 1 detik tidak pernah dibulatkan ke `0ms` supaya informasi
@@ -303,7 +300,7 @@ function todoDepth(items, item) {
  * @returns {string} baris-baris checklist, atau string kosong bila tidak ada item
  */
 export function renderTodoChecklist(items, { useColor = true, maxItem = 70 } = {}) {
-  const c = painter(useColor);
+  const c = createPainter(useColor);
   const list = (Array.isArray(items) ? items : []).filter(Boolean);
   if (!list.length) return '';
 
@@ -347,7 +344,7 @@ export function renderTimeline(
   events,
   { useColor = true, maxSummary = DEFAULT_SUMMARY_LEN, spinnerFrame = '⠋' } = {}
 ) {
-  const c = painter(useColor);
+  const c = createPainter(useColor);
   const list = (events || []).filter(Boolean);
   if (!list.length) return '';
 
@@ -489,7 +486,7 @@ export function renderTimelineCompact(
   events,
   { useColor = true, spinnerFrame = '⠋', maxSummary = DEFAULT_SUMMARY_LEN } = {}
 ) {
-  const c = painter(useColor);
+  const c = createPainter(useColor);
   const list = (events || []).filter(Boolean);
   if (!list.length) return '';
 

@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { theme } from '../theme.js';
 import { resolveActiveCredentials } from '../auth/resolve.js';
 import { conversationSession } from './conversation.js';
 import { streamChatCompletion } from './client.js';
@@ -327,7 +328,7 @@ export async function handleUserChat(promptText) {
         onReasoning: (chunk) => {
           if (!isReasoningActive) {
             isReasoningActive = true;
-            process.stdout.write(chalk.dim.gray('💭 Thinking:'));
+            process.stdout.write(theme.thinking('💭 Thinking: '));
           }
           process.stdout.write(chalk.dim.gray(writer.wrapReasoning(chunk)));
           printed = true;
@@ -416,7 +417,7 @@ export async function handleUserChat(promptText) {
       wrap = await runModelTurn({
         messages,
         tools: [],
-        spinnerText: 'semAIr sedang menyusun kesimpulan akhir...',
+        spinnerText: 'bAIwor sedang menyusun kesimpulan akhir...',
       });
       finalText = (wrap?.content || '').trim();
     } catch (err) {
@@ -520,7 +521,7 @@ export async function handleUserChat(promptText) {
         tools: filterToolsForAgentMode(TOOL_DEFINITIONS, agentMode),
         spinnerText:
           currentTurn === 1
-            ? 'semAIr sedang merancang strategi...'
+            ? 'bAIwor sedang merancang strategi...'
             : 'bAIwor sedang menimbang & mengolah hasil tool...',
       });
       // Giliran pertama sudah terbukti berjalan → mulai simpan sesi SECARA
@@ -698,8 +699,7 @@ export async function handleUserChat(promptText) {
       console.log(chalk.gray(`     Provider : ${credentials.provider} (${credentials.type})`));
       console.log(chalk.gray(`     Solusi   : Ketik ${chalk.cyan('/model')} untuk memeriksa API Key atau ${chalk.cyan('/login')} untuk login ulang.\n`));
     } else if (err.status === 429) {
-      console.log(chalk.yellow.bold(`  ⏳ Rate Limit (${err.status}): Kuota atau batas kecepatan request provider tercapai.`));
-      console.log(chalk.gray('     Silakan tunggu beberapa saat atau ganti model/provider lain via /model.\n'));
+      console.log(theme.warning.bold('  ⏳ Hmmm kena limit! Ok deh ganti /model\n'));
     } else if (err.status >= 500) {
       console.log(chalk.red.bold(`  ⚠️  Server Provider Error (${err.status}): Layanan AI sedang mengalami gangguan.`));
       console.log(chalk.gray(`     Detail : ${err.message}`));

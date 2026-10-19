@@ -74,6 +74,7 @@ describe('PlanMode: Mode Perencanaan & Dry-Run (/plan)', () => {
       assert.ok(allowed.includes('list_directory'));
       assert.ok(allowed.includes('search_files'));
       assert.ok(allowed.includes('todo_list'));
+      assert.ok(allowed.includes('ask_user'));
 
       // Harus melarang keras tool pembuat & pengubah file
       assert.ok(!allowed.includes('write_file'));

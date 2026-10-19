@@ -1,5 +1,5 @@
 import path from 'node:path';
-import chalk from 'chalk';
+import { createPainter } from '../colors.js';
 import { palette } from '../theme.js';
 
 /**
@@ -74,20 +74,6 @@ export function parseDeliverAssetsContent(rawContent = '') {
   return items;
 }
 
-const createDummyChalk = () => {
-  const fn = (v) => String(v);
-  fn.bold = fn;
-  fn.dim = fn;
-  fn.italic = fn;
-  fn.hex = () => fn;
-  fn.green = fn;
-  fn.cyan = fn;
-  fn.yellow = fn;
-  fn.red = fn;
-  fn.gray = fn;
-  return fn;
-};
-
 /**
  * Merender kartu visual rapi di terminal untuk daftar deliverable assets.
  *
@@ -99,7 +85,7 @@ const createDummyChalk = () => {
 export function renderDeliverableCard(items = [], { useColor = true } = {}) {
   if (!Array.isArray(items) || items.length === 0) return '';
 
-  const c = useColor ? chalk : createDummyChalk();
+  const c = createPainter(useColor);
 
   const border = c.gray('─'.repeat(66));
   const lines = [];

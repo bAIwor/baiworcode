@@ -14,6 +14,7 @@ import {
   deleteSession,
   deleteAllSessions,
   listSessions,
+  listAllProjectsSessions,
   getLatestSession,
 } from '../src/chat/sessionManager.js';
 
@@ -223,9 +224,14 @@ describe('SessionManager: Manajemen Sesi Persisten', () => {
       assert.equal(loadSession(id, { projectPath: testProjectDir, baseConfigDir: tempBaseDir }), null);
     });
 
-    it('harus mengembalikan false jika sesi memang tidak ada', () => {
-      const deleted = deleteSession('ses_hantu', { projectPath: testProjectDir, baseConfigDir: tempBaseDir });
-      assert.equal(deleted, false);
+    it('harus menghapus sesi dari proyek lain lewat fallback pencarian global', () => {
+      const otherProjectDir = path.join(tempBaseDir, 'other-project');
+      const id = generateSessionId();
+      saveSession({ id, messages: [{ role: 'user', content: 'Sesi di folder lain' }] }, { projectPath: otherProjectDir, baseConfigDir: tempBaseDir });
+
+      const deleted = deleteSession(id, { projectPath: testProjectDir, baseConfigDir: tempBaseDir });
+      assert.equal(deleted, true);
+      assert.equal(loadSession(id, { projectPath: testProjectDir, baseConfigDir: tempBaseDir }), null);
     });
   });
 
@@ -243,9 +249,39 @@ describe('SessionManager: Manajemen Sesi Persisten', () => {
       assert.equal(listSessions({ projectPath: testProjectDir, baseConfigDir: tempBaseDir }).length, 0);
     });
 
+    it('harus menghapus seluruh sesi lintas proyek bila allProjects bernilai true', () => {
+      const projA = path.join(tempBaseDir, 'projA');
+      const projB = path.join(tempBaseDir, 'projB');
+      saveSession({ id: generateSessionId(), messages: [{ role: 'user', content: 'Sesi A' }] }, { projectPath: projA, baseConfigDir: tempBaseDir });
+      saveSession({ id: generateSessionId(), messages: [{ role: 'user', content: 'Sesi B' }] }, { projectPath: projB, baseConfigDir: tempBaseDir });
+
+      assert.equal(listAllProjectsSessions({ baseConfigDir: tempBaseDir }).length, 2);
+      const count = deleteAllSessions({ baseConfigDir: tempBaseDir, allProjects: true });
+      assert.equal(count, 2);
+      assert.equal(listAllProjectsSessions({ baseConfigDir: tempBaseDir }).length, 0);
+    });
+
     it('harus mengembalikan 0 jika tidak ada sesi yang tersimpan', () => {
       const count = deleteAllSessions({ projectPath: testProjectDir, baseConfigDir: tempBaseDir });
       assert.equal(count, 0);
+    });
+  });
+
+  describe('listAllProjectsSessions (Sesi Global Lintas Workspace)', () => {
+    it('harus dapat mengumpulkan sesi dari berbagai folder proyek secara terpadu', () => {
+      const projA = path.join(tempBaseDir, 'projA');
+      const projB = path.join(tempBaseDir, 'projB');
+      const idA = generateSessionId();
+      const idB = generateSessionId();
+
+      saveSession({ id: idA, messages: [{ role: 'user', content: 'Fitur A' }] }, { projectPath: projA, baseConfigDir: tempBaseDir });
+      saveSession({ id: idB, messages: [{ role: 'user', content: 'Fitur B' }] }, { projectPath: projB, baseConfigDir: tempBaseDir });
+
+      const all = listAllProjectsSessions({ baseConfigDir: tempBaseDir });
+      assert.equal(all.length, 2);
+      const ids = all.map((s) => s.id);
+      assert.ok(ids.includes(idA));
+      assert.ok(ids.includes(idB));
     });
   });
 

@@ -1,5 +1,5 @@
 import { exec, execFile } from 'node:child_process';
-import chalk from 'chalk';
+import { theme } from '../theme.js';
 import { spinner } from '../spinner.js';
 import { USER_AGENT } from '../branding.js';
 
@@ -53,11 +53,11 @@ export async function runDeviceFlow(provider, clientId) {
 
     deviceData = await res.json();
   } catch (err) {
-    s.stop(chalk.red(`Gagal meminta Device Code: ${err.message}`));
+    s.stop(theme.error(`Gagal meminta Device Code: ${err.message}`));
     throw err;
   }
 
-  s.stop(chalk.green('Kode otorisasi perangkat berhasil dibuat!'));
+  s.stop(theme.success('Kode otorisasi perangkat berhasil dibuat!'));
 
   const userCode = deviceData.user_code;
   const verificationUri = deviceData.verification_uri || deviceData.verification_url;
@@ -68,9 +68,9 @@ export async function runDeviceFlow(provider, clientId) {
   const deadline = Date.now() + Math.min(expiresInMs, 300000); // Maks 5 menit
 
   console.log();
-  console.log(chalk.yellow.bold('  🔐 Panduan Otorisasi Perangkat:'));
-  console.log(`    1. Salin kode verifikasi Anda : ${chalk.greenBright.bold(userCode)}`);
-  console.log(`    2. Buka URL di peramban web   : ${chalk.cyan.underline(verificationUri)}`);
+  console.log(theme.warning.bold('  🔐 Panduan Otorisasi Perangkat:'));
+  console.log(`    1. Salin kode verifikasi Anda : ${theme.success.bold(userCode)}`);
+  console.log(`    2. Buka URL di peramban web   : ${theme.info.underline(verificationUri)}`);
   console.log();
 
   // Coba buka browser secara otomatis
@@ -103,7 +103,7 @@ export async function runDeviceFlow(provider, clientId) {
       const tokenData = await tokenRes.json();
 
       if (tokenData.access_token) {
-        pollSpinner.stop(chalk.green(`✓ Otorisasi ${provider.name} berhasil!`));
+        pollSpinner.stop(theme.success(`✓ Otorisasi ${provider.name} berhasil!`));
         const expiresAt = tokenData.expires_in
           ? Date.now() + tokenData.expires_in * 1000
           : Date.now() + 30 * 24 * 3600 * 1000; // default 30 hari
@@ -127,13 +127,13 @@ export async function runDeviceFlow(provider, clientId) {
             intervalMs += 5000;
             break;
           case 'expired_token':
-            pollSpinner.stop(chalk.red('Kode otorisasi telah kedaluwarsa.'));
+            pollSpinner.stop(theme.error('Kode otorisasi telah kedaluwarsa.'));
             throw new Error('Kode verifikasi kedaluwarsa. Silakan coba lagi.');
           case 'access_denied':
-            pollSpinner.stop(chalk.red('Otorisasi ditolak oleh pengguna.'));
+            pollSpinner.stop(theme.error('Otorisasi ditolak oleh pengguna.'));
             throw new Error('Otorisasi ditolak.');
           default:
-            pollSpinner.stop(chalk.red(`Error OAuth: ${tokenData.error_description || tokenData.error}`));
+            pollSpinner.stop(theme.error(`Error OAuth: ${tokenData.error_description || tokenData.error}`));
             throw new Error(tokenData.error_description || tokenData.error);
         }
       }
@@ -145,6 +145,6 @@ export async function runDeviceFlow(provider, clientId) {
     }
   }
 
-  pollSpinner.stop(chalk.red('Waktu tunggu otorisasi habis (5 menit).'));
+  pollSpinner.stop(theme.error('Waktu tunggu otorisasi habis (5 menit).'));
   throw new Error('Batas waktu otorisasi 5 menit telah habis.');
 }

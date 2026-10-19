@@ -8,6 +8,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import readline from 'node:readline';
 import * as p from '@clack/prompts';
 import {
@@ -1206,28 +1207,25 @@ async function startInteractive(opts = {}) {
           action = pickedAction;
         }
         if (action === 'list') {
-          const list = listSessions();
-          if (list.length === 0) {
-            const allProjects = listAllProjectsSessions();
-            if (allProjects.length > 0) {
-              console.log(chalk.yellow(`\n  Belum ada sesi percakapan tersimpan di folder ini (${process.cwd()}).`));
-              console.log(chalk.cyan.bold(`  💡 Ditemukan ${allProjects.length} sesi tersimpan dari proyek lain:\n`));
-              allProjects.slice(0, 15).forEach((s, i) => {
-                const dt = s.updatedAt ? new Date(s.updatedAt).toLocaleString('id-ID') : '-';
-                const projName = s.projectPath ? path.basename(s.projectPath) : s.projectKey;
-                console.log(chalk.white(`  ${i + 1}. `) + chalk.green.bold(s.title || s.id) + chalk.cyan(` [${projName}]`));
-                console.log(chalk.gray(`     ID: ${s.id} · Path: ${s.projectPath || '-'} · Terakhir: ${dt} · ${s.stats?.turnCount || 0} turn`));
-              });
-              console.log(chalk.gray('\n  Gunakan: /session resume <id> untuk melanjutkan sesi dari proyek mana pun.\n'));
-            } else {
-              console.log(chalk.yellow('\n  Belum ada sesi percakapan tersimpan untuk proyek ini.\n'));
-            }
+          const allSessions = listAllProjectsSessions();
+          if (allSessions.length === 0) {
+            console.log(chalk.yellow('\n  Belum ada sesi percakapan tersimpan.\n'));
           } else {
-            console.log(chalk.cyan.bold(`\n  📁 Sesi Percakapan Proyek (${list.length} sesi):\n`));
-            list.slice(0, 15).forEach((s, i) => {
+            const currentNorm = path.resolve(process.cwd()).toLowerCase();
+            const homeNorm = path.resolve(os.homedir()).toLowerCase();
+            console.log(chalk.cyan.bold(`\n  📁 Seluruh Sesi Percakapan (${allSessions.length} sesi):\n`));
+            allSessions.slice(0, 25).forEach((s, i) => {
               const dt = s.updatedAt ? new Date(s.updatedAt).toLocaleString('id-ID') : '-';
-              console.log(chalk.white(`  ${i + 1}. `) + chalk.green.bold(s.title || s.id));
-              console.log(chalk.gray(`     ID: ${s.id} · Terakhir: ${dt} · ${s.stats?.turnCount || 0} turn`));
+              const sNorm = s.projectPath ? path.resolve(s.projectPath).toLowerCase() : '';
+              const isCurrent = sNorm === currentNorm;
+              let folderLabel = s.projectPath ? path.basename(s.projectPath) : (s.projectKey || 'proyek');
+              if (sNorm === homeNorm) folderLabel = '~ (Home)';
+              const workspaceTag = isCurrent
+                ? chalk.green.bold(' [Workspace Ini]')
+                : chalk.cyan(` [${folderLabel}]`);
+
+              console.log(chalk.white(`  ${i + 1}. `) + chalk.green.bold(s.title || s.id) + workspaceTag);
+              console.log(chalk.gray(`     ID: ${s.id} · Path: ${s.projectPath || '-'} · Terakhir: ${dt} · ${s.stats?.turnCount || 0} turn`));
             });
             console.log(chalk.gray('\n  Perintah: /session resume [id] · /session delete <id> · /session delete all\n'));
           }
@@ -1241,32 +1239,30 @@ async function startInteractive(opts = {}) {
               console.log(chalk.red.bold(`\n  ❌ Sesi "${targetId}" tidak ditemukan.\n`));
             }
           } else {
-            let list = listSessions();
-            let isGlobal = false;
-            if (list.length === 0) {
-              list = listAllProjectsSessions();
-              isGlobal = true;
-            }
-
-            if (list.length === 0) {
+            const allSessions = listAllProjectsSessions();
+            if (allSessions.length === 0) {
               console.log(chalk.yellow('\n  Tidak ada sesi sebelumnya untuk di-resume.\n'));
             } else {
-              const options = list.slice(0, 10).map((s) => {
+              const currentNorm = path.resolve(process.cwd()).toLowerCase();
+              const homeNorm = path.resolve(os.homedir()).toLowerCase();
+              const options = allSessions.slice(0, 20).map((s) => {
                 const dt = s.updatedAt ? new Date(s.updatedAt).toLocaleString('id-ID') : '-';
                 const turns = s.stats?.turnCount || 0;
-                const projTag = isGlobal && s.projectPath ? `[${path.basename(s.projectPath)}] ` : '';
-                const title = `${projTag}${s.title || s.id}`.slice(0, 36);
+                const sNorm = s.projectPath ? path.resolve(s.projectPath).toLowerCase() : '';
+                const isCurrent = sNorm === currentNorm;
+                let folderLabel = s.projectPath ? path.basename(s.projectPath) : (s.projectKey || 'proyek');
+                if (sNorm === homeNorm) folderLabel = '~';
+                const tag = isCurrent ? '[Ini] ' : `[${folderLabel}] `;
+                const title = `${tag}${s.title || s.id}`.slice(0, 38);
                 return {
                   value: s.id,
-                  label: `${title.padEnd(36)} ─ ${chalk.dim(`${turns} turn · ${dt}`)}`,
+                  label: `${title.padEnd(38)} ─ ${chalk.dim(`${turns} turn · ${dt}`)}`,
                 };
               });
               options.push({ value: '__cancel__', label: chalk.gray('← Batal') });
 
               const pickedId = await p.select({
-                message: isGlobal
-                  ? 'Pilih sesi dari proyek tersimpan yang ingin dilanjutkan:'
-                  : 'Pilih sesi yang ingin dilanjutkan:',
+                message: 'Pilih sesi percakapan yang ingin dilanjutkan:',
                 options,
               });
 
@@ -1285,8 +1281,8 @@ async function startInteractive(opts = {}) {
           if (!target) {
             console.log(chalk.yellow('\n  ⚠️  Tentukan sesi yang ingin dihapus:'));
             console.log(chalk.gray('  - ') + chalk.cyan('/session delete <id>') + chalk.gray('   : Hapus sesi tertentu'));
-            console.log(chalk.gray('  - ') + chalk.cyan('/session delete all') + chalk.gray('    : Hapus seluruh sesi proyek'));
-            const list = listSessions();
+            console.log(chalk.gray('  - ') + chalk.cyan('/session delete all') + chalk.gray('    : Hapus seluruh sesi'));
+            const list = listAllProjectsSessions();
             if (list.length > 0) {
               console.log(chalk.gray('\n  Daftar ID sesi yang tersedia:'));
               list.slice(0, 5).forEach((s) => {
@@ -1295,9 +1291,9 @@ async function startInteractive(opts = {}) {
             }
             console.log();
           } else if (target === 'all' || target === '--all') {
-            const count = deleteAllSessions();
+            const count = deleteAllSessions({ allProjects: true });
             if (count > 0) {
-              console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi untuk proyek ini.\n`));
+              console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi dari semua workspace.\n`));
               conversationSession.reset();
             } else {
               console.log(chalk.yellow('\n  Tidak ada sesi yang perlu dihapus.\n'));
@@ -1314,20 +1310,20 @@ async function startInteractive(opts = {}) {
             }
           }
         } else if (action === 'clear') {
-          const count = deleteAllSessions();
+          const count = deleteAllSessions({ allProjects: true });
           if (count > 0) {
-            console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi untuk proyek ini.\n`));
+            console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi dari semua workspace.\n`));
             conversationSession.reset();
           } else {
             console.log(chalk.yellow('\n  Tidak ada sesi yang perlu dibersihkan.\n'));
           }
         } else {
           console.log(chalk.gray('\n  Penggunaan perintah /session:'));
-          console.log(chalk.gray('  - ') + chalk.cyan('/session list') + chalk.gray('         : Tampilkan daftar sesi proyek'));
+          console.log(chalk.gray('  - ') + chalk.cyan('/session list') + chalk.gray('         : Tampilkan daftar seluruh sesi percakapan'));
           console.log(chalk.gray('  - ') + chalk.cyan('/session resume [id]') + chalk.gray('   : Lanjutkan sesi (terakhir atau sesuai id)'));
           console.log(chalk.gray('  - ') + chalk.cyan('/session delete <id>') + chalk.gray('   : Hapus satu sesi tertentu'));
-          console.log(chalk.gray('  - ') + chalk.cyan('/session delete all') + chalk.gray('    : Hapus seluruh sesi proyek'));
-          console.log(chalk.gray('  - ') + chalk.cyan('/session clear') + chalk.gray('        : Bersihkan seluruh riwayat sesi proyek\n'));
+          console.log(chalk.gray('  - ') + chalk.cyan('/session delete all') + chalk.gray('    : Hapus seluruh sesi'));
+          console.log(chalk.gray('  - ') + chalk.cyan('/session clear') + chalk.gray('        : Bersihkan seluruh riwayat sesi\n'));
         }
         break;
       }

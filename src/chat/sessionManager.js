@@ -342,23 +342,73 @@ export function deleteSession(sessionId, { projectPath = process.cwd(), baseConf
     }
   }
 
+  // Fallback pencarian global jika belum terhapus di folder proyek saat ini
+  if (!deleted) {
+    const rootSessionsDir = path.join(baseConfigDir, SESSIONS_DIR_NAME);
+    if (fs.existsSync(rootSessionsDir)) {
+      try {
+        const subdirs = fs.readdirSync(rootSessionsDir, { withFileTypes: true })
+          .filter((d) => d.isDirectory())
+          .map((d) => d.name);
+
+        for (const sub of subdirs) {
+          const candidateDir = path.join(rootSessionsDir, sub);
+          for (const ext of ['.jsonl', '.json']) {
+            const candidatePath = path.join(candidateDir, `${safeId}${ext}`);
+            if (fs.existsSync(candidatePath)) {
+              try {
+                fs.unlinkSync(candidatePath);
+                deleted = true;
+              } catch {}
+            }
+          }
+          if (deleted) break;
+        }
+      } catch {}
+    }
+  }
+
   return deleted;
 }
 
 /**
- * Menghapus SELURUH sesi percakapan pada proyek aktif.
+ * Menghapus SELURUH sesi percakapan pada proyek aktif (atau seluruh proyek bila allProjects = true).
  *
  * @param {object} [options]
  * @param {string} [options.projectPath]
  * @param {string} [options.baseConfigDir]
+ * @param {boolean} [options.allProjects=false]
  * @returns {number} Jumlah sesi yang berhasil dihapus
  */
-export function deleteAllSessions({ projectPath = process.cwd(), baseConfigDir = CONFIG_DIR } = {}) {
+export function deleteAllSessions({ projectPath = process.cwd(), baseConfigDir = CONFIG_DIR, allProjects = false } = {}) {
+  let count = 0;
+  if (allProjects) {
+    const rootSessionsDir = path.join(baseConfigDir, SESSIONS_DIR_NAME);
+    if (fs.existsSync(rootSessionsDir)) {
+      try {
+        const subdirs = fs.readdirSync(rootSessionsDir, { withFileTypes: true })
+          .filter((d) => d.isDirectory())
+          .map((d) => d.name);
+
+        for (const sub of subdirs) {
+          const dir = path.join(rootSessionsDir, sub);
+          const files = fs.readdirSync(dir).filter((f) => (f.endsWith('.json') || f.endsWith('.jsonl')) && !f.endsWith('.tmp'));
+          for (const file of files) {
+            try {
+              fs.unlinkSync(path.join(dir, file));
+              count += 1;
+            } catch {}
+          }
+        }
+      } catch {}
+    }
+    return count;
+  }
+
   const dir = getProjectSessionDir(projectPath, baseConfigDir);
   if (!fs.existsSync(dir)) return 0;
 
   const files = fs.readdirSync(dir).filter((f) => (f.endsWith('.json') || f.endsWith('.jsonl')) && !f.endsWith('.tmp'));
-  let count = 0;
   for (const file of files) {
     try {
       fs.unlinkSync(path.join(dir, file));
@@ -483,7 +533,7 @@ export function listAllProjectsSessions({ baseConfigDir = CONFIG_DIR, includeMes
     .filter((d) => d.isDirectory())
     .map((d) => d.name);
 
-  const all = [];
+  const sessionMap = new Map();
   for (const sub of subdirs) {
     const dir = path.join(rootSessionsDir, sub);
     const files = fs.readdirSync(dir).filter((f) => (f.endsWith('.json') || f.endsWith('.jsonl')) && !f.endsWith('.tmp'));
@@ -503,7 +553,7 @@ export function listAllProjectsSessions({ baseConfigDir = CONFIG_DIR, includeMes
           const data = JSON.parse(firstLine);
           if (!data || !data.id) continue;
 
-          all.push({
+          const meta = {
             id: data.id,
             title: data.title || 'Percakapan Tanpa Judul',
             projectPath: data.projectPath || '',
@@ -513,12 +563,48 @@ export function listAllProjectsSessions({ baseConfigDir = CONFIG_DIR, includeMes
             model: data.model || null,
             provider: data.provider || null,
             stats: data.stats || { turnCount: 0, tokensEstimate: 0 },
-          });
+          };
+
+          if (includeMessages) {
+            const full = parseSessionFile(fullPath);
+            meta.messages = full?.messages || [];
+          }
+
+          sessionMap.set(data.id, meta);
+        } else {
+          // Berkas .json legacy
+          const raw = fs.readFileSync(fullPath, 'utf8');
+          const data = JSON.parse(raw);
+          if (!data || !data.id) continue;
+
+          const meta = {
+            id: data.id,
+            title: data.title || 'Percakapan Tanpa Judul',
+            projectPath: data.projectPath || '',
+            projectKey: sub,
+            createdAt: data.createdAt || null,
+            updatedAt: data.updatedAt || null,
+            model: data.model || null,
+            provider: data.provider || null,
+            stats: data.stats || {
+              turnCount: Array.isArray(data.messages) ? data.messages.filter((m) => m?.role === 'user').length : 0,
+              tokensEstimate: 0,
+            },
+          };
+
+          if (includeMessages) {
+            meta.messages = data.messages || [];
+          }
+
+          if (!sessionMap.has(data.id)) {
+            sessionMap.set(data.id, meta);
+          }
         }
       } catch {}
     }
   }
 
+  const all = Array.from(sessionMap.values());
   all.sort((a, b) => {
     const tA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
     const tB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;

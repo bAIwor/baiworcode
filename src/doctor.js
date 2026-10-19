@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import chalk from 'chalk';
+import { theme } from './theme.js';
 import {
   getConfig,
   CONFIG_FILE,
@@ -22,8 +23,8 @@ import { APP_NAME, VERSION, WEBSITE } from './branding.js';
  * @returns {Promise<{ ok: boolean, passed: number, warnings: number, failed: number }>}
  */
 export async function runDoctor() {
-  console.log(chalk.hex('#FBBF24').bold(`\n  🩺 ${APP_NAME} Doctor v${VERSION}`));
-  console.log(chalk.gray('     Memeriksa seluruh komponen sistem, runtime, AI provider, dan sandbox cloud...\n'));
+  console.log(theme.cliTitle(`\n  🩺 ${APP_NAME} Doctor v${VERSION}`));
+  console.log(theme.muted('     Memeriksa seluruh komponen sistem, runtime, AI provider, dan sandbox cloud...\n'));
 
   let passed = 0;
   let warnings = 0;
@@ -32,18 +33,18 @@ export async function runDoctor() {
   const check = (status, title, detail, isWarn = false) => {
     if (status) {
       passed += 1;
-      console.log(`    ${chalk.green('✓')} ${chalk.bold.white(title)}: ${chalk.green(detail || 'OK')}`);
+      console.log(`    ${theme.success('✓')} ${theme.textBright.bold(title)}: ${theme.success(detail || 'OK')}`);
     } else if (isWarn) {
       warnings += 1;
-      console.log(`    ${chalk.yellow('⚠️')} ${chalk.bold.white(title)}: ${chalk.yellow(detail)}`);
+      console.log(`    ${theme.warning('⚠️')} ${theme.textBright.bold(title)}: ${theme.warning(detail)}`);
     } else {
       failed += 1;
-      console.log(`    ${chalk.red('✗')} ${chalk.bold.white(title)}: ${chalk.red(detail)}`);
+      console.log(`    ${theme.error('✗')} ${theme.textBright.bold(title)}: ${theme.error(detail)}`);
     }
   };
 
   // 1. Runtime Environment
-  console.log(chalk.cyan.bold('  1. Lingkungan Runtime & Sistem:'));
+  console.log(theme.info.bold('  1. Lingkungan Runtime & Sistem:'));
   const nodeVer = process.version;
   const majorNode = parseInt(nodeVer.replace(/^v/, '').split('.')[0], 10);
   check(majorNode >= 18, 'Node.js Version', `${nodeVer} (${majorNode >= 18 ? 'Didukung' : 'Minimal Node 18'})`, majorNode < 18);
@@ -54,7 +55,7 @@ export async function runDoctor() {
   check(colorLevel > 0, 'Dukungan Warna Terminal', colorDesc, colorLevel === 0);
 
   // 2. Workspace & Git
-  console.log(chalk.cyan.bold('\n  2. Folder Kerja & Workspace:'));
+  console.log(theme.info.bold('\n  2. Folder Kerja & Workspace:'));
   const cwd = process.cwd();
   const isHome = isHomeDirectory(cwd);
   check(!isHome, 'Lokasi Workspace', isHome ? `HOME folder terdeteksi (${cwd}) — disarankan buka folder proyek` : cwd, isHome);
@@ -78,7 +79,7 @@ export async function runDoctor() {
   }
 
   // 3. Konfigurasi bAIwor Code
-  console.log(chalk.cyan.bold('\n  3. Konfigurasi AI & Kredensial:'));
+  console.log(theme.info.bold('\n  3. Konfigurasi AI & Kredensial:'));
   const configExists = fs.existsSync(CONFIG_FILE);
   check(configExists, 'Berkas Konfigurasi', configExists ? CONFIG_FILE : 'Belum dibuat (akan dibuat otomatis saat start)', !configExists);
 
@@ -107,7 +108,7 @@ export async function runDoctor() {
   }
 
   // 4. Layanan Cloud & Ekstensi
-  console.log(chalk.cyan.bold('\n  4. Integrasi Cloud & Sandbox:'));
+  console.log(theme.info.bold('\n  4. Integrasi Cloud & Sandbox:'));
 
   // InstaBox
   const ibKey = getInstaboxApiKey();
@@ -155,13 +156,13 @@ export async function runDoctor() {
   check(mcpList.length > 0, 'MCP Servers', mcpList.length > 0 ? `${mcpList.length} server aktif` : 'Belum ada MCP server terhubung (opsional)', true);
 
   // 5. Kesimpulan
-  console.log(chalk.gray('\n  ' + '─'.repeat(60)));
+  console.log(theme.muted('\n  ' + '─'.repeat(60)));
   if (failed === 0) {
-    console.log(chalk.green.bold(`  ✓ Status Sehat: ${passed} lulus, ${warnings} peringatan wajar, 0 kegagalan kritis.`));
-    console.log(chalk.gray(`    bAIwor Code siap digunakan dengan performa optimal! 🚀\n`));
+    console.log(theme.success.bold(`  ✓ Status Sehat: ${passed} lulus, ${warnings} peringatan wajar, 0 kegagalan kritis.`));
+    console.log(theme.muted(`    bAIwor Code siap digunakan dengan performa optimal! 🚀\n`));
   } else {
-    console.log(chalk.yellow.bold(`  ⚠️  Ditemukan ${failed} kegagalan dan ${warnings} peringatan.`));
-    console.log(chalk.gray(`    Silakan tinjau perbaikan yang disarankan di atas.\n`));
+    console.log(theme.warning.bold(`  ⚠️  Ditemukan ${failed} kegagalan dan ${warnings} peringatan.`));
+    console.log(theme.muted(`    Silakan tinjau perbaikan yang disarankan di atas.\n`));
   }
 
   return { ok: failed === 0, passed, warnings, failed };

@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { theme } from './theme.js';
 import { APP_NAME, APP_SLUG, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE } from './branding.js';
 
 /**
@@ -13,12 +14,12 @@ import { APP_NAME, APP_SLUG, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE } from './
  * dihuruf-besarkan agar tampil seperti panduan CLI modern (mis. `USAGE`).
  */
 const HELP_STYLE = {
-  styleTitle: (str) => chalk.hex('#FBBF24').bold(str.replace(/:\s*$/, '').toUpperCase()),
-  styleCommandText: (str) => chalk.cyan.bold(str),
-  styleOptionText: (str) => chalk.whiteBright(str),
-  styleSubcommandText: (str) => chalk.greenBright(str),
-  styleArgumentText: (str) => chalk.magenta(str),
-  styleDescriptionText: (str) => chalk.gray(str),
+  styleTitle: (str) => theme.cliTitle(str.replace(/:\s*$/, '').toUpperCase()),
+  styleCommandText: (str) => theme.info.bold(str),
+  styleOptionText: (str) => theme.textBright(str),
+  styleSubcommandText: (str) => theme.success(str),
+  styleArgumentText: (str) => theme.accent(str),
+  styleDescriptionText: (str) => theme.muted(str),
 };
 
 /**
@@ -39,8 +40,8 @@ export function applyHelpStyle(command) {
 export function helpHeader(version = VERSION) {
   return [
     '',
-    chalk.whiteBright.bold(`  🎭 ${APP_NAME} `) + chalk.hex('#F59E0B').bold(`v${version}`),
-    chalk.gray(`  "${TAGLINE}"`),
+    theme.textBright.bold(`  🎭 ${APP_NAME} `) + theme.cliVersion(`v${version}`),
+    theme.muted(`  "${TAGLINE}"`),
     '',
   ].join('\n');
 }
@@ -51,19 +52,19 @@ export function helpHeader(version = VERSION) {
  * @returns {string}
  */
 export function helpFooter() {
-  const cmd = (text) => chalk.cyan(text.padEnd(APP_SLUG.length + 8));
+  const cmd = (text) => theme.info(text.padEnd(APP_SLUG.length + 8));
   return [
     '',
-    chalk.hex('#FBBF24').bold('  CONTOH CEPAT'),
-    `    ${chalk.cyan(`${APP_SLUG} "jelaskan struktur proyek ini"`)}`,
-    `    ${chalk.cyan(`${APP_SLUG} plan "rancang sistem auth JWT"`)}`,
-    `    ${chalk.cyan(`${APP_SLUG} ./proyek-lain`)}${chalk.gray(' → buka di folder proyek tertentu')}`,
-    `    ${chalk.cyan(`${APP_SLUG} -C /path/proyek "perbaiki bug"`)}`,
-    `    ${cmd(`${APP_SLUG} model`)}${chalk.gray('→ pilih provider & model')}`,
-    `    ${cmd(`${APP_SLUG} session`)}${chalk.gray('→ kelola riwayat sesi proyek')}`,
-    `    ${cmd(`${APP_SLUG} status`)}${chalk.gray('→ cek kredensial & latency')}`,
+    theme.cliTitle('  CONTOH CEPAT'),
+    `    ${theme.info(`${APP_SLUG} "jelaskan struktur proyek ini"`)}`,
+    `    ${theme.info(`${APP_SLUG} plan "rancang sistem auth JWT"`)}`,
+    `    ${theme.info(`${APP_SLUG} ./proyek-lain`)}${theme.muted(' → buka di folder proyek tertentu')}`,
+    `    ${theme.info(`${APP_SLUG} -C /path/proyek "perbaiki bug"`)}`,
+    `    ${cmd(`${APP_SLUG} model`)}${theme.muted('→ pilih provider & model')}`,
+    `    ${cmd(`${APP_SLUG} session`)}${theme.muted('→ kelola riwayat sesi proyek')}`,
+    `    ${cmd(`${APP_SLUG} status`)}${theme.muted('→ cek kredensial & latency')}`,
     '',
-    `  ${chalk.gray(`🌐 ${WEBSITE.replace(/^https?:\/\//, '')}`)}${chalk.gray('   ·   ')}${chalk.gray('🎁 bonus token: ')}${chalk.cyan(BONUS_WEBSITE.replace(/^https?:\/\//, ''))}${chalk.dim(' (kode kupon "baiworcode")')}`,
+    `  ${theme.muted(`🌐 ${WEBSITE.replace(/^https?:\/\//, '')}`)}${theme.muted('   ·   ')}${theme.muted('🎁 bonus token: ')}${theme.info(BONUS_WEBSITE.replace(/^https?:\/\//, ''))}${theme.muted(' (kode kupon "baiworcode")')}`,
     '',
   ].join('\n');
 }

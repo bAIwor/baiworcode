@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { theme } from './theme.js';
 import { getConfig, saveConfig } from './config.js';
 import { PROVIDERS } from './auth/registry.js';
 
@@ -490,16 +491,16 @@ export function removeModelAlias(name) {
 export function renderSwitchResult(res) {
   if (!res || !res.ok || !res.target) return '';
   const t = res.target;
-  const via = t.alias ? chalk.dim(` (alias "${t.alias}")`) : '';
+  const via = t.alias ? theme.muted(` (alias "${t.alias}")`) : '';
   const lines = [
-    `✓ Model aktif: ${chalk.cyan.bold(t.model)} ${chalk.dim('·')} provider ${chalk.cyan.bold(t.provider)}${via}`,
+    `✓ Model aktif: ${theme.info.bold(t.model)} ${theme.muted('·')} provider ${theme.info.bold(t.provider)}${via}`,
   ];
   if (t.type === 'oauth') {
     const prov = findOauthProvider(t.provider);
     const authData = getConfig().oauth?.[prov?.id];
     const loggedIn = Boolean(authData && (authData.accessToken || authData.apiKey));
     if (!loggedIn) {
-      lines.push(chalk.yellow('  ⚠ Belum login ke provider ini — ketik /login sebelum mengobrol.'));
+      lines.push(theme.warning('  ⚠ Belum login ke provider ini — ketik /login sebelum mengobrol.'));
     }
   }
   return lines.join('\n');
@@ -510,26 +511,26 @@ export function renderAliasList(config) {
   const aliases = listAliases(config);
   if (aliases.length === 0) {
     return (
-      chalk.yellow('\n  Belum ada alias tersimpan.') +
+      theme.warning('\n  Belum ada alias tersimpan.') +
       '\n' +
-      chalk.gray('  Tambahkan dengan: /model alias add <nama> <provider/model>') +
+      theme.muted('  Tambahkan dengan: /model alias add <nama> <provider/model>') +
       '\n' +
-      chalk.gray('  Contoh        : /model alias add step stepfun/step-5-preview\n')
+      theme.muted('  Contoh        : /model alias add step stepfun/step-5-preview\n')
     );
   }
   const active = activeAliasName(config);
-  const lines = [chalk.cyan.bold('\n  ⚡ Model Aliases:')];
+  const lines = [theme.info.bold('\n  ⚡ Model Aliases:')];
   for (const a of aliases) {
-    const badge = a.name === active ? chalk.green.bold(' ← currently active') : '';
+    const badge = a.name === active ? theme.success.bold(' ← currently active') : '';
     const url = a.baseUrl
-      ? chalk.dim(` (${a.baseUrl.replace(/^https?:\/\//i, '').replace(/\/+$/, '')})`)
+      ? theme.muted(` (${a.baseUrl.replace(/^https?:\/\//i, '').replace(/\/+$/, '')})`)
       : '';
     lines.push(
-      `    ${chalk.yellow.bold(a.name.padEnd(16))} → ${chalk.white(a.provider)}/${chalk.white(a.model)}${url}${badge}`
+      `    ${theme.warning.bold(a.name.padEnd(16))} → ${theme.text(a.provider)}/${theme.text(a.model)}${url}${badge}`
     );
   }
   lines.push(
-    chalk.gray('\n  Pakai: /model <nama> · Kelola: /model alias add|remove <nama> <provider/model>\n')
+    theme.muted('\n  Pakai: /model <nama> · Kelola: /model alias add|remove <nama> <provider/model>\n')
   );
   return lines.join('\n');
 }
@@ -602,7 +603,7 @@ export function handleModelCommand(arg) {
   if (!res.ok) {
     return {
       needsMenu: false,
-      output: chalk.red(`\n  ✗ ${res.error}`) + '\n' + chalk.gray(`  ${res.hint}\n`),
+      output: theme.error(`\n  ✗ ${res.error}`) + '\n' + theme.muted(`  ${res.hint}\n`),
     };
   }
   return { needsMenu: false, output: '\n  ' + renderSwitchResult(res) + '\n' };

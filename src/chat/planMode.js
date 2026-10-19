@@ -6,6 +6,9 @@
  * - Menginjeksi panduan format arsitektur & checklist ke dalam instruksi.
  */
 
+import { createPainter } from '../colors.js';
+import { palette } from '../theme.js';
+
 export const PLAN_ALLOWED_TOOLS = [
   'read_file',
   'list_directory',
@@ -13,6 +16,7 @@ export const PLAN_ALLOWED_TOOLS = [
   'webfetch',
   'websearch',
   'todo_list',
+  'ask_user',
 ];
 
 /**
@@ -26,7 +30,7 @@ export const PUNAKAWAN_ROLES = {
     emoji: '👑',
     role: 'architect',
     description: 'Merancang breakdown tugas, analisis kebutuhan, struktur roadmap, dan memelihara konteks percakapan.',
-    allowedTools: ['todo_list', 'read_file', 'list_directory', 'search_files', 'websearch'],
+    allowedTools: ['todo_list', 'read_file', 'list_directory', 'search_files', 'websearch', 'ask_user'],
   },
   pAItruk: {
     name: 'pAItruk',
@@ -90,14 +94,15 @@ Aturan ketat mode perencanaan:
 1. DILARANG membuat file baru (write_file) atau mengedit file (edit_file/patch_file).
 2. Gunakan read_file, search_files, dan list_directory (ketajaman pAItruk) untuk menganalisis struktur kode yang relevan.
 3. Bila butuh dokumentasi atau referensi luar, gunakan webfetch/websearch — tetapi tetap dilarang menulis berkas.
-3. Gunakan todo_list untuk menyusun checklist tahapan eksekusi secara terstruktur.
-4. Sajikan jawaban dengan format:
+4. Gunakan todo_list untuk menyusun checklist tahapan eksekusi secara terstruktur.
+5. Gunakan ask_user jika memerlukan konfirmasi keputusan arsitektur, pemilihan dependensi, atau preferensi desain penting dari pengguna.
+6. Sajikan jawaban dengan format:
    - 🎯 Tujuan & Analisis Masalah
    - 🏗️ Rancangan Arsitektur / Solusi (semAIr)
    - 📄 Berkas yang Akan Disentuh bAIwor (dibuat/diubah) beserta penjelasan ringkas
    - 🧪 Rencana Pengujian & Validasi Mutu (gAIreng)
    - ⚠️ Potensi Risiko atau Efek Samping
-5. Akhiri selalu dengan meminta konfirmasi: "Ketik 'lanjutkan' atau 'eksekusi' untuk mulai menerapkan rencana ini."`;
+7. Akhiri selalu dengan meminta konfirmasi: "Ketik 'lanjutkan' atau 'eksekusi' untuk mulai menerapkan rencana ini."`;
 
 /**
  * Mengecek apakah input pengguna merupakan perintah /plan.
@@ -244,16 +249,18 @@ export function renderTodoWidget(items, { useColor = true, isCompact = todoCompa
   const remaining = total - completed;
   const actionLabel = isCompact ? 'expand' : 'compact';
 
-  // Pewarna opsional
+  // Pewarna opsional — sumber tunggal lewat colors.js (dulu escape code
+  // ANSI ditulis manual di sini, sehingga bisa melenceng dari tema).
+  const p = createPainter(useColor);
   const c = {
-    bold: (s) => (useColor ? `\x1b[1m${s}\x1b[22m` : String(s)),
-    dim: (s) => (useColor ? `\x1b[2m${s}\x1b[22m` : String(s)),
-    gray: (s) => (useColor ? `\x1b[90m${s}\x1b[39m` : String(s)),
-    green: (s) => (useColor ? `\x1b[32m${s}\x1b[39m` : String(s)),
-    yellow: (s) => (useColor ? `\x1b[33m${s}\x1b[39m` : String(s)),
+    bold: p.bold,
+    dim: p.dim,
+    gray: p.gray,
+    green: p.green,
+    yellow: p.yellow,
     // Kuning emas Tim Punakawan (sama dengan palette.gold) — identitas semAIr.
-    gold: (s) => (useColor ? `\x1b[38;2;236;201;75m${s}\x1b[39m` : String(s)),
-    strikethrough: (s) => (useColor ? `\x1b[9m${s}\x1b[29m` : String(s)),
+    gold: p.hex(palette.gold),
+    strikethrough: p.strikethrough,
   };
 
   const dot = c.gray('·');

@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { theme } from '../theme.js';
 import * as p from '@clack/prompts';
 import { spinner } from '../spinner.js';
 import { getConfig, saveConfig, maskSecret } from '../config.js';
@@ -118,7 +119,7 @@ export async function login(providerId) {
 
   const provider = PROVIDERS[targetId];
   if (!provider) {
-    console.log(chalk.red(`Provider '${targetId}' tidak dikenal.`));
+    console.log(theme.error(`Provider '${targetId}' tidak dikenal.`));
     return null;
   }
 
@@ -138,12 +139,12 @@ export async function login(providerId) {
     } catch {}
 
     if (!isAvailable) {
-      s.stop(chalk.red('✗ Antigravity CLI (agy) belum terdeteksi atau belum login.'));
-      console.log(chalk.yellow('  Pastikan Antigravity CLI sudah terpasang dan login dengan akun Google Anda.'));
+      s.stop(theme.error('✗ Antigravity CLI (agy) belum terdeteksi atau belum login.'));
+      console.log(theme.warning('  Pastikan Antigravity CLI sudah terpasang dan login dengan akun Google Anda.'));
       return null;
     }
 
-    s.stop(chalk.green('✓ Terhubung ke Antigravity CLI (Akun Google aktif)!'));
+    s.stop(theme.success('✓ Terhubung ke Antigravity CLI (Akun Google aktif)!'));
 
     const modelChoice = await p.select({
       message: `Pilih model aktif untuk ${provider.name}:`,
@@ -172,7 +173,7 @@ export async function login(providerId) {
       activeType: 'agy',
     });
 
-    p.outro(chalk.green(`✓ Berhasil mengaktifkan ${provider.name} (${modelChoice})!`));
+    p.outro(theme.success(`✓ Berhasil mengaktifkan ${provider.name} (${modelChoice})!`));
     return { success: true, method: 'agy', model: modelChoice };
   }
 
@@ -212,8 +213,8 @@ export async function login(providerId) {
   if (opt === 'custom_client_id' || (opt === 'oauth_browser' && !clientId)) {
     if (opt === 'oauth_browser' && !clientId) {
       console.log();
-      console.log(chalk.yellow.bold(`  ℹ️  Konfigurasi OAuth Client ID untuk ${provider.name}:`));
-      console.log(chalk.gray(`     ${provider.setupGuide}`));
+      console.log(theme.warning.bold(`  ℹ️  Konfigurasi OAuth Client ID untuk ${provider.name}:`));
+      console.log(theme.muted(`     ${provider.setupGuide}`));
       console.log();
     }
 
@@ -299,7 +300,7 @@ export async function login(providerId) {
       activeType: 'oauth',
     });
 
-    p.outro(chalk.green(`✓ Berhasil menyimpan API Key untuk ${provider.name} (${finalModel})!`));
+    p.outro(theme.success(`✓ Berhasil menyimpan API Key untuk ${provider.name} (${finalModel})!`));
     return { success: true, method: 'apikey' };
   }
 
@@ -348,10 +349,10 @@ export async function login(providerId) {
       activeType: 'oauth',
     });
 
-    p.outro(chalk.green(`✓ Berhasil login ke ${provider.name} (${finalModel})!`));
+    p.outro(theme.success(`✓ Berhasil login ke ${provider.name} (${finalModel})!`));
     return { success: true, ...tokenData, model: finalModel };
   } catch (err) {
-    p.outro(chalk.red(`Gagal login ke ${provider.name}: ${err.message}`));
+    p.outro(theme.error(`Gagal login ke ${provider.name}: ${err.message}`));
     return null;
   }
 }
@@ -370,7 +371,7 @@ export async function logout(providerId) {
     );
 
     if (loggedInIds.length === 0) {
-      console.log(chalk.yellow('  Tidak ada sesi OAuth yang sedang login saat ini.'));
+      console.log(theme.warning('  Tidak ada sesi OAuth yang sedang login saat ini.'));
       return;
     }
 
@@ -405,7 +406,7 @@ export async function logout(providerId) {
   }
 
   saveConfig(updates);
-  p.outro(chalk.yellow(`✓ Berhasil logout dari ${provName}.`));
+  p.outro(theme.warning(`✓ Berhasil logout dari ${provName}.`));
 }
 
 /**

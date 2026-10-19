@@ -1,6 +1,6 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
-import chalk from 'chalk';
+import { theme } from '../theme.js';
 import { spinner } from '../spinner.js';
 import { openBrowser } from './device.js';
 import { USER_AGENT } from '../branding.js';
@@ -132,14 +132,14 @@ export async function runPkceFlow(provider, clientId, clientSecret = '') {
 
         if (!tokenRes.ok) {
           const errText = await tokenRes.text();
-          s.stop(chalk.red('Gagal menukar token.'));
+          s.stop(theme.error('Gagal menukar token.'));
           cleanup();
           reject(new Error(`Gagal menukar token (HTTP ${tokenRes.status}): ${errText}`));
           return;
         }
 
         const tokenData = await tokenRes.json();
-        s.stop(chalk.green(`✓ Berhasil terautentikasi dengan ${provider.name}!`));
+        s.stop(theme.success(`✓ Berhasil terautentikasi dengan ${provider.name}!`));
 
         const expiresAt = tokenData.expires_in
           ? Date.now() + tokenData.expires_in * 1000
@@ -177,10 +177,10 @@ export async function runPkceFlow(provider, clientId, clientSecret = '') {
       authUrl.searchParams.set('prompt', 'consent');
 
       console.log();
-      console.log(chalk.yellow.bold(`  🔐 Otorisasi Browser untuk ${provider.name}:`));
+      console.log(theme.warning.bold(`  🔐 Otorisasi Browser untuk ${provider.name}:`));
       console.log(`    Membuka tautan login di peramban web Anda...`);
       console.log(`    Jika peramban tidak terbuka otomatis, buka URL ini:`);
-      console.log(`    ${chalk.cyan.underline(authUrl.toString())}`);
+      console.log(`    ${theme.info.underline(authUrl.toString())}`);
       console.log();
 
       openBrowser(authUrl.toString());

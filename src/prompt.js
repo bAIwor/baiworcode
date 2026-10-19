@@ -369,7 +369,7 @@ export function buildPromptFrame({
   if (state === 'submit') {
     out += `  ${theme.input('›')}  ${theme.input(value || placeholder)}`;
   } else if (state === 'cancel') {
-    out += `  ${theme.error('›')}  ${chalk.strikethrough(chalk.gray(value))}`;
+    out += `  ${theme.error('›')}  ${theme.muted.strikethrough(value)}`;
   } else if (exitPending && !value) {
     const width = currentCols - 1;
     const msg =
@@ -378,7 +378,7 @@ export function buildPromptFrame({
         : 'Tekan Ctrl+C sekali lagi untuk keluar (atau ketik /exit)';
     out += `  ${theme.warning.bold('›')}  ${theme.warning(msg)}`;
   } else {
-    out += `  ${theme.input('›')}  ${shown ? theme.input(shown) : chalk.dim(placeholder)}`;
+    out += `  ${theme.input('›')}  ${shown ? theme.input(shown) : theme.muted(placeholder)}`;
 
     const ctx = getPromptContext(value);
     if (dropdownOpen && (ctx.type === 'command' || ctx.type === 'subcommand')) {
@@ -399,7 +399,7 @@ export function buildPromptFrame({
       const header =
         `  ╭─ ${headerTitle} (↑/↓/Tab pilih, Enter jalankan, Esc tutup)`;
       const shortHeader = `  ╭─ ${headerTitle}`;
-      out += '\n' + chalk.gray(fit(header.length <= width ? header : shortHeader)) + '\n';
+      out += '\n' + theme.muted(fit(header.length <= width ? header : shortHeader)) + '\n';
 
       // Prefix tiap item selalu 21 kolom tampil (tanpa warna), jadi deskripsi
       // tinggal memakai sisa lebar yang tersedia.
@@ -411,16 +411,16 @@ export function buildPromptFrame({
           const name = item.name.padEnd(NAME_LEN);
           const desc = fit(item.desc, descBudget);
           if (idx === active) {
-            out += `  ${chalk.gray('│')}  ${chalk.cyan.bold('❯')} ${chalk.cyan.bold(name)} ${chalk.gray('─')} ${chalk.whiteBright.bold(desc)}\n`;
+            out += `  ${theme.muted('│')}  ${theme.info.bold('❯')} ${theme.info.bold(name)} ${theme.muted('─')} ${theme.textBright.bold(desc)}\n`;
           } else {
-            out += `  ${chalk.gray('│')}    ${chalk.dim(name)} ${chalk.gray('─')} ${chalk.dim(desc)}\n`;
+            out += `  ${theme.muted('│')}    ${theme.muted(name)} ${theme.muted('─')} ${theme.muted(desc)}\n`;
           }
         });
       } else {
         const noMatchMsg = isSub ? 'Tidak ada pilihan yang cocok' : 'Tidak ada perintah yang cocok';
-        out += `  ${chalk.gray('│')}  ${chalk.red(fit(noMatchMsg, width - 5))}\n`;
+        out += `  ${theme.muted('│')}  ${theme.error(fit(noMatchMsg, width - 5))}\n`;
       }
-      out += '  ' + chalk.gray(`╰${'─'.repeat(Math.max(0, width - 3))}`);
+      out += '  ' + theme.muted(`╰${'─'.repeat(Math.max(0, width - 3))}`);
     }
   }
 

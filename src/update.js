@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import chalk from 'chalk';
+import { theme } from './theme.js';
 import { handleInstaboxExec } from './tools/instaboxTool.js';
 import { APP_NAME, VERSION, WEBSITE } from './branding.js';
 
@@ -17,8 +18,8 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * @returns {Promise<{ updated: boolean, message: string }>}
  */
 export async function runUpdate(options = {}) {
-  console.log(chalk.hex('#FBBF24').bold(`\n  🔄 Pembaruan ${APP_NAME} (Update Manager)`));
-  console.log(chalk.gray(`     Memeriksa pembaruan di repository resmi: ${WEBSITE}\n`));
+  console.log(theme.cliTitle(`\n  🔄 Pembaruan ${APP_NAME} (Update Manager)`));
+  console.log(theme.muted(`     Memeriksa pembaruan di repository resmi: ${WEBSITE}\n`));
 
   // 1. Cek apakah root instalasi adalah git repo
   let isGit = false;
@@ -28,18 +29,18 @@ export async function runUpdate(options = {}) {
   } catch {}
 
   if (!isGit) {
-    console.log(chalk.yellow('  ⚠️  Instalasi bAIwor Code ini tidak dijalankan dari repositori Git.'));
-    console.log(chalk.gray('      Gunakan `npm update -g baiworcode` untuk pembaruan paket npm.\n'));
+    console.log(theme.warning('  ⚠️  Instalasi bAIwor Code ini tidak dijalankan dari repositori Git.'));
+    console.log(theme.muted('      Gunakan `npm update -g baiworcode` untuk pembaruan paket npm.\n'));
     return { updated: false, message: 'Non-git installation' };
   }
 
   // 2. Fetch remote origin
-  console.log(chalk.cyan('  1. Menghubungi GitHub (git fetch origin main)...'));
+  console.log(theme.info('  1. Menghubungi GitHub (git fetch origin main)...'));
   try {
     execSync('git fetch origin main', { cwd: REPO_ROOT, stdio: 'ignore', timeout: 15000 });
   } catch (err) {
-    console.log(chalk.red(`  ✗ Gagal menghubungi remote GitHub: ${err.message}`));
-    console.log(chalk.gray('    Pastikan koneksi internet aktif.\n'));
+    console.log(theme.error(`  ✗ Gagal menghubungi remote GitHub: ${err.message}`));
+    console.log(theme.muted('    Pastikan koneksi internet aktif.\n'));
     return { updated: false, message: err.message };
   }
 
@@ -48,8 +49,8 @@ export async function runUpdate(options = {}) {
   const remoteHead = execSync('git rev-parse origin/main', { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
 
   if (localHead === remoteHead) {
-    console.log(chalk.green(`\n  ✓ ${APP_NAME} v${VERSION} sudah pada versi terbaru!`));
-    console.log(chalk.gray(`    Commit aktif: ${localHead.slice(0, 7)} (up to date dengan origin/main).\n`));
+    console.log(theme.success(`\n  ✓ ${APP_NAME} v${VERSION} sudah pada versi terbaru!`));
+    console.log(theme.muted(`    Commit aktif: ${localHead.slice(0, 7)} (up to date dengan origin/main).\n`));
 
     if (options.syncSandbox) {
       await updateSandboxRemote();
@@ -58,37 +59,37 @@ export async function runUpdate(options = {}) {
   }
 
   // 4. Ada pembaruan: tampilkan ringkasan commit baru
-  console.log(chalk.green(`\n  ✦ Ditemukan pembaruan baru dari GitHub! (${localHead.slice(0, 7)} → ${remoteHead.slice(0, 7)})`));
+  console.log(theme.success(`\n  ✦ Ditemukan pembaruan baru dari GitHub! (${localHead.slice(0, 7)} → ${remoteHead.slice(0, 7)})`));
   try {
     const changelog = execSync(`git log ${localHead}..${remoteHead} --oneline`, {
       cwd: REPO_ROOT,
       encoding: 'utf8',
     }).trim();
     if (changelog) {
-      console.log(chalk.dim('\n     Daftar Perubahan Baru:'));
+      console.log(theme.muted('\n     Daftar Perubahan Baru:'));
       for (const line of changelog.split('\n')) {
-        console.log(chalk.gray(`     • ${line}`));
+        console.log(theme.muted(`     • ${line}`));
       }
     }
   } catch {}
 
   // 5. Tarik pembaruan
-  console.log(chalk.cyan('\n  2. Mengunduh dan menerapkan pembaruan (git pull origin main)...'));
+  console.log(theme.info('\n  2. Mengunduh dan menerapkan pembaruan (git pull origin main)...'));
   try {
     execSync('git pull origin main', { cwd: REPO_ROOT, stdio: 'inherit' });
   } catch (err) {
-    console.log(chalk.red(`  ✗ Gagal pull pembaruan: ${err.message}`));
+    console.log(theme.error(`  ✗ Gagal pull pembaruan: ${err.message}`));
     return { updated: false, message: err.message };
   }
 
   // 6. Instal dependensi baru jika ada
-  console.log(chalk.cyan('  3. Memperbarui dependensi (npm install)...'));
+  console.log(theme.info('  3. Memperbarui dependensi (npm install)...'));
   try {
     execSync('npm install --prefer-offline', { cwd: REPO_ROOT, stdio: 'ignore' });
   } catch {}
 
-  console.log(chalk.green.bold(`\n  ✓ ${APP_NAME} berhasil diperbarui ke commit ${remoteHead.slice(0, 7)}!`));
-  console.log(chalk.gray('    Semua fitur dan perbaikan terbaru kini aktif.\n'));
+  console.log(theme.success.bold(`\n  ✓ ${APP_NAME} berhasil diperbarui ke commit ${remoteHead.slice(0, 7)}!`));
+  console.log(theme.muted('    Semua fitur dan perbaikan terbaru kini aktif.\n'));
 
   if (options.syncSandbox) {
     await updateSandboxRemote();
@@ -98,7 +99,7 @@ export async function runUpdate(options = {}) {
 }
 
 async function updateSandboxRemote() {
-  console.log(chalk.cyan('  4. Menyinkronkan pembaruan ke Cloud Sandbox InstaBox...'));
+  console.log(theme.info('  4. Menyinkronkan pembaruan ke Cloud Sandbox InstaBox...'));
   const res = await handleInstaboxExec({
     command: 'cd /data/workspace/baiworcode && git fetch origin main && git reset --hard origin/main && npm install --prefer-offline',
     timeout_ms: 45000,

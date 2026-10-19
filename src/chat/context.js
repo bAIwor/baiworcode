@@ -1,5 +1,4 @@
-import chalk from 'chalk';
-import { NO_COLOR_PAINTER as NO_COLOR } from '../colors.js';
+import { createPainter } from '../colors.js';
 /**
  * Estimasi pemakaian context window.
  *
@@ -14,10 +13,6 @@ import { NO_COLOR_PAINTER as NO_COLOR } from '../colors.js';
  * keputusan presisi. Karena itu setiap label memakai tanda `≈` dan tidak pernah
  * disajikan sebagai fakta pasti.
  */
-
-function painter(useColor) {
-  return useColor ? chalk : NO_COLOR;
-}
 
 /** Rata-rata karakter per token untuk teks Latin/Indonesia. */
 export const CHARS_PER_TOKEN = 4;
@@ -142,7 +137,7 @@ export function getContextUsage(messages, { model = null, contextWindow = null }
  */
 export function formatContextIndicator(usage, { useColor = true, detail = true } = {}) {
   if (!usage || typeof usage !== 'object') return '';
-  const c = painter(useColor);
+  const c = createPainter(useColor);
 
   const k = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
   const percent = Math.max(0, Math.min(100, usage.percentLeft ?? 0));
@@ -167,7 +162,7 @@ export function formatContextIndicator(usage, { useColor = true, detail = true }
  */
 export function formatContextWarning(usage, { useColor = true } = {}) {
   if (!usage || typeof usage !== 'object') return '';
-  const c = painter(useColor);
+  const c = createPainter(useColor);
   const percent = Math.max(0, Math.min(100, usage.percentLeft ?? 0));
 
   if (usage.overBudget) {

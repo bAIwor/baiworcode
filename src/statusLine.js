@@ -50,8 +50,8 @@ export function frameRules(cols = process.stdout.columns) {
   const span = Math.max(10, terminalWidth(cols) - 1);
   return {
     dashes: span,
-    top: chalk.gray('─'.repeat(span)),
-    bottom: chalk.gray('─'.repeat(span)),
+  top: theme.muted('─'.repeat(span)),
+  bottom: theme.muted('─'.repeat(span)),
   };
 }
 
@@ -61,7 +61,7 @@ export function frameRules(cols = process.stdout.columns) {
  * @returns {string}
  */
 export function statusRule({ indent = '' } = {}) {
-  return chalk.gray(`${indent}${'─'.repeat(Math.max(10, terminalWidth() - indent.length))}`);
+  return theme.muted(`${indent}${'─'.repeat(Math.max(10, terminalWidth() - indent.length))}`);
 }
 
 /**
@@ -105,21 +105,21 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
     model: config.activeModel,
   });
 
-  const bar = chalk.gray('│');
+  const bar = theme.muted('│');
 
   const build = ({ detail, withProvider, withAccess, withPrefix, withAgent = true }) => {
     const parts = [theme.info('~')];
     // Agen aktif selalu tampil (kecuali di bentuk paling ringkas): pengguna
     // harus langsung tahu kalau dirinya sedang di mode Plan yang read-only.
     if (withAgent) {
-      parts.push(bar, getAgentMode() === 'plan' ? chalk.yellow.bold('Plan') : theme.text('Build'));
+      parts.push(bar, getAgentMode() === 'plan' ? theme.warning.bold('Plan') : theme.text('Build'));
     }
     // Label akses dinamis mengikuti config: 'full' → Full access (agenta bebas
     // menjalankan kelas confirm tanpa bertanya di TTY), 'normal' → Safe.
     if (withAccess) parts.push(bar, theme.text(getAccessMode() === 'full' ? 'Full access' : 'Safe'));
     if (withPrefix && prefix) parts.push(bar, theme.info(prefix));
     parts.push(bar, theme.accent('✦'), theme.primary(model));
-    if (withProvider) parts.push(chalk.gray('·'), theme.info(provider));
+    if (withProvider) parts.push(theme.muted('·'), theme.info(provider));
     parts.push(bar, formatContextIndicator(usage, { detail }));
     return indent + parts.join(' ');
   };

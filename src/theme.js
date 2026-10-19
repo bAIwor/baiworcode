@@ -17,8 +17,15 @@ export const palette = Object.freeze({
   info: '#4fd1c5', // soft teal/cyan — informasi, baca berkas, enumerasi
   gold: '#ecc94b', // punakawan gold — nama karakter Tim Punakawan AI (semAIr, bAIwor, pAItruk, gAIreng)
   text: '#eeeeee', // teks utama
+  textBright: '#f5f5f5', // teks utama terang (padanan whiteBright)
   textMuted: '#808080', // teks redup / komentar
   border: '#484848', // garis tepi
+  thinking: '#f472b6', // pastel pink — label penalaran AI (💭 Thinking:)
+
+  // ---- aksen khusus CLI (help/doctor/update) — dipetakan dari hex liar audit ----
+  cliTitle: '#FBBF24', // amber judul CLI: header help, "Doctor", "Pembaruan"
+  cliVersion: '#F59E0B', // amber pekat: nomor versi di header help
+  cliLink: '#38BDF8', // sky: aksi tautan khusus di menu model
 
   // ---- diff (dipertahankan agar membaca kode tetap nyaman) ----
   diffAdded: '#4fd6be', // latar penanda tambah
@@ -73,6 +80,8 @@ export const theme = {
   primary: hex(palette.primary),
   // teks input yang sedang diketik pengguna (putih, bukan oranye)
   input: hex(palette.text),
+  // teks terang (judul baris, label utama)
+  textBright: hex(palette.textBright),
 
   // markdown
   heading: hex(palette.mdHeading).bold,
@@ -111,6 +120,14 @@ export const theme = {
   gold: hex(palette.gold),
   muted: hex(palette.textMuted),
   border: hex(palette.border),
+
+  // aksen khusus CLI (help/doctor/update)
+  cliTitle: hex(palette.cliTitle).bold,
+  cliVersion: hex(palette.cliVersion).bold,
+  cliLink: hex(palette.cliLink),
+
+  // penalaran AI (thinking)
+  thinking: hex(palette.thinking).bold,
 };
 
 /**

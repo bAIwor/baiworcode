@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { theme } from './theme.js';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -24,7 +25,7 @@ export function spinner() {
   const draw = () => {
     if (!isTTY) return;
     try {
-      out.write(`\r\x1b[2K${chalk.magenta(FRAMES[frame])}  ${text}`);
+      out.write(`\r\x1b[2K${theme.accent(FRAMES[frame])}  ${text}`);
     } catch {}
     frame = (frame + 1) % FRAMES.length;
   };
