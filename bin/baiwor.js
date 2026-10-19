@@ -793,9 +793,9 @@ async function handleSandboxCommand(arg = '') {
       }
     } catch {}
 
-    console.log(chalk.gray('  Menjalankan git pull di InstaBox (/data/workspace/baiworcode)...'));
+    console.log(chalk.gray('  Menyinkronkan branch main di InstaBox (/data/workspace/baiworcode)...'));
     const pullRes = await handleInstaboxExec({
-      command: 'cd /data/workspace/baiworcode && git pull origin main && npm install --prefer-offline',
+      command: 'cd /data/workspace/baiworcode && git fetch origin main && git reset --hard origin/main && npm install --prefer-offline',
       timeout_ms: 45000,
     });
 
