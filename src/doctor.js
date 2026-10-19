@@ -96,7 +96,7 @@ export async function runDoctor() {
         const start = Date.now();
         const testRes = await globalThis.fetch(`${activeCp.baseUrl.replace(/\/+$/, '')}/models`, {
           headers: activeCp.apiKey ? { Authorization: `Bearer ${activeCp.apiKey}` } : {},
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(10000),
         });
         const lat = Date.now() - start;
         check(testRes.ok || testRes.status < 500, `Koneksi API (${provider})`, `Terhubung (${lat}ms, HTTP ${testRes.status})`);
@@ -134,7 +134,7 @@ export async function runDoctor() {
     try {
       const res = await globalThis.fetch('https://agent.tinyfish.ai/v1/wallet', {
         headers: { 'X-API-Key': tfKey },
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(10000),
       });
       if (res.ok) {
         const w = await res.json();
