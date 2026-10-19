@@ -6,6 +6,8 @@ import '../src/colors.js';
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import fs from 'node:fs';
+import path from 'node:path';
 import readline from 'node:readline';
 import * as p from '@clack/prompts';
 import {
@@ -20,8 +22,18 @@ import {
   setAgentMode,
   getTinyFishApiKey,
   saveTinyFishApiKey,
+  getInstaboxApiKey,
+  saveInstaboxApiKey,
+  getInstaboxMachineId,
+  saveInstaboxMachineId,
 } from '../src/config.js';
-import { handleWebFetch, handleWebSearch } from '../src/tools/webTool.js';
+import {
+  handleInstaboxExec,
+  getInstaboxStatus,
+  controlInstabox,
+  openInstaboxDesktop,
+  captureInstaboxScreenshot,
+} from '../src/tools/instaboxTool.js';
 import { initAllMcpServers, listActiveMcpSessions, startMcpServer } from '../src/mcp/index.js';
 import { runModelMenu } from '../src/modelMenu.js';
 import { handleModelCommand } from '../src/modelAlias.js';
@@ -433,6 +445,7 @@ const HELP_USAGE = {
   '/plan': '/plan [instruksi]',
   '/cd': '/cd <folder>',
   '/workspace': '/workspace [folder]',
+  '/sandbox': '/sandbox [status|exec|pause|resume|key]',
 };
 
 function showHelp() {
@@ -600,6 +613,17 @@ async function printStatus() {
   }
 
   console.log();
+  console.log(chalk.whiteBright.bold('  ☁️  InstaBox Cloud Sandbox (MicroVM Linux):'));
+  const ibKey = getInstaboxApiKey();
+  const ibMachine = getInstaboxMachineId();
+  if (ibKey) {
+    console.log(`    ${chalk.green('●')} Status  : ${chalk.green('Aktif')} [Key: ${maskSecret(ibKey)}]`);
+    console.log(`      Mesin   : ${chalk.cyan(ibMachine)} · 4 vCPU, 8 GiB RAM, 20 GiB Storage (/data)`);
+  } else {
+    console.log(`    ${chalk.gray('○')} Status  : ${chalk.yellow('Belum dikonfigurasi')} (atur via /sandbox key <ibk_...>)`);
+  }
+
+  console.log();
   console.log(chalk.whiteBright.bold('  🔌 Model Context Protocol (MCP):'));
   const mcpList = listActiveMcpSessions();
   if (mcpList.length > 0) {
@@ -709,6 +733,139 @@ async function handleTinyFishCommand(arg = '') {
   console.log(chalk.gray('    /tinyfish search <query>  → uji pencarian web'));
   console.log(chalk.gray('    /tinyfish fetch <url>     → uji ekstraksi URL bersih'));
   console.log(chalk.gray('    /tinyfish key <apiKey>    → ganti API key\n'));
+}
+
+async function handleSandboxCommand(arg = '') {
+  const parts = String(arg || '').trim().split(/\s+/);
+  const sub = parts[0]?.toLowerCase();
+  const rest = parts.slice(1).join(' ');
+
+  if (sub === 'key') {
+    if (!rest) {
+      console.log(chalk.yellow('\n  Format: /sandbox key <api_key>\n'));
+      return;
+    }
+    saveInstaboxApiKey(rest);
+    console.log(chalk.green(`\n  ✓ API Key InstaBox berhasil disimpan ke konfigurasi: ${maskSecret(rest)}\n`));
+    return;
+  }
+
+  if (sub === 'machine') {
+    if (!rest) {
+      console.log(chalk.yellow('\n  Format: /sandbox machine <machine_id>\n'));
+      return;
+    }
+    saveInstaboxMachineId(rest);
+    console.log(chalk.green(`\n  ✓ Machine target InstaBox berhasil disimpan: ${chalk.bold(rest)}\n`));
+    return;
+  }
+
+  if (sub === 'exec') {
+    if (!rest) {
+      console.log(chalk.yellow('\n  Format: /sandbox exec <perintah shell Linux>\n'));
+      return;
+    }
+    console.log(chalk.cyan(`\n  ☁️  Mengeksekusi di InstaBox Sandbox: ${chalk.bold(rest)}...`));
+    const started = Date.now();
+    const res = await handleInstaboxExec({ command: rest });
+    const dur = ((Date.now() - started) / 1000).toFixed(2);
+    if (res.success) {
+      console.log(chalk.green(`\n  ✓ Selesai dalam ${dur}s:\n`));
+      console.log(chalk.white(res.output) + '\n');
+    } else {
+      console.log(chalk.red(`\n  ✗ Gagal (${dur}s):\n`));
+      console.log(chalk.yellow(res.output) + '\n');
+    }
+    return;
+  }
+
+  if (sub === 'pause') {
+    console.log(chalk.cyan('\n  Memproses jeda (pause) mesin InstaBox...'));
+    const res = await controlInstabox('pause');
+    if (res.success) {
+      console.log(chalk.green(`  ✓ ${res.message}\n`));
+    } else {
+      console.log(chalk.red(`  ✗ ${res.message}\n`));
+    }
+    return;
+  }
+
+  if (sub === 'resume') {
+    console.log(chalk.cyan('\n  Membangunkan (resume) mesin InstaBox...'));
+    const res = await controlInstabox('resume');
+    if (res.success) {
+      console.log(chalk.green(`  ✓ ${res.message}\n`));
+    } else {
+      console.log(chalk.red(`  ✗ ${res.message}\n`));
+    }
+    return;
+  }
+
+  if (sub === 'open') {
+    if (!rest) {
+      console.log(chalk.yellow('\n  Format: /sandbox open <url>\n'));
+      return;
+    }
+    console.log(chalk.cyan(`\n  🌐 Membuka URL di layar GUI desktop InstaBox: ${chalk.bold(rest)}...`));
+    const res = await openInstaboxDesktop(rest);
+    if (res.success) {
+      console.log(chalk.green(`  ✓ ${res.message}\n`));
+    } else {
+      console.log(chalk.red(`  ✗ ${res.message}\n`));
+    }
+    return;
+  }
+
+  if (sub === 'screenshot' || sub === 'shot') {
+    const filename = rest || `instabox-${Date.now()}.png`;
+    console.log(chalk.cyan(`\n  📸 Mengambil tangkapan layar GUI desktop InstaBox...`));
+    const res = await captureInstaboxScreenshot();
+    if (res.success && res.buffer) {
+      try {
+        fs.writeFileSync(filename, Buffer.from(res.buffer));
+        console.log(chalk.green(`  ✓ Screenshot tersimpan di: ${chalk.bold(path.resolve(filename))}\n`));
+      } catch (err) {
+        console.log(chalk.red(`  ✗ Gagal menulis berkas screenshot: ${err.message}\n`));
+      }
+    } else {
+      console.log(chalk.red(`  ✗ ${res.message || 'Gagal mengambil screenshot'}\n`));
+    }
+    return;
+  }
+
+  // Default: status
+  const key = getInstaboxApiKey();
+  const machine = getInstaboxMachineId();
+
+  console.log(chalk.hex('#FBBF24').bold('\n  ☁️  InstaBox Cloud Sandbox (MicroVM Linux 4 vCPU / 8 GiB RAM):'));
+  if (!key) {
+    console.log(chalk.yellow('    ● Status   : Belum Terkonfigurasi'));
+    console.log(chalk.gray('      Gunakan: /sandbox key <ibk_...> untuk mengaktifkan.'));
+    console.log(chalk.gray('      Dapatkan API Key di https://instabox.sh\n'));
+    return;
+  }
+
+  console.log(`    ${chalk.green('●')} Status   : ${chalk.green('Terkonfigurasi')} [Key: ${maskSecret(key)}]`);
+  console.log(`    ${chalk.cyan('✦')} Mesin    : ${chalk.bold.white(machine)}`);
+  console.log(`    ${chalk.hex('#10B981')('⚡')} Kapasitas: ${chalk.bold('4 vCPU, 8 GiB RAM, 20 GiB Storage (/data)')}`);
+
+  try {
+    const st = await getInstaboxStatus(machine);
+    if (st.ok && st.machine) {
+      const state = st.machine.status || st.machine.state || 'running';
+      const color = state === 'running' ? chalk.green : chalk.yellow;
+      console.log(`    ${color('●')} Kondisi  : ${color.bold(state.toUpperCase())}`);
+    }
+  } catch {}
+
+  console.log(chalk.gray('\n  Sub-perintah:'));
+  console.log(chalk.gray('    /sandbox exec <perintah>   → jalankan perintah shell di MicroVM Linux'));
+  console.log(chalk.gray('    /sandbox open <url>        → buka website di layar browser GUI cloud'));
+  console.log(chalk.gray('    /sandbox screenshot        → unduh tangkapan layar GUI ke komputer lokal'));
+  console.log(chalk.gray('    /sandbox pause            → bekukan mesin untuk hemat kuota'));
+  console.log(chalk.gray('    /sandbox resume           → bangunkan mesin kembali'));
+  console.log(chalk.gray('    /sandbox machine <id>     → ganti ID / nama mesin'));
+  console.log(chalk.gray('    /sandbox key <apiKey>     → perbarui API Key\n'));
 }
 
 async function handleMcpCommand(arg = '') {
@@ -968,12 +1125,12 @@ async function startInteractive(opts = {}) {
             message: `Pilih mode tampilan timeline (saat ini: ${chalk.green(active)}):`,
             options: [
               {
-                value: 'compact',
-                label: `${chalk.green('compact'.padEnd(10))} ─ ${chalk.dim('Satu baris per langkah — alur cepat & ringkas')}`,
+                value: 'detail',
+                label: `${chalk.cyan('detail'.padEnd(10))} ─ ${chalk.dim('Pohon lengkap dengan argumen & output terbuka (selalu open, Ctrl+O)')}`,
               },
               {
-                value: 'detail',
-                label: `${chalk.cyan('detail'.padEnd(10))} ─ ${chalk.dim('Pohon lengkap dengan argumen & ringkasan hasil')}`,
+                value: 'compact',
+                label: `${chalk.green('compact'.padEnd(10))} ─ ${chalk.dim('Satu baris per langkah — alur cepat & ringkas (folded)')}`,
               },
               { value: '__cancel__', label: chalk.gray('← Batal') },
             ],
@@ -985,11 +1142,11 @@ async function startInteractive(opts = {}) {
         }
         const next = setTimelineMode(mode);
         if (next === 'compact') {
-          console.log(chalk.green.bold('\n  ✓ Mode timeline: COMPACT'));
-          console.log(chalk.gray('    Tiap langkah kini satu baris: ikon · aktor · tool · durasi · baris'));
+          console.log(chalk.green.bold('\n  ✓ Mode timeline: COMPACT (Folded)'));
+          console.log(chalk.gray('    Tiap langkah kini satu baris ringkas. Tekan Ctrl+O untuk membuka detail/output.'));
         } else {
-          console.log(chalk.green.bold('\n  ✓ Mode timeline: DETAIL'));
-          console.log(chalk.gray('    Tiap langkah kini pohon penuh dengan argumen & ringkasan hasil'));
+          console.log(chalk.green.bold('\n  ✓ Mode timeline: DETAIL (Selalu Open)'));
+          console.log(chalk.gray('    Tiap langkah kini pohon penuh dengan argumen & output detail terbuka.'));
         }
         console.log();
         break;
@@ -1193,6 +1350,10 @@ async function startInteractive(opts = {}) {
       }
       case '/status':
         await printStatus();
+        break;
+      case '/sandbox':
+      case '/instabox':
+        await handleSandboxCommand(arg);
         break;
       case '/tinyfish':
         await handleTinyFishCommand(arg);

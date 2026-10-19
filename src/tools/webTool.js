@@ -89,6 +89,18 @@ export function htmlToText(html) {
 }
 
 /**
+ * Membersihkan karakter kontrol biner, mojibake, dan replacement characters (U+FFFD)
+ * dari teks web agar tidak merusak tokenisasi LLM atau memicu respons glitch.
+ */
+export function sanitizeWebText(text) {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .replace(/[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+/**
  * Mengambil isi URL menggunakan TinyFish Fetch API.
  * Mendukung eksekusi JavaScript, anti-bot bypass, dan konversi ke Markdown bersih.
  *
@@ -122,7 +134,7 @@ async function fetchTinyFishFetch({ url, max_chars, apiKey, purpose }) {
       return null;
     }
 
-    let text = page.text.trim();
+    let text = sanitizeWebText(page.text);
     const maxChars = Math.max(500, Number(max_chars) || DEFAULT_MAX_CHARS);
     if (text.length > maxChars) {
       text = `${text.slice(0, maxChars)}\n\n… [isi dipotong pada ${maxChars} karakter]`;
@@ -193,6 +205,7 @@ export async function handleWebFetch({ url, max_chars = DEFAULT_MAX_CHARS, raw =
     if (!raw && /html|xhtml/i.test(contentType)) {
       text = htmlToText(text);
     }
+    text = sanitizeWebText(text);
 
     const maxChars = Math.max(500, Number(max_chars) || DEFAULT_MAX_CHARS);
     if (text.length > maxChars) {

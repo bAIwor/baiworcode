@@ -300,6 +300,9 @@ export async function handleUserChat(promptText) {
     let printed = false;
     // Pewarna markdown hanya untuk tampilan; riwayat percakapan tetap teks mentah.
     const styler = new AnswerStyler({ useColor: isTTY });
+    let inDeliverTag = false;
+    let deliverTagBuffer = '';
+
     startThinkingSpinner(spinnerText);
     try {
       const result = await streamChatCompletion({
@@ -309,13 +312,6 @@ export async function handleUserChat(promptText) {
         signal: controller.signal,
         onStart: () => {
           stopThinkingSpinner();
-          // Bersihkan baris spinner TANPA pindah baris: keluaran berikutnya
-          // (thinking/jawaban) langsung ditulis di baris spinner tadi, sehingga
-          // tidak menyisakan baris kosong ekstra. Dulu di sini diberi '\n'
-          // sehingga menambah satu baris kosong lagi sebelum jawaban.
-          //
-          // Indentasi awal TIDAK dicetak di sini: writer sudah menambahkan
-          // indentasi sendiri pada setiap baris.
           clearSpinnerLine();
           writer.reset();
         },
@@ -330,27 +326,52 @@ export async function handleUserChat(promptText) {
         onDelta: (chunk) => {
           if (isReasoningActive) {
             isReasoningActive = false;
-            // Tuntaskan sisa baris reasoning yang masih tertahan di buffer
-            // (dengan warna redup yang sama), lalu beri TEPAT satu baris kosong
-            // sebelum jawaban. Dulu di sini ditulis dua newline ('\n\n')
-            // padahal baris reasoning terakhir sudah berakhir newline, sehingga
-            // muncul dua baris kosong dan jarak thinking→jawaban terlihat
-            // terlalu jauh. Satu newline sudah cukup.
             process.stdout.write(chalk.dim.gray(writer.wrapReasoning('\n')));
             process.stdout.write('\n');
           }
+
+          let text = chunk;
+          if (!inDeliverTag) {
+            const startIdx = text.toLowerCase().indexOf('<deliver-assets');
+            if (startIdx !== -1) {
+              const before = text.slice(0, startIdx);
+              deliverTagBuffer = text.slice(startIdx);
+              inDeliverTag = true;
+              text = before;
+            }
+          } else {
+            deliverTagBuffer += text;
+            text = '';
+            const endIdx = deliverTagBuffer.toLowerCase().indexOf('</deliver-assets>');
+            if (endIdx !== -1) {
+              inDeliverTag = false;
+              text = deliverTagBuffer.slice(endIdx + '</deliver-assets>'.length);
+              deliverTagBuffer = '';
+            }
+          }
+
+          if (!text) return;
+
           try {
-            const styled = styler.push(chunk);
+            const styled = styler.push(text);
             if (styled) {
               writeStyled(styled);
               printed = true;
             }
           } catch {
-            writeStyled(chunk);
+            writeStyled(text);
             printed = true;
           }
         },
       });
+      if (inDeliverTag && deliverTagBuffer) {
+        try {
+          const styled = styler.push(deliverTagBuffer);
+          if (styled) writeStyled(styled);
+        } catch {
+          writeStyled(deliverTagBuffer);
+        }
+      }
       const flushed = styler.flush();
       if (flushed) {
         writeStyled(flushed);

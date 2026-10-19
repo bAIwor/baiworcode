@@ -7,7 +7,7 @@ import { theme } from './theme.js';
 import { renderStatusLine, frameRules, terminalWidth } from './statusLine.js';
 import { todoStore } from './tools/todoTool.js';
 import { renderTodoWidget, toggleTodoCompactMode, getTodoCompactMode } from './chat/planMode.js';
-import { CONFIG_DIR, getAgentMode, setAgentMode } from './config.js';
+import { CONFIG_DIR, getAgentMode, setAgentMode, getTimelineMode, setTimelineMode } from './config.js';
 
 // ---------------------------------------------------------------------------
 // Manajemen state stdin untuk seluruh prompt @clack/core (@clack/prompts).
@@ -200,6 +200,7 @@ export const COMMANDS = [
   { name: '/skill', desc: 'Kelola modul keahlian & plugin (.baiwor/skills)' },
   { name: '/rules', desc: 'Lihat aturan koding aktif (BAIWORS.md / .baiwor/rules)' },
   { name: '/status', desc: 'Status konfigurasi & model AI aktif' },
+  { name: '/sandbox', desc: 'Kelola Cloud Sandbox InstaBox (MicroVM 4 vCPU / 8 GiB RAM)' },
   { name: '/tinyfish', desc: 'Kelola integrasi TinyFish (status, wallet, key, search, fetch)' },
   { name: '/mcp', desc: 'Kelola Model Context Protocol server & tool eksternal' },
   { name: '/model', desc: 'Pilih model: /model (menu) · /model <alias|provider/model>' },
@@ -218,8 +219,8 @@ export const SUBCOMMANDS = {
     { name: 'full', desc: 'Lewati persetujuan kelas "confirm" — perintah berbahaya tetap ditolak' },
   ],
   '/timeline': [
-    { name: 'compact', desc: 'Satu baris per langkah — alur cepat & ringkas' },
-    { name: 'detail', desc: 'Pohon lengkap dengan argumen & ringkasan hasil' },
+    { name: 'compact', desc: 'Satu baris per langkah — alur cepat & ringkas (folded)' },
+    { name: 'detail', desc: 'Pohon lengkap & output terbuka (selalu open, Ctrl+O)' },
   ],
   '/session': [
     { name: 'list', desc: 'Tampilkan daftar sesi percakapan proyek' },
@@ -230,6 +231,15 @@ export const SUBCOMMANDS = {
   '/skill': [
     { name: 'list', desc: 'Tampilkan daftar modul keahlian & plugin yang terpasang' },
     { name: 'info', desc: 'Tampilkan detail instruksi modul keahlian' },
+  ],
+  '/sandbox': [
+    { name: 'status', desc: 'Cek status mesin & spesifikasi cloud sandbox' },
+    { name: 'exec', desc: 'Jalankan perintah shell di cloud: /sandbox exec <cmd>' },
+    { name: 'open', desc: 'Buka URL di browser layar GUI cloud: /sandbox open <url>' },
+    { name: 'screenshot', desc: 'Ambil dan simpan tangkapan layar GUI ke komputer lokal' },
+    { name: 'pause', desc: 'Bekukan mesin cloud sandbox untuk hemat daya' },
+    { name: 'resume', desc: 'Bangunkan mesin cloud sandbox' },
+    { name: 'key', desc: 'Atur API key InstaBox: /sandbox key <ibk_...>' },
   ],
   '/tinyfish': [
     { name: 'status', desc: 'Lihat status koneksi TinyFish & saldo wallet' },
@@ -761,6 +771,19 @@ export class SlashTextPrompt extends TextPrompt {
         key?.sequence === '\u0014';
       if (isCtrlT) {
         toggleTodoCompactMode();
+        this.render();
+        return;
+      }
+
+      // 3b. Tombol Ctrl+O: toggle tampilan aktivitas/proses (open/detail <-> compact/folded)
+      const isCtrlO =
+        (key?.name === 'o' && Boolean(key?.ctrl)) ||
+        u === '\u000f' ||
+        key?.sequence === '\u000f';
+      if (isCtrlO) {
+        const cur = getTimelineMode();
+        const next = cur === 'compact' ? 'detail' : 'compact';
+        setTimelineMode(next);
         this.render();
         return;
       }

@@ -1,0 +1,182 @@
+# Struktur Arsitektur bAIwor Code
+
+Dokumen ini menjelaskan struktur direktori, pemetaan implementasi tools, alur eksekusi *agent loop*, serta daftar fitur yang belum ada / pengembangan lanjutan untuk repositori **bAIwor Code** (`baiworcode`).
+
+---
+
+## 1. Tree Struktur Folder (`bin/` & `src/`)
+
+```text
+baiworcode/
+├── bin/
+│   └── baiwor.js                   # CLI entry-point utama, parser argumen Commander.js, interactive REPL loop, dan slash commands handler
+└── src/
+    ├── assets/
+    │   └── baworLogo.js            # Banner visual ASCII art maskot Bawor Banyumasan
+    ├── auth/
+    │   ├── device.js               # Alur autentikasi OAuth Device Authorization Flow (RFC 8628)
+    │   ├── index.js                # Router dan manajer proses login/logout provider
+    │   ├── pkce.js                 # Helper generator kode PKCE (Code Verifier & Code Challenge)
+    │   ├── registry.js             # Registri definisi provider AI (Agentik, Gemini, OpenAI, Groq, Ollama, dll.)
+    │   └── resolve.js              # Resolver kredensial aktif dari environment variable atau config tersimpan
+    ├── chat/
+    │   ├── accessMode.js           # Mode akses approval eksekusi (Safe Mode vs Full Access Mode)
+    │   ├── answerStyle.js          # Parser dan penata gaya markdown streaming untuk terminal TTY
+    │   ├── client.js               # HTTP client SSE streaming OpenAI-compatible dengan auto-retry & error-recovery
+    │   ├── compact.js              # Engine perangkuman riwayat cerdas (/compact dan auto-compact)
+    │   ├── context.js              # Penghitung estimasi token, resolusi context window, dan pemangkasan pesan
+    │   ├── conversation.js         # Pengelola status memori percakapan aktif
+    │   ├── deliverables.js         # Parser tag <deliver-assets> dan perender kartu OSC 8 clickable link
+    │   ├── index.js                # Orkestrator utama Agentic Loop interaksi LLM dan eksekusi tool
+    │   ├── liveActivity.js         # Komponen visual status tool interaktif (animasi in-place spinner)
+    │   ├── outputWriter.js         # Penulis keluaran terminal sadar kolom dengan hanging-indent
+    │   ├── planMode.js             # Mode perencanaan read-only (/plan) dan widget todo list
+    │   ├── reasoningPlaceholder.js # Pengaman kompatibilitas reasoning_content untuk API provider
+    │   ├── sessionManager.js       # Manajer persistensi sesi percakapan ke format JSONL di disk
+    │   ├── systemPrompt.js         # Generator prompt sistem bAIwor (Punakawan Banyumasan & instruksi kerja)
+    │   ├── timeline.js             # Visualisasi riwayat pemanggilan tool (compact, detail, tree)
+    │   ├── todoReminder.js         # Logika injeksi pengingat daftar tugas (<planning-reminder> & <task-reminder>)
+    │   └── wrapText.js             # Utilitas pemotongan teks aman kode escape ANSI
+    ├── mcp/
+    │   ├── client.js               # Klien MCP (Model Context Protocol) untuk koneksi ke MCP Server eksternal (TinyFish)
+    │   ├── index.js                # Ekspor modul integrasi MCP
+    │   └── server.js               # MCP Server bawaan untuk mengekspos 14 tools bAIwor ke host luar
+    ├── rules/
+    │   └── ruleManager.js          # Pemuat aturan proyek custom (BAIWORS.md dan .baiwor/rules/*.md)
+    ├── skills/
+    │   └── skillManager.js         # Pemuat skill modular (.baiwor/skills/*.md)
+    ├── tools/
+    │   ├── approval.js             # Dialog interaktif konfirmasi pengguna untuk perintah berisiko
+    │   ├── definitions.js          # Skema JSON Schema OpenAI function-calling untuk seluruh tools
+    │   ├── diagnosticsTool.js      # Handler tool diagnostics (pemeriksaan lint & typecheck otomatis)
+    │   ├── editUtil.js             # Engine manipulasi teks: EOL normalizer, search-replace, multi-edit, diff patcher
+    │   ├── handlers.js             # Handler eksekusi berkas & terminal (read, write, edit, patch, list, run)
+    │   ├── index.js                # Indeks tools, registrasi bawaan, dan dispatching
+    │   ├── questionnaireTool.js    # Handler tool ask_user untuk pertanyaan interaktif pilihan ganda
+    │   ├── registry.js             # Registri tool internal, pembatasan output (capToolOutput), dan pengelompokan toolset
+    │   ├── sandbox.js              # Analisis keamanan perintah shell, path containment, dan pencegah perintah berbahaya
+    │   ├── searchTool.js           # Handler tool search_files (pencarian regex isi berkas dan glob nama berkas)
+    │   ├── subagentTool.js         # Handler tool delegate_task (subagent Punakawan: pAItruk, gAIreng, bAIwor)
+    │   ├── todoTool.js             # Handler tool todo_list dan in-memory todo store
+    │   └── webTool.js              # Handler tool webfetch, websearch, dan webautomate (didukung TinyFish / DuckDuckGo)
+    ├── branding.js                 # Konstanta identitas merek, slogan, dan entitas PT BAIWOR AGENTIC INDONESIA
+    ├── cliHelp.js                  # Pemformat bantuan CLI (--help) dengan warna Chalk
+    ├── colors.js                   # Utilitas deteksi kapabilitas warna terminal (16 color, 256 color, Truecolor)
+    ├── config.js                   # Pembaca dan penyimpan konfigurasi lokal (~/.baiwor/config.json)
+    ├── modelAlias.js               # Resolver alias pintas model (mis. 'flash', 'sonnet', 'deepseek')
+    ├── modelMenu.js                # Menu interaktif pemilihan model AI dan konfigurasi endpoint
+    ├── prompt.js                   # Prompt masukan kustom (SlashTextPrompt) dengan auto-complete dropdown perintah
+    ├── spinner.js                  # Indikator loading terminal sederhana
+    ├── statusLine.js               # Baris status bawah terminal (indikator model, token context budget, access mode)
+    ├── theme.js                    # Skema warna dan border UI Banyumas Punakawan
+    └── workspace.js                # Resolver jalur kerja workspace dan isolasi root direktori
+```
+
+---
+
+## 2. Daftar Tools yang Sudah Diimplementasi
+
+bAIwor Code memiliki **14 tools bawaan** yang didaftarkan ke OpenAI Function Calling format:
+
+| No | Nama Tool | Berkas Implementasi | Toolset | Fungsi Utama |
+|---|---|---|---|---|
+| 1 | `read_file` | `src/tools/handlers.js` | `file` | Membaca isi berkas dalam workspace dengan penomoran baris, mendukung pagination (`offset`, `limit`). |
+| 2 | `write_file` | `src/tools/handlers.js` | `file` | Membuat berkas baru atau menulis ulang berkas secara utuh di dalam batas workspace. |
+| 3 | `edit_file` | `src/tools/handlers.js`<br>`src/tools/editUtil.js` | `file` | Mengganti potongan kode/teks secara presisi (*search-and-replace* toleran indentasi) atau multi-edit atomik. |
+| 4 | `patch_file` | `src/tools/handlers.js`<br>`src/tools/editUtil.js` | `file` | Menerapkan patch berkas berbasis format unified diff (*git diff hunk*). |
+| 5 | `list_directory` | `src/tools/handlers.js` | `file` | Menampilkan struktur berkas dan folder, menyaring `node_modules` dan `.git`, mendukung rekursif & kedalaman. |
+| 6 | `run_command` | `src/tools/handlers.js`<br>`src/tools/sandbox.js` | `terminal` | Mengeksekusi perintah shell lokal di dalam workspace. Mendukung eksekusi asinkron latar belakang (*background task* via `run`, `status`, `stop`, `list`). |
+| 7 | `search_files` | `src/tools/searchTool.js` | `file` | Mencari pola regex di seluruh berkas (`target: "content"`) atau mencari berkas berdasarkan pola glob (`target: "files"`). |
+| 8 | `todo_list` | `src/tools/todoTool.js` | `todo` | Menyusun, memperbarui status (`pending`, `in_progress`, `completed`, `cancelled`), dan mengelola checklist multi-langkah. |
+| 9 | `webfetch` | `src/tools/webTool.js` | `web` | Mengambil dan membersihkan isi halaman web (HTML ke Markdown) via TinyFish Fetch API atau fallback native fetch. |
+| 10 | `websearch` | `src/tools/webTool.js` | `web` | Melakukan pencarian informasi terkini di internet (TinyFish Search API / DuckDuckGo). |
+| 11 | `webautomate` | `src/tools/webTool.js` | `web` | Otomasi browser interaktif (ekstraksi data dinamis, interaksi halaman) via Web Agent TinyFish. |
+| 12 | `diagnostics` | `src/tools/diagnosticsTool.js` | `quality` | Menjalankan pemeriksaan otomatis mutu proyek (skrip `check`, `typecheck`, `lint` di package.json, `tsc`, atau `eslint`). |
+| 13 | `delegate_task` | `src/tools/subagentTool.js` | `agent` | Mendelegasikan sub-tugas terisolasi ke peran Punakawan (`pAItruk` untuk eksplorasi *read-only*, `gAIreng` untuk audit/test, `bAIwor` untuk coding spesifik). |
+| 14 | `ask_user` | `src/tools/questionnaireTool.js` | `interactive` | Mengajukan pertanyaan interaktif dengan pilihan jawaban (*single-select* atau *multi-select*) ke pengguna di terminal. |
+
+*Catatan Tambahan:*  
+Selain 14 tool bawaan di atas, sistem mendukung integrasi protokol **MCP (Model Context Protocol)** melalui `src/mcp/client.js` yang secara otomatis mengimpor suite tool TinyFish (manajemen monitor web, kontrol sesi browser jarak jauh, manajemen profil, dan status dompet).
+
+---
+
+## 3. Alur Agent Loop (Input Pengguna → Eksekusi Tool)
+
+Alur kerja agen dari pengetikan input hingga pemanggilan tool berlangsung dalam siklus berikut:
+
+```text
+[Input Pengguna]
+       │
+       ▼
+1. CLI REPL & Prompt Parsing (bin/baiwor.js & src/prompt.js)
+   • Menangkap prompt dari argumen CLI atau interactive REPL.
+   • Memeriksa apakah input merupakan slash command (/model, /plan, /access, /compact, dll.).
+   • Jika chat biasa, dialihkan ke handleUserChat() di src/chat/index.js.
+       │
+       ▼
+2. Resolusi Kredensial & Sinkronisasi Konteks
+   • Membaca kredensial provider aktif melalui src/auth/resolve.js.
+   • Menyusun System Prompt (src/chat/systemPrompt.js) dengan injeksi aturan proyek (BAIWORS.md via src/rules/ruleManager.js) dan skill lokal.
+   • Menambahkan pesan pengguna ke memori Conversation (src/chat/conversation.js).
+       │
+       ▼
+3. Pemeriksaan Anggaran Token & Pemadatan Konteks
+   • Auto-Compact Guard: Jika estimasi token mencapai ambang batas (>= 80% context window), jalankan autoCompactConversation() (src/chat/compact.js).
+   • Token Budgeting: Memangkas pesan terlama yang melebihi jendela konteks dengan tetap mempertahankan system prompt dan integritas pasangan blok tool.
+   • Perencanaan Nudge: Menyuntikkan peringatan sementara (<planning-reminder> atau <task-reminder>) bila agen mengeksekusi banyak tool tanpa rencana.
+       │
+       ▼
+4. Streaming Request ke LLM Provider (src/chat/client.js)
+   • Mengirim payload messages dan daftar tool (difilter berdasarkan mode: Build vs Plan).
+   • Menerima respons SSE (Server-Sent Events) secara streaming:
+     - onReasoning: Menampilkan blok berpikir ("💭 Thinking") dengan perataan indentasi.
+     - onDelta: Menata gaya keluaran markdown secara langsung ke terminal via AnswerStyler dan OutputWriter.
+     - tool_calls: Mengakumulasi argumen function call JSON parsial.
+       │
+       ▼
+5. Deteksi Tool Call & Gerbang Keamanan (Approval Gate)
+   • Jika LLM tidak memanggil tool: Siklus selesai, respons asisten disimpan, menunggu input berikutnya.
+   • Jika LLM meminta pemanggilan tool:
+     1. Simpan pesan assistant beserta tool_calls dan reasoning ke Conversation.
+     2. Validasi Sandbox (src/tools/sandbox.js): Mengklasifikasikan perintah (allow, confirm, deny).
+     3. Mode Akses (src/chat/accessMode.js): Bila mode "Safe" atau perintah berisiko tinggi, tampilkan dialog persetujuan (src/tools/approval.js).
+     4. Mode Plan Guard (src/chat/planMode.js): Menolak keras jika ada tool pengubah berkas terpanggil saat mode /plan aktif.
+       │
+       ▼
+6. Eksekusi Tool (src/tools/registry.js -> dispatchTool)
+   • Menjalankan fungsi handler terkait.
+   • Memotong keluaran jika melampaui batas MAX_TOOL_OUTPUT_CHARS dan menyimpannya ke berkas laporan (.baiwor/reports/tool-outputs/).
+   • Memasukkan hasil keluaran sebagai pesan dengan peran role: "tool" ke Conversation.
+   • Memperbarui visual LiveActivity (ceklis hijau bila berhasil, silang merah bila gagal).
+       │
+       ▼
+7. Evaluasi Loop (Agentic Turn Iteration)
+   • Memeriksa deteksi loop macet (stuckLoop: pemanggilan tool identik >= 3 kali berturut-turut).
+   • Memeriksa batas putaran maksimum (MAX_AGENT_TURNS = 100).
+   • Jika berulang atau mencapai batas: Kirim WRAPUP_INSTRUCTION tanpa definisi tool agar LLM menyimpulkan pekerjaan.
+   • Jika normal: Ulangi langkah 4 dengan riwayat pesan yang telah diperbarui.
+```
+
+---
+
+## 4. Fitur yang Belum Ada atau Masih TODO / Pengembangan Lanjutan
+
+Berdasarkan tinjauan arsitektur dan status fase Alpha saat ini, berikut adalah daftar area pengembangan lanjutan yang belum diimplementasikan:
+
+1. **Terminal Stateful / Pseudo-TTY (PTY) Runner**:
+   - `run_command` saat ini dieksekusi menggunakan `child_process.exec` perintah tunggal tanpa menjaga status *stateful shell session* (misal: perintah `export VAR=...` atau `cd ...` tidak bertahan ke pemanggilan berikutnya). Diperlukan backend PTY (misal `node-pty`) untuk sesi terminal interaktif persisten.
+
+2. **Interactive Staging & Visual Diff Review**:
+   - Belum ada antarmuka TUI interaktif untuk meninjau *side-by-side diff* sebelum perubahan berkas via `write_file`, `edit_file`, atau `patch_file` diaplikasikan ke disk saat berada di Safe Mode.
+
+3. **Multi-Modal / Media Asset Ingestion**:
+   - Belum ada kemampuan membaca dan menganalisis berkas biner/gambar (seperti screenshot UI, diagram arsitektur, atau aset visual) langsung dari prompt masukan terminal ke model vision-capable.
+
+4. **Perintah Pembaruan Otomatis CLI (`/update` / `baiwor update`)**:
+   - Mekanisme pengecekan versi rilis terbaru dari npm registry dan proses pembaruan mandiri satu perintah (*self-updater*) di terminal belum tersedia.
+
+5. **Dukungan OAuth untuk Provider Tambahan**:
+   - Modul `src/auth/` saat ini fokus mendukung alur Device Authorization Flow dan PKCE untuk ekosistem Agentik dan GitHub/Gemini. Provider lain (seperti Anthropic atau Azure OpenAI Service) masih bergantung penuh pada konfigurasi API key manual.
+
+6. **Snapshot Undo / Rollback Workspace**:
+   - Belum ada tool bawaan untuk melakukan *undo* atau *revert* instan atas seluruh perubahan berkas yang telah dilakukan agen dalam satu sesi jika pengguna tidak puas dengan hasilnya.

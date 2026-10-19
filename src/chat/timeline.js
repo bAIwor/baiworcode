@@ -30,6 +30,7 @@ const TOOL_TINTS = {
   diagnostics: palette.warning, // oranye tua — memeriksa mutu
   delegate_task: palette.primary, // oranye aksen — mendelegasikan subagent
   ask_user: palette.warning, // oranye tua — menanyakan keputusan ke pengguna
+  instabox_exec: palette.primary, // oranye aksen — cloud sandbox MicroVM
 };
 
 /**
@@ -54,6 +55,7 @@ export const PUNAKAWAN_ROLES = {
   todo_list: 'semAIr',
   delegate_task: 'semAIr',
   ask_user: 'semAIr',
+  instabox_exec: 'bAIwor',
 };
 
 /**
@@ -93,6 +95,7 @@ export const TOOL_LABELS = {
   diagnostics: 'Periksa mutu',
   delegate_task: 'Delegasi tugas',
   ask_user: 'Tanya pengguna',
+  instabox_exec: 'Eksekusi cloud (InstaBox)',
 };
 
 /**
@@ -431,12 +434,31 @@ export function renderTimeline(
     // Saat masih berjalan belum ada keluaran untuk diringkas.
     if (isRunning) return;
 
-    const resultText =
-      ev.success === false
-        ? summarize(ev.output, maxSummary)
-        : summarizeResult(ev.output, maxSummary);
-
-    if (resultText) out.push(`  ${stem}${childIndent}${c.dim(resultText)}`);
+    const rawOut = String(ev.output ?? '').trim();
+    if (!rawOut) {
+      out.push(`  ${stem}${childIndent}${c.dim('selesai')}`);
+    } else {
+      const allLines = rawOut.split('\n');
+      if (allLines.length <= 1) {
+        const resultText =
+          ev.success === false
+            ? summarize(rawOut, maxSummary)
+            : summarizeResult(rawOut, maxSummary);
+        if (resultText) out.push(`  ${stem}${childIndent}${c.dim(resultText)}`);
+      } else {
+        const MAX_OPEN_LINES = 10;
+        const displayLines = allLines.slice(0, MAX_OPEN_LINES);
+        for (const line of displayLines) {
+          const trimmed = line.trimEnd();
+          if (trimmed.length > 0) {
+            out.push(`  ${stem}${childIndent}${c.dim(summarize(trimmed, maxSummary))}`);
+          }
+        }
+        if (allLines.length > MAX_OPEN_LINES) {
+          out.push(`  ${stem}${childIndent}${c.dim(`… (+${allLines.length - MAX_OPEN_LINES} baris lagi)`)}`);
+        }
+      }
+    }
   });
 
   return out.join('\n');
@@ -466,6 +488,8 @@ export function resolveTimelineMode(value, fallback = 'detail') {
   const mode = String(value ?? '')
     .trim()
     .toLowerCase();
+  if (mode === 'open' || mode === 'expanded' || mode === 'expand') return 'detail';
+  if (mode === 'fold' || mode === 'folded' || mode === 'close' || mode === 'closed') return 'compact';
   return TIMELINE_MODES.includes(mode) ? mode : fallback;
 }
 

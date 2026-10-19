@@ -23,6 +23,11 @@ import {
   resetQuestionnaireHandler,
 } from './questionnaireTool.js';
 import {
+  handleInstaboxExec,
+  getInstaboxStatus,
+  controlInstabox,
+} from './instaboxTool.js';
+import {
   registerTool,
   unregisterTool,
   getDefinitions,
@@ -50,6 +55,7 @@ const handlersMap = {
   diagnostics: { handler: handleDiagnostics, toolset: 'quality', emoji: '🩺' },
   delegate_task: { handler: handleDelegateTask, toolset: 'agent', emoji: '🎭' },
   ask_user: { handler: handleAskUser, toolset: 'interactive', emoji: '❓' },
+  instabox_exec: { handler: handleInstaboxExec, toolset: 'sandbox', emoji: '☁️' },
 };
 
 for (const def of TOOL_DEFINITIONS) {
@@ -108,4 +114,7 @@ export {
   stopBackgroundTask,
   listBackgroundTasks,
   clearBackgroundTasks,
+  handleInstaboxExec,
+  getInstaboxStatus,
+  controlInstabox,
 };

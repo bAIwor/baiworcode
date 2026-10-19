@@ -401,4 +401,29 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'instabox_exec',
+      description: 'Mengeksekusi perintah shell Linux di dalam cloud sandbox InstaBox (MicroVM 4 vCPU, 8 GiB RAM, OS Linux). Gunakan untuk tugas komputasi berat, kompilasi kode, benchmark, pengujian unit berskala besar, atau skrip yang berisiko bila dijalankan di mesin lokal pengguna.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: 'Perintah shell Linux yang ingin dieksekusi di dalam sandbox InstaBox (misal: "npm test", "curl ...", "python3 script.py").',
+          },
+          machine_id: {
+            type: 'string',
+            description: 'ID atau nama mesin InstaBox target (opsional, default ke mesin aktif yang terkonfigurasi di bAIwor).',
+          },
+          timeout_ms: {
+            type: 'integer',
+            description: 'Batas waktu eksekusi perintah dalam milidetik (default: 60000 / 1 menit).',
+          },
+        },
+        required: ['command'],
+      },
+    },
+  },
 ];
