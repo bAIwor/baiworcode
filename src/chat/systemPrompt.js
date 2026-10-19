@@ -40,6 +40,32 @@ export function getSystemPrompt(options = {}) {
   const activeProvider = options.provider || config?.activeProvider || 'Tidak terkonfigurasi';
   const activeModel = options.model || config?.activeModel || 'Tidak terkonfigurasi';
 
+  // Deteksi OS dan shell yang tersedia
+  const isWindows = platform === 'win32';
+  const isMac = platform === 'darwin';
+  const platformLabel = isWindows ? 'Windows' : isMac ? 'macOS' : 'Linux';
+  const shellLabel = isWindows ? 'PowerShell (bukan bash/sh/zsh)' : isMac ? 'zsh / bash' : 'bash';
+
+  const osGuidance = isWindows
+    ? `\n\n⚠️  PENTING — Lingkungan Shell Windows (PowerShell):\n` +
+      `Kamu berjalan di Windows. Gunakan HANYA perintah PowerShell yang kompatibel.\n` +
+      `DILARANG menggunakan perintah Unix/Linux berikut karena tidak tersedia di Windows:\n` +
+      `  ✗ grep   → Ganti: Select-String "pola" file  ATAU  Get-Content file | Select-String "pola"\n` +
+      `  ✗ tail   → Ganti: Get-Content file -Tail N\n` +
+      `  ✗ head   → Ganti: Get-Content file -TotalCount N\n` +
+      `  ✗ cat    → Ganti: Get-Content file\n` +
+      `  ✗ ls     → Ganti: Get-ChildItem  (atau dir)\n` +
+      `  ✗ rm -rf → Ganti: Remove-Item -Recurse -Force path\n` +
+      `  ✗ cp     → Ganti: Copy-Item source dest\n` +
+      `  ✗ mv     → Ganti: Move-Item source dest\n` +
+      `  ✗ touch  → Ganti: New-Item -ItemType File -Path file.txt\n` +
+      `  ✗ find   → Ganti: Get-ChildItem -Recurse -Filter "*.js"\n` +
+      `  ✗ wc -l  → Ganti: (Get-Content file).Count\n` +
+      `  ✗ cmd && → Ganti: titik koma ( ; ) di PowerShell\n` +
+      `Untuk filter output node.js: gunakan node --test 2>&1 | Select-String "fail".\n` +
+      `Untuk operasi berat (build besar, npm test menyeluruh, grep rekursif besar): gunakan instabox_exec (Cloud Sandbox Linux MicroVM).`
+    : '';
+
   // Daftar tool diturunkan dari registry (bukan hardcode) supaya tidak pernah
   // basi ketika tool baru ditambahkan — sama seperti prinsip `/help`.
   const daftarTool = getDefinitions()
@@ -135,6 +161,7 @@ Konteks Lingkungan Sistem:
 - Model AI Aktif  : ${activeModel}
 - Provider Aktif  : ${activeProvider}
 - Workspace / CWD : ${cwd}
-- Platform OS     : ${platform}
-- Node.js Version : ${nodeVersion}${skillsSection}${rulesSection}`;
+- Platform OS     : ${platformLabel} (${platform})
+- Shell Tersedia  : ${shellLabel}
+- Node.js Version : ${nodeVersion}${osGuidance}${skillsSection}${rulesSection}`;
 }
