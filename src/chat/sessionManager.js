@@ -293,6 +293,26 @@ export function loadSession(sessionId, { projectPath = process.cwd(), baseConfig
     return parseSessionFile(jsonPath);
   }
 
+  // Fallback pencarian lintas proyek bila sesi dibuka dari folder lain (misalnya direktori HOME)
+  const rootSessionsDir = path.join(baseConfigDir, SESSIONS_DIR_NAME);
+  if (fs.existsSync(rootSessionsDir)) {
+    try {
+      const subdirs = fs.readdirSync(rootSessionsDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name);
+
+      for (const sub of subdirs) {
+        const candidateDir = path.join(rootSessionsDir, sub);
+        for (const ext of ['.jsonl', '.json']) {
+          const candidatePath = path.join(candidateDir, `${safeId}${ext}`);
+          if (fs.existsSync(candidatePath)) {
+            return parseSessionFile(candidatePath);
+          }
+        }
+      }
+    } catch {}
+  }
+
   return null;
 }
 
@@ -445,7 +465,71 @@ export function listSessions({ projectPath = process.cwd(), baseConfigDir = CONF
 }
 
 /**
+  * Mengambil seluruh sesi dari seluruh folder proyek yang tersimpan.
+  * Berguna saat bcode dijalankan di luar folder proyek (misalnya direktori HOME)
+  * agar pengguna tetap bisa melihat dan melanjutkan sesi proyek sebelumnya.
+  *
+  * @param {object} [options]
+  * @param {string} [options.baseConfigDir=CONFIG_DIR]
+  * @param {boolean} [options.includeMessages=false]
+  * @returns {Array<object>}
+  */
+export function listAllProjectsSessions({ baseConfigDir = CONFIG_DIR, includeMessages = false } = {}) {
+  const rootSessionsDir = path.join(baseConfigDir, SESSIONS_DIR_NAME);
+  if (!fs.existsSync(rootSessionsDir)) return [];
+
+  const subdirs = fs.readdirSync(rootSessionsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
+
+  const all = [];
+  for (const sub of subdirs) {
+    const dir = path.join(rootSessionsDir, sub);
+    const files = fs.readdirSync(dir).filter((f) => (f.endsWith('.json') || f.endsWith('.jsonl')) && !f.endsWith('.tmp'));
+    for (const file of files) {
+      const fullPath = path.join(dir, file);
+      try {
+        if (file.endsWith('.jsonl')) {
+          const fd = fs.openSync(fullPath, 'r');
+          const buf = Buffer.alloc(4096);
+          const bytesRead = fs.readSync(fd, buf, 0, 4096, 0);
+          fs.closeSync(fd);
+
+          const content = buf.toString('utf8', 0, bytesRead);
+          const firstLine = content.split(/\r?\n/)[0];
+          if (!firstLine) continue;
+
+          const data = JSON.parse(firstLine);
+          if (!data || !data.id) continue;
+
+          all.push({
+            id: data.id,
+            title: data.title || 'Percakapan Tanpa Judul',
+            projectPath: data.projectPath || '',
+            projectKey: sub,
+            createdAt: data.createdAt || null,
+            updatedAt: data.updatedAt || null,
+            model: data.model || null,
+            provider: data.provider || null,
+            stats: data.stats || { turnCount: 0, tokensEstimate: 0 },
+          });
+        }
+      } catch {}
+    }
+  }
+
+  all.sort((a, b) => {
+    const tA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const tB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return tB - tA;
+  });
+
+  return all;
+}
+
+/**
  * Mengambil sesi terakhir yang paling baru diupdate untuk proyek ini (untuk fitur resume).
+ * Bila proyek aktif kosong, fallback ke sesi proyek terakhir yang tersedia.
  *
  * @param {object} [options]
  * @param {string} [options.projectPath]
@@ -454,5 +538,14 @@ export function listSessions({ projectPath = process.cwd(), baseConfigDir = CONF
  */
 export function getLatestSession({ projectPath = process.cwd(), baseConfigDir = CONFIG_DIR } = {}) {
   const list = listSessions({ projectPath, baseConfigDir, includeMessages: true });
-  return list.length > 0 ? list[0] : null;
+  if (list.length > 0) return list[0];
+
+  // Fallback ke sesi terbaru lintas proyek bila folder saat ini belum punya riwayat
+  const allProjects = listAllProjectsSessions({ baseConfigDir });
+  if (allProjects.length > 0) {
+    const top = allProjects[0];
+    return loadSession(top.id, { baseConfigDir });
+  }
+
+  return null;
 }

@@ -49,7 +49,7 @@ import {
   parseAccessModeArg,
 } from '../src/chat/accessMode.js';
 import { compactConversation } from '../src/chat/compact.js';
-import { listSessions, deleteSession, deleteAllSessions } from '../src/chat/sessionManager.js';
+import { listSessions, listAllProjectsSessions, deleteSession, deleteAllSessions } from '../src/chat/sessionManager.js';
 import { discoverSkills, getSkill } from '../src/skills/skillManager.js';
 import { discoverRules } from '../src/rules/ruleManager.js';
 import { resetTodoStore } from '../src/tools/todoTool.js';
@@ -1208,7 +1208,20 @@ async function startInteractive(opts = {}) {
         if (action === 'list') {
           const list = listSessions();
           if (list.length === 0) {
-            console.log(chalk.yellow('\n  Belum ada sesi percakapan tersimpan untuk proyek ini.\n'));
+            const allProjects = listAllProjectsSessions();
+            if (allProjects.length > 0) {
+              console.log(chalk.yellow(`\n  Belum ada sesi percakapan tersimpan di folder ini (${process.cwd()}).`));
+              console.log(chalk.cyan.bold(`  💡 Ditemukan ${allProjects.length} sesi tersimpan dari proyek lain:\n`));
+              allProjects.slice(0, 15).forEach((s, i) => {
+                const dt = s.updatedAt ? new Date(s.updatedAt).toLocaleString('id-ID') : '-';
+                const projName = s.projectPath ? path.basename(s.projectPath) : s.projectKey;
+                console.log(chalk.white(`  ${i + 1}. `) + chalk.green.bold(s.title || s.id) + chalk.cyan(` [${projName}]`));
+                console.log(chalk.gray(`     ID: ${s.id} · Path: ${s.projectPath || '-'} · Terakhir: ${dt} · ${s.stats?.turnCount || 0} turn`));
+              });
+              console.log(chalk.gray('\n  Gunakan: /session resume <id> untuk melanjutkan sesi dari proyek mana pun.\n'));
+            } else {
+              console.log(chalk.yellow('\n  Belum ada sesi percakapan tersimpan untuk proyek ini.\n'));
+            }
           } else {
             console.log(chalk.cyan.bold(`\n  📁 Sesi Percakapan Proyek (${list.length} sesi):\n`));
             list.slice(0, 15).forEach((s, i) => {
@@ -1228,14 +1241,21 @@ async function startInteractive(opts = {}) {
               console.log(chalk.red.bold(`\n  ❌ Sesi "${targetId}" tidak ditemukan.\n`));
             }
           } else {
-            const list = listSessions();
+            let list = listSessions();
+            let isGlobal = false;
+            if (list.length === 0) {
+              list = listAllProjectsSessions();
+              isGlobal = true;
+            }
+
             if (list.length === 0) {
               console.log(chalk.yellow('\n  Tidak ada sesi sebelumnya untuk di-resume.\n'));
             } else {
               const options = list.slice(0, 10).map((s) => {
                 const dt = s.updatedAt ? new Date(s.updatedAt).toLocaleString('id-ID') : '-';
                 const turns = s.stats?.turnCount || 0;
-                const title = (s.title || s.id).slice(0, 36);
+                const projTag = isGlobal && s.projectPath ? `[${path.basename(s.projectPath)}] ` : '';
+                const title = `${projTag}${s.title || s.id}`.slice(0, 36);
                 return {
                   value: s.id,
                   label: `${title.padEnd(36)} ─ ${chalk.dim(`${turns} turn · ${dt}`)}`,
@@ -1244,7 +1264,9 @@ async function startInteractive(opts = {}) {
               options.push({ value: '__cancel__', label: chalk.gray('← Batal') });
 
               const pickedId = await p.select({
-                message: 'Pilih sesi yang ingin dilanjutkan:',
+                message: isGlobal
+                  ? 'Pilih sesi dari proyek tersimpan yang ingin dilanjutkan:'
+                  : 'Pilih sesi yang ingin dilanjutkan:',
                 options,
               });
 
@@ -1581,7 +1603,20 @@ program
     if (action === 'list') {
       const list = listSessions();
       if (list.length === 0) {
-        console.log(chalk.yellow('\n  Belum ada sesi percakapan tersimpan untuk proyek ini.\n'));
+        const allProjects = listAllProjectsSessions();
+        if (allProjects.length > 0) {
+          console.log(chalk.yellow(`\n  Belum ada sesi percakapan tersimpan di folder ini (${process.cwd()}).`));
+          console.log(chalk.cyan.bold(`  💡 Ditemukan ${allProjects.length} sesi tersimpan dari proyek lain:\n`));
+          allProjects.slice(0, 15).forEach((s, i) => {
+            const dt = s.updatedAt ? new Date(s.updatedAt).toLocaleString('id-ID') : '-';
+            const projName = s.projectPath ? path.basename(s.projectPath) : s.projectKey;
+            console.log(chalk.white(`  ${i + 1}. `) + chalk.green.bold(s.title || s.id) + chalk.cyan(` [${projName}]`));
+            console.log(chalk.gray(`     ID: ${s.id} · Path: ${s.projectPath || '-'} · Terakhir: ${dt}`));
+          });
+          console.log(chalk.gray('\n  Gunakan: baiworcode session resume <id> untuk melanjutkan sesi dari mana saja.\n'));
+        } else {
+          console.log(chalk.yellow('\n  Belum ada sesi percakapan tersimpan untuk proyek ini.\n'));
+        }
       } else {
         console.log(chalk.cyan.bold(`\n  📁 Sesi Percakapan Proyek (${list.length} sesi):\n`));
         list.slice(0, 15).forEach((s, i) => {

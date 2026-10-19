@@ -44,26 +44,18 @@ export function getSystemPrompt(options = {}) {
   const isWindows = platform === 'win32';
   const isMac = platform === 'darwin';
   const platformLabel = isWindows ? 'Windows' : isMac ? 'macOS' : 'Linux';
-  const shellLabel = isWindows ? 'PowerShell (bukan bash/sh/zsh)' : isMac ? 'zsh / bash' : 'bash';
+  const shellLabel = isWindows ? 'cmd.exe (Command Prompt)' : isMac ? 'zsh / bash' : 'bash';
 
   const osGuidance = isWindows
-    ? `\n\n⚠️  PENTING — Lingkungan Shell Windows (PowerShell):\n` +
-      `Kamu berjalan di Windows. Gunakan HANYA perintah PowerShell yang kompatibel.\n` +
-      `DILARANG menggunakan perintah Unix/Linux berikut karena tidak tersedia di Windows:\n` +
-      `  ✗ grep   → Ganti: Select-String "pola" file  ATAU  Get-Content file | Select-String "pola"\n` +
-      `  ✗ tail   → Ganti: Get-Content file -Tail N\n` +
-      `  ✗ head   → Ganti: Get-Content file -TotalCount N\n` +
-      `  ✗ cat    → Ganti: Get-Content file\n` +
-      `  ✗ ls     → Ganti: Get-ChildItem  (atau dir)\n` +
-      `  ✗ rm -rf → Ganti: Remove-Item -Recurse -Force path\n` +
-      `  ✗ cp     → Ganti: Copy-Item source dest\n` +
-      `  ✗ mv     → Ganti: Move-Item source dest\n` +
-      `  ✗ touch  → Ganti: New-Item -ItemType File -Path file.txt\n` +
-      `  ✗ find   → Ganti: Get-ChildItem -Recurse -Filter "*.js"\n` +
-      `  ✗ wc -l  → Ganti: (Get-Content file).Count\n` +
-      `  ✗ cmd && → Ganti: titik koma ( ; ) di PowerShell\n` +
-      `Untuk filter output node.js: gunakan node --test 2>&1 | Select-String "fail".\n` +
-      `Untuk operasi berat (build besar, npm test menyeluruh, grep rekursif besar): gunakan instabox_exec (Cloud Sandbox Linux MicroVM).`
+    ? `\n\n⚠️  PENTING — Lingkungan Shell Windows (cmd.exe):\n` +
+      `Komputer pengguna menjalankan Windows. Perintah terminal run_command dieksekusi melalui cmd.exe.\n` +
+      `Pedoman perintah Windows:\n` +
+      `  • UTAMAKAN tools bawaan: gunakan search_files untuk mencari teks & read_file untuk membaca berkas (100% aman & tanpa error shell).\n` +
+      `  • DILARANG memakai perintah Linux: grep, tail, head, cat, ls, touch, rm -rf (tidak ada di Windows cmd).\n` +
+      `  • Perintah bawaan Windows cmd yang didukung: dir, type, findstr, mkdir, del, rmdir, serta pemisah && dan ||.\n` +
+      `  • Untuk filter output: gunakan findstr, misal: npm test 2>&1 | findstr /i "fail pass"\n` +
+      `  • Jika benar-benar membutuhkan sintaks PowerShell: panggil eksplisit: powershell -NoProfile -Command "..."\n` +
+      `  • Untuk operasi berat (build besar, pengujian komprehensif, eksekusi Linux): gunakan instabox_exec (Cloud Sandbox Linux MicroVM).`
     : '';
 
   // Daftar tool diturunkan dari registry (bukan hardcode) supaya tidak pernah
