@@ -445,7 +445,7 @@ const HELP_USAGE = {
   '/plan': '/plan [instruksi]',
   '/cd': '/cd <folder>',
   '/workspace': '/workspace [folder]',
-  '/sandbox': '/sandbox [status|exec|pause|resume|key]',
+  '/sandbox': '/sandbox [status|exec|sync|open|screenshot|pause|resume|key]',
 };
 
 function showHelp() {
@@ -779,6 +779,36 @@ async function handleSandboxCommand(arg = '') {
     return;
   }
 
+  if (sub === 'sync') {
+    console.log(chalk.cyan('\n  🔄 Menyinkronkan repositori baiworcode ke InstaBox Cloud...'));
+    try {
+      const { execSync } = await import('node:child_process');
+      const st = execSync('git status -s', { encoding: 'utf8' }).trim();
+      if (st) {
+        console.log(chalk.yellow('  ⚠️  Ada perubahan lokal yang belum di-commit/push ke GitHub:'));
+        for (const line of st.split('\n').slice(0, 5)) {
+          console.log(chalk.gray(`     ${line}`));
+        }
+        console.log(chalk.dim('     (Disarankan commit & push dulu agar InstaBox menerima versi terbaru)\n'));
+      }
+    } catch {}
+
+    console.log(chalk.gray('  Menjalankan git pull di InstaBox (/data/workspace/baiworcode)...'));
+    const pullRes = await handleInstaboxExec({
+      command: 'cd /data/workspace/baiworcode && git pull origin main && npm install --prefer-offline',
+      timeout_ms: 45000,
+    });
+
+    if (pullRes.success) {
+      console.log(chalk.green('  ✓ Kode di InstaBox berhasil disinkronkan ke commit terbaru!'));
+      console.log(chalk.dim(pullRes.output) + '\n');
+    } else {
+      console.log(chalk.red('  ✗ Gagal menyinkronkan kode di InstaBox:'));
+      console.log(chalk.yellow(pullRes.output) + '\n');
+    }
+    return;
+  }
+
   if (sub === 'pause') {
     console.log(chalk.cyan('\n  Memproses jeda (pause) mesin InstaBox...'));
     const res = await controlInstabox('pause');
@@ -860,6 +890,7 @@ async function handleSandboxCommand(arg = '') {
 
   console.log(chalk.gray('\n  Sub-perintah:'));
   console.log(chalk.gray('    /sandbox exec <perintah>   → jalankan perintah shell di MicroVM Linux'));
+  console.log(chalk.gray('    /sandbox sync              → tarik update kode terbaru dari GitHub ke InstaBox'));
   console.log(chalk.gray('    /sandbox open <url>        → buka website di layar browser GUI cloud'));
   console.log(chalk.gray('    /sandbox screenshot        → unduh tangkapan layar GUI ke komputer lokal'));
   console.log(chalk.gray('    /sandbox pause            → bekukan mesin untuk hemat kuota'));

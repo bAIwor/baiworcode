@@ -235,6 +235,7 @@ export const SUBCOMMANDS = {
   '/sandbox': [
     { name: 'status', desc: 'Cek status mesin & spesifikasi cloud sandbox' },
     { name: 'exec', desc: 'Jalankan perintah shell di cloud: /sandbox exec <cmd>' },
+    { name: 'sync', desc: 'Tarik kode terbaru dari GitHub ke InstaBox: git pull' },
     { name: 'open', desc: 'Buka URL di browser layar GUI cloud: /sandbox open <url>' },
     { name: 'screenshot', desc: 'Ambil dan simpan tangkapan layar GUI ke komputer lokal' },
     { name: 'pause', desc: 'Bekukan mesin cloud sandbox untuk hemat daya' },
