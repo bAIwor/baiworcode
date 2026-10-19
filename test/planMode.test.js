@@ -122,7 +122,7 @@ describe('PlanMode: Mode Perencanaan & Dry-Run (/plan)', () => {
       const out = renderTodoWidget(sampleTodos, { useColor: false, isCompact: false });
       assert.ok(out.includes('Todo list 1/5 · 4 remaining · Ctrl+T compact'));
       assert.ok(out.includes('✓ Desain skema DB'));
-      assert.ok(out.includes('● Implementasi endpoint'));
+      assert.ok(out.includes('◐ Implementasi endpoint'));
       assert.ok(out.includes('○ Tulis unit tests'));
       assert.ok(out.includes('✗ Fitur legacy dibatalkan'));
     });
@@ -144,7 +144,7 @@ describe('PlanMode: Mode Perencanaan & Dry-Run (/plan)', () => {
     it('harus merender mode compact hanya dengan item in_progress dan prompt Ctrl+T expand', () => {
       const out = renderTodoWidget(sampleTodos, { useColor: false, isCompact: true });
       assert.ok(out.includes('Ctrl+T expand'));
-      assert.ok(out.includes('● Implementasi endpoint'));
+      assert.ok(out.includes('◐ Implementasi endpoint'));
       assert.ok(!out.includes('✓ Desain skema DB'));
       assert.ok(!out.includes('○ Tulis unit tests'));
     });

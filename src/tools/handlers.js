@@ -19,6 +19,38 @@ import { applyEdit, applyEditList, applyUnifiedDiff } from './editUtil.js';
 // Helper path tetap diekspor dari modul ini agar kontrak lama tidak berubah.
 export { isSubPath, isSensitivePath };
 
+// Daftar ignore bersama dengan searchTool (satu sumber kebenaran).
+export const IGNORE_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.baiwor',
+  '.next',
+  '.nuxt',
+  '.cache',
+  '.parcel-cache',
+  'dist',
+  'build',
+  'out',
+  'coverage',
+  '.venv',
+  'venv',
+  '__pycache__',
+  'AppData',
+  'Application Data',
+  'Local Settings',
+  '$RECYCLE.BIN',
+  'System Volume Information',
+  '.npm',
+  '.local',
+  '.minimax',
+  '.minimax-code',
+  '.gradle',
+  '.m2',
+  '.cargo',
+  '.rustup',
+  '.docker',
+]);
+
 // Penyimpanan background tasks aktif di memori
 const backgroundTasks = new Map();
 
@@ -349,15 +381,7 @@ export async function handleListDirectory({ dir_path = '.', recursive = false, m
     };
   }
 
-  const IGNORE_PATTERNS = new Set([
-    'node_modules',
-    '.git',
-    '.baiwor',
-    '.next',
-    '.cache',
-    'dist',
-    'build',
-  ]);
+    const IGNORE_PATTERNS = IGNORE_DIRS;
 
   const results = [];
 

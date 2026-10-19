@@ -43,5 +43,30 @@ export function ensureColorSupport(stream = process.stdout, env = process.env) {
 // Bawor) memakai level yang sudah benar, bukan level 0 bawaan.
 ensureColorSupport();
 
+/**
+ * Pewarna tiruan yang tidak melakukan apa pun — dipakai saat stdout bukan
+ * terminal sungguhan agar tidak ada escape code yang mengotori keluaran.
+ * Bentuknya superset dari kebutuhan semua modul (context, timeline, dsb.).
+ */
+export const NO_COLOR_PAINTER = (() => {
+  const identity = (v) => String(v);
+  identity.bold = identity;
+  identity.dim = identity;
+  identity.italic = identity;
+  identity.hex = () => identity;
+  return {
+    red: identity,
+    green: identity,
+    yellow: identity,
+    gray: identity,
+    bold: identity,
+    dim: identity,
+    cyan: identity,
+    white: identity,
+    hex: () => identity,
+    italic: identity,
+  };
+})();
+
 export { chalk };
 export default chalk;

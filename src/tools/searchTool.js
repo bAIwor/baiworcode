@@ -16,42 +16,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveSafePath } from './handlers.js';
+import { resolveSafePath, IGNORE_DIRS } from './handlers.js';
 
-/** Direktori yang tidak pernah ditelusuri. */
-const IGNORE_DIRS = new Set([
-  'node_modules',
-  '.git',
-  '.next',
-  '.nuxt',
-  '.cache',
-  '.parcel-cache',
-  'dist',
-  'build',
-  'out',
-  'coverage',
-  '.baiwor',
-  '.venv',
-  'venv',
-  '__pycache__',
-  // Direktori besar/berisik khas direktori HOME. Tanpa ini, pencarian yang
-  // dijalankan dari home (mis. cwd = C:\Users\<nama>) menelusuri AppData dan
-  // puluhan ribu berkas sistem — lambat dan hasilnya nyaris tak berguna.
-  'AppData',
-  'Application Data',
-  'Local Settings',
-  '$RECYCLE.BIN',
-  'System Volume Information',
-  '.npm',
-  '.local',
-  '.minimax',
-  '.minimax-code',
-  '.gradle',
-  '.m2',
-  '.cargo',
-  '.rustup',
-  '.docker',
-]);
+// IGNORE_DIRS diimpor dari ./handlers.js (satu sumber kebenaran).
 
 /** Ekstensi yang hampir pasti biner — dilewati agar tidak menghasilkan sampah. */
 const BINARY_EXT = new Set([
@@ -223,7 +190,7 @@ export async function handleSearchFiles({
     return { success: false, output: `Error: Lokasi tidak ditemukan: ${searchPath}` };
   }
 
-  const baseDir = process.cwd();
+  const baseDir = root;
   const globRe = fileGlob ? globToRegExp(fileGlob) : null;
 
   // Pencarian dari direktori HOME hampir selalu berujung lambat dan berisik.

@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-
+import { NO_COLOR_PAINTER as NO_COLOR } from '../colors.js';
 /**
  * Estimasi pemakaian context window.
  *
@@ -14,22 +14,6 @@ import chalk from 'chalk';
  * keputusan presisi. Karena itu setiap label memakai tanda `≈` dan tidak pernah
  * disajikan sebagai fakta pasti.
  */
-
-/**
- * Pewarna tiruan yang tidak melakukan apa pun — dipakai saat stdout bukan
- * terminal sungguhan agar tidak ada escape code yang mengotori keluaran.
- */
-const NO_COLOR = (() => {
-  const identity = (v) => String(v);
-  return {
-    red: identity,
-    green: identity,
-    yellow: identity,
-    gray: identity,
-    bold: identity,
-    dim: identity,
-  };
-})();
 
 function painter(useColor) {
   return useColor ? chalk : NO_COLOR;

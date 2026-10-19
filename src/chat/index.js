@@ -411,8 +411,9 @@ export async function handleUserChat(promptText) {
     ];
 
     let finalText = '';
+    let wrap = null;
     try {
-      const wrap = await runModelTurn({
+      wrap = await runModelTurn({
         messages,
         tools: [],
         spinnerText: 'semAIr sedang menyusun kesimpulan akhir...',

@@ -220,7 +220,7 @@ export function toggleTodoCompactMode() {
 
 export const WIDGET_TODO_ICONS = {
   completed: '✓',
-  in_progress: '●',
+  in_progress: '◐',
   pending: '○',
   cancelled: '✗',
 };

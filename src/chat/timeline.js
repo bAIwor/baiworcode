@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { NO_COLOR_PAINTER as NO_COLOR } from '../colors.js';
 import { palette } from '../theme.js';
 
 const DEFAULT_SUMMARY_LEN = 80;
@@ -117,30 +118,6 @@ export function toolLabel(name) {
 export function toolColorHex(name) {
   return TOOL_TINTS[name] || DEFAULT_TOOL_TINT;
 }
-
-/**
- * Objek pewarna tiruan chalk yang tidak melakukan apa pun.
- * Dipakai saat stdout bukan terminal sungguhan agar tidak ada
- * escape code yang mengotori berkas hasil pipe/redirect.
- */
-const NO_COLOR = (() => {
-  const identity = (v) => String(v);
-  identity.bold = identity;
-  identity.dim = identity;
-  identity.italic = identity;
-  identity.hex = () => identity;
-  return {
-    dim: identity,
-    gray: identity,
-    cyan: identity,
-    green: identity,
-    red: identity,
-    yellow: identity,
-    white: identity,
-    bold: identity,
-    hex: () => identity,
-  };
-})();
 
 /**
  * Memilih pewarna sesuai kondisi terminal.
