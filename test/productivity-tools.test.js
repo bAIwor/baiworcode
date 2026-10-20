@@ -173,6 +173,25 @@ describe('Tool todo_list: manajemen daftar tugas', () => {
     assert.equal(data.todos[0].status, 'pending');
   });
 
+  it('merge bersifat atomik: item invalid membatalkan seluruh perubahan', async () => {
+    await handleTodoList({
+      todos: [{ id: '1', content: 'Lama', status: 'pending' }],
+    });
+
+    const gagal = await handleTodoList({
+      todos: [
+        { id: '1', status: 'completed' },
+        { id: '2', content: '   ', status: 'pending' },
+      ],
+      merge: true,
+    });
+    assert.equal(gagal.success, false);
+
+    const data = JSON.parse((await handleTodoList({})).output);
+    assert.equal(data.todos.length, 1);
+    assert.equal(data.todos[0].status, 'pending', 'perubahan parsial tidak boleh tersimpan');
+  });
+
   it('menolak item tanpa content', async () => {
     const res = await handleTodoList({ todos: [{ id: '1', content: '   ', status: 'pending' }] });
     assert.equal(res.success, false);

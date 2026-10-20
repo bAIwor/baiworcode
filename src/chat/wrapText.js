@@ -129,12 +129,14 @@ function tokenize(s) {
  *   `restWidth`  — budget kolom untuk baris lanjutan (default sama dengan `width`).
  * @returns {string[]} Baris-baris fisik; selalu minimal satu elemen.
  */
-export function wrapText(text, { width, restWidth = width } = {}) {
+export function wrapText(text, { width = 80, restWidth } = {}) {
   const s = String(text ?? '');
   if (!s) return [''];
 
-  const firstWidth = Math.max(1, Math.floor(width));
-  const nextWidth = Math.max(1, Math.floor(restWidth));
+  const safeWidth = Number.isFinite(width) && width > 0 ? width : 80;
+  const safeRest = Number.isFinite(restWidth) && restWidth > 0 ? restWidth : safeWidth;
+  const firstWidth = Math.max(1, Math.floor(safeWidth));
+  const nextWidth = Math.max(1, Math.floor(safeRest));
 
   const lines = [];
   let line = '';

@@ -97,8 +97,11 @@ export class TodoStore {
   }
 
   #merge(todos) {
-    const existing = new Map(this.items.map((item) => [item.id, item]));
-    const order = this.items.map((item) => item.id);
+    // Bekerja pada salinan: bila salah satu item baru tidak valid, daftar lama
+    // tidak boleh berubah sama sekali (validasi gagal = rollback penuh).
+    const nextItems = this.items.map((item) => ({ ...item }));
+    const existing = new Map(nextItems.map((item) => [item.id, item]));
+    const order = nextItems.map((item) => item.id);
 
     for (const raw of TodoStore.#dedupeById(todos)) {
       const id = String(raw?.id ?? '').trim();

@@ -108,6 +108,10 @@ export async function handleDelegateTask(args = {}, options = {}) {
 
   let turn = 0;
   let finalReport = '';
+  let toolCallCount = 0;
+  const startedAt = Date.now();
+  const MAX_DURATION_MS = 5 * 60 * 1000;
+  const MAX_TOOL_CALLS = 40;
 
   while (turn < maxTurns) {
     turn += 1;
@@ -116,6 +120,15 @@ export async function handleDelegateTask(args = {}, options = {}) {
       return {
         success: false,
         output: `[delegate_task] Subagent ${roleConfig.name} dibatalkan oleh sinyal pengguna.`,
+        role,
+        turns: turn,
+      };
+    }
+
+    if (Date.now() - startedAt > MAX_DURATION_MS) {
+      return {
+        success: false,
+        output: `[delegate_task] Subagent ${roleConfig.name} dihentikan: melebihi batas waktu 5 menit tanpa laporan akhir.`,
         role,
         turns: turn,
       };
@@ -140,8 +153,13 @@ export async function handleDelegateTask(args = {}, options = {}) {
         };
       }
     } else {
-      const credentials = options.credentials || resolveActiveCredentials();
-      if (!credentials || !credentials.apiKey) {
+      // resolveActiveCredentials bersifat async; tanpa await, objek Promise
+      // dianggap kredensial dan subagent selalu gagal.
+      const credentials = options.credentials || (await resolveActiveCredentials());
+      if (
+        !credentials ||
+        !(credentials.apiKey || credentials.headers?.Authorization || credentials.type === 'agy')
+      ) {
         return {
           success: false,
           output: '[delegate_task] Kredensial model AI tidak ditemukan untuk menjalankan subagent.',
@@ -178,6 +196,16 @@ export async function handleDelegateTask(args = {}, options = {}) {
 
     // Jika model meminta pemanggilan tool
     if (Array.isArray(tool_calls) && tool_calls.length > 0) {
+      if (toolCallCount + tool_calls.length > MAX_TOOL_CALLS) {
+        return {
+          success: false,
+          output: `[delegate_task] Subagent ${roleConfig.name} dihentikan: melebihi batas ${MAX_TOOL_CALLS} panggilan tool tanpa laporan akhir.`,
+          role,
+          turns: turn,
+        };
+      }
+      toolCallCount += tool_calls.length;
+
       messages.push({
         role: 'assistant',
         content: content || '',
@@ -222,7 +250,12 @@ export async function handleDelegateTask(args = {}, options = {}) {
   }
 
   if (!finalReport) {
-    finalReport = `Subagent ${roleConfig.name} telah menyelesaikan siklus penugasan (${turn} putaran) tanpa laporan teks tambahan.`;
+    return {
+      success: false,
+      output: `[delegate_task] Subagent ${roleConfig.name} mencapai batas ${turn} putaran tanpa laporan akhir. Pekerjaan mungkin belum selesai.`,
+      role,
+      turns: turn,
+    };
   }
 
   return {

@@ -100,7 +100,13 @@ export async function runDoctor() {
           signal: AbortSignal.timeout(10000),
         });
         const lat = Date.now() - start;
-        check(testRes.ok || testRes.status < 500, `Koneksi API (${provider})`, `Terhubung (${lat}ms, HTTP ${testRes.status})`);
+        if (testRes.ok) {
+          check(true, `Koneksi API (${provider})`, `Terhubung (${lat}ms, HTTP ${testRes.status})`);
+        } else if (testRes.status === 401 || testRes.status === 403) {
+          check(false, `Koneksi API (${provider})`, `HTTP ${testRes.status} — API key ditolak/tidak berhak`, true);
+        } else {
+          check(false, `Koneksi API (${provider})`, `HTTP ${testRes.status} dari ${activeCp.baseUrl}/models`, true);
+        }
       } catch (err) {
         check(false, `Koneksi API (${provider})`, `Gagal terhubung: ${err.message}`, true);
       }

@@ -41,11 +41,12 @@ export function capToolOutput(text, maxChars = MAX_TOOL_OUTPUT_CHARS, options = 
   let spillPath = '';
   try {
     const reportsDir = options.reportsDir || defaultReportsDir();
-    fs.mkdirSync(reportsDir, { recursive: true });
+    fs.mkdirSync(reportsDir, { recursive: true, mode: 0o700 });
+    try { fs.chmodSync(reportsDir, 0o700); } catch {}
     const id = crypto.randomBytes(8).toString('hex');
     const fileName = `output-${Date.now()}-${id}.txt`;
     spillPath = path.join(reportsDir, fileName);
-    fs.writeFileSync(spillPath, text, 'utf8');
+    fs.writeFileSync(spillPath, text, { encoding: 'utf8', mode: 0o600 });
   } catch {}
 
   const spillNotice = spillPath ? ` Disimpan lengkap di: ${spillPath}.` : '';
@@ -112,6 +113,15 @@ export function registerTool({
  */
 export function unregisterTool(name) {
   return tools.delete(name);
+}
+
+/**
+ * Apakah nama tool sudah terdaftar (dipakai untuk mencegah tabrakan MCP).
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function hasTool(name) {
+  return tools.has(name);
 }
 
 /**

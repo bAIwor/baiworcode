@@ -106,12 +106,20 @@ export function parseAliasValue(value) {
       target.baseUrl = value.baseUrl.trim().replace(/\/+$/, '');
     }
     if (typeof value.apiKey === 'string' && value.apiKey.trim()) {
-      target.apiKey = expandSecret(value.apiKey.trim());
+      const rawApiKey = value.apiKey.trim();
+      target.apiKey = expandSecret(rawApiKey);
+      // Simpan referensi asli agar placeholder ${ENV} tidak ikut
+      // dipersistensi sebagai nilai rahasia hasil ekspansi.
+      if (/\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/.test(rawApiKey)) {
+        target.apiKeyRef = rawApiKey;
+      }
     }
     // Alternatif key_env — nama environment variable yang
     // menyimpan kunci, jadi rahasia tidak perlu ditulis di config.json.
     if (!target.apiKey && typeof value.key_env === 'string' && value.key_env.trim()) {
-      const fromEnv = process.env[value.key_env.trim()];
+      const envName = value.key_env.trim();
+      target.apiKeyRef = `\${${envName}}`;
+      const fromEnv = process.env[envName];
       if (fromEnv) target.apiKey = fromEnv;
     }
     return target;
@@ -134,6 +142,7 @@ function resolveAgainstConfig(parsed, config) {
       type: 'custom',
       baseUrl: parsed.baseUrl || cp.baseUrl,
       apiKey: parsed.apiKey || cp.apiKey,
+      apiKeyRef: parsed.apiKeyRef || null,
     };
   }
 
@@ -144,13 +153,14 @@ function resolveAgainstConfig(parsed, config) {
 
   // Provider custom belum tersimpan: hanya boleh lewat alias bentuk panjang
   // yang membawa kredensialnya sendiri.
-  if (parsed.baseUrl && parsed.apiKey) {
+  if (parsed.baseUrl && (parsed.apiKey || parsed.apiKeyRef)) {
     return {
       provider: parsed.provider,
       model: parsed.model,
       type: 'custom',
       baseUrl: parsed.baseUrl,
       apiKey: parsed.apiKey,
+      apiKeyRef: parsed.apiKeyRef || null,
     };
   }
 
@@ -310,8 +320,11 @@ export function applyModelTarget(target, config) {
     // baru); jika tidak, kredensial tersimpan dipakai apa adanya dan daftar
     // provider tidak ikut ditulis ulang.
     let credentialChanged = false;
-    if (target.apiKey && target.apiKey !== cp.apiKey) {
-      list[idx] = { ...cp, apiKey: target.apiKey };
+    // Untuk alias dengan placeholder ${ENV}, yang disimpan adalah placeholder,
+    // bukan nilai rahasia hasil ekspansi.
+    const storedApiKey = target.apiKeyRef || target.apiKey;
+    if (storedApiKey && storedApiKey !== cp.apiKey) {
+      list[idx] = { ...cp, apiKey: storedApiKey };
       credentialChanged = true;
     }
     if (target.baseUrl && target.baseUrl !== cp.baseUrl) {
@@ -331,8 +344,10 @@ export function applyModelTarget(target, config) {
     };
   }
 
-  // Provider custom baru — wajib punya kredensial sendiri.
-  if (!target.baseUrl || !target.apiKey) {
+  // Provider custom baru — wajib punya kredensial sendiri (nilai langsung
+  // atau referensi environment yang diekspansi saat request).
+  const storedApiKey = target.apiKeyRef || target.apiKey;
+  if (!target.baseUrl || !storedApiKey) {
     return {
       ok: false,
       error: `Provider '${target.provider}' belum tersimpan. Tambahkan dulu lewat menu /model atau simpan alias dengan baseUrl + apiKey.`,
@@ -341,7 +356,7 @@ export function applyModelTarget(target, config) {
   list.push({
     name: target.provider,
     baseUrl: target.baseUrl,
-    apiKey: target.apiKey,
+    apiKey: storedApiKey,
     model: target.model,
   });
   return {

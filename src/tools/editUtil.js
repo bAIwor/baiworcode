@@ -128,8 +128,13 @@ function adaptFuzzyReplacement(matched, replacement) {
  *           {ok:false, reason:'not-found'|'ambiguous', count?:number}}
  */
 export function applyEdit(text, oldContent, newContent, { replaceAll = false } = {}) {
-  const eol = detectEol(text);
-  const hay = toLF(text);
+  // BOM harus dipertahankan: pemrosesan per-baris dapat menganggapnya
+  // whitespace dan menghapusnya dari baris pertama.
+  const source = String(text ?? '');
+  const bom = source.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const bodyText = bom ? source.slice(1) : source;
+  const eol = detectEol(bodyText);
+  const hay = toLF(bodyText);
   const needle = toLF(oldContent);
   const repl = toLF(newContent ?? '');
 
@@ -155,7 +160,7 @@ export function applyEdit(text, oldContent, newContent, { replaceAll = false } =
   out += hay.slice(cursor);
 
   const result = eol === '\r\n' ? out.replace(/\n/g, '\r\n') : out;
-  return { ok: true, text: result, count: chosen.length, strategy: chosen[0].strategy };
+  return { ok: true, text: bom + result, count: chosen.length, strategy: chosen[0].strategy };
 }
 
 /**
@@ -213,12 +218,24 @@ export function parseUnifiedDiff(diffText) {
   for (const line of lines) {
     if (line.startsWith('@@')) {
       if (cur) hunks.push(cur);
-      cur = { old: [], neu: [] };
+      const m = line.match(/^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/);
+      cur = {
+        old: [],
+        neu: [],
+        oldStart: m ? Number(m[1]) : null,
+        newStart: m ? Number(m[2]) : null,
+      };
       continue;
     }
-    if (isHeader(line)) continue;
-    if (!cur) continue;
 
+    if (line === '\\ No newline at end of file') continue;
+    if (!cur) {
+      if (isHeader(line)) continue;
+      continue;
+    }
+
+    // Di dalam hunk, baris konten SELALU diawali '+', '-', spasi, atau kosong
+    // (termasuk konten yang kebetulan mirip header seperti '--- teks').
     const tag = line[0];
     if (tag === '+') {
       cur.neu.push(line.slice(1));
@@ -228,8 +245,6 @@ export function parseUnifiedDiff(diffText) {
       const body = line.slice(1);
       cur.old.push(body);
       cur.neu.push(body);
-    } else if (line === '\\ No newline at end of file') {
-      // anotasi, abaikan
     } else if (line === '') {
       // Baris konteks kosong sering muncul tanpa awalan spasi; anggap konteks.
       cur.old.push('');
@@ -240,6 +255,42 @@ export function parseUnifiedDiff(diffText) {
   return hunks;
 }
 
+/** Offset karakter awal baris ke-`lineNumber` (1-based) pada teks LF. */
+function offsetForLine(text, lineNumber) {
+  if (lineNumber <= 1) return 0;
+  let count = 1;
+  let pos = 0;
+  while (count < lineNumber) {
+    const nl = text.indexOf('\n', pos);
+    if (nl === -1) return text.length;
+    pos = nl + 1;
+    count += 1;
+  }
+  return pos;
+}
+
+/**
+ * Menyisipkan baris baru pada posisi baris tertentu (dipakai hunk insert-only
+ * yang tidak punya baris konteks/`-` untuk dicari).
+ */
+function insertLinesAt(text, lineNumber, newLines) {
+  const at = Math.max(0, Math.min(text.length, offsetForLine(text, lineNumber || 1)));
+  let insertion = newLines.join('\n');
+  const before = text.slice(0, at);
+  const after = text.slice(at);
+  if (at > 0 && !before.endsWith('\n')) insertion = `\n${insertion}`;
+  if (
+    (at < text.length || (at >= text.length && text.endsWith('\n'))) &&
+    !insertion.endsWith('\n')
+  ) {
+    insertion += '\n';
+  }
+  return {
+    text: before + insertion + after,
+    end: at + insertion.length,
+  };
+}
+
 /**
  * Menerapkan unified diff ke sebuah teks.
  *
@@ -248,8 +299,11 @@ export function parseUnifiedDiff(diffText) {
  * @returns {{ok:true, text:string, applied:number} | {ok:false, reason:string}}
  */
 export function applyUnifiedDiff(text, diffText) {
-  const eol = detectEol(text);
-  let hay = toLF(text);
+  const source = String(text ?? '');
+  const bom = source.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const bodyText = bom ? source.slice(1) : source;
+  const eol = detectEol(bodyText);
+  let hay = toLF(bodyText);
   const hunks = parseUnifiedDiff(diffText);
   if (!hunks.length) return { ok: false, reason: 'no-hunks' };
 
@@ -258,7 +312,17 @@ export function applyUnifiedDiff(text, diffText) {
 
   for (const h of hunks) {
     const oldBlock = h.old.join('\n');
-    if (oldBlock === '') return { ok: false, reason: 'insert-only-hunk' };
+
+    // Hunk insert-only: tidak ada konteks untuk dicari. Gunakan nomor baris
+    // tujuan dari header @@ +c,d @@.
+    if (oldBlock === '') {
+      if (!h.neu.length) continue;
+      const inserted = insertLinesAt(hay, h.newStart, h.neu);
+      hay = inserted.text;
+      cursor = inserted.end;
+      applied += 1;
+      continue;
+    }
 
     const sub = hay.slice(cursor);
     const matches = locateAll(sub, oldBlock);
@@ -276,5 +340,5 @@ export function applyUnifiedDiff(text, diffText) {
   }
 
   const result = eol === '\r\n' ? hay.replace(/\n/g, '\r\n') : hay;
-  return { ok: true, text: result, applied };
+  return { ok: true, text: bom + result, applied };
 }

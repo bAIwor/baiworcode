@@ -12,6 +12,14 @@ import chalk from 'chalk';
  * @returns {0|1|2|3} level warna yang wajar untuk lingkungan ini
  */
 export function detectColorLevel(stream = process.stdout, env = process.env) {
+  // FORCE_COLOR eksplisit harus menang atas heuristik TTY.
+  if (env.FORCE_COLOR !== undefined) {
+    const forced = String(env.FORCE_COLOR).toLowerCase();
+    if (forced === '0' || forced === 'false' || forced === '') return 0;
+    const level = Number(env.FORCE_COLOR);
+    if (Number.isFinite(level) && level > 0) return Math.min(3, level);
+    return 1;
+  }
   if (!stream || !stream.isTTY) return 0; // pipa/redirect: jangan berwarna
   if (env.NO_COLOR) return 0; // pengguna sengaja mematikan warna
 

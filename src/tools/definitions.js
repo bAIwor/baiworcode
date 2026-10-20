@@ -144,7 +144,7 @@ export const TOOL_DEFINITIONS = [
         properties: {
           command: {
             type: 'string',
-            description: 'Perintah terminal yang akan dijalankan.',
+            description: 'Perintah terminal yang akan dijalankan. Wajib untuk action="run", opsional untuk status/stop/list.',
           },
           cwd: {
             type: 'string',
@@ -168,7 +168,7 @@ export const TOOL_DEFINITIONS = [
             description: 'Aksi task: "run" (default), "status" (cek output task), "stop" (batalkan task), atau "list" (daftar semua task).',
           },
         },
-        required: ['command'],
+        required: [],
       },
     },
   },
@@ -212,16 +212,16 @@ export const TOOL_DEFINITIONS = [
         properties: {
           todos: {
             type: 'array',
-            description: 'Daftar tugas yang ditulis. Kosongkan parameter ini untuk sekadar membaca daftar.',
+            description: 'Daftar tugas yang ditulis. Kosongkan parameter ini untuk sekadar membaca daftar. Saat merge=true, item lama cukup menyertakan id dan field yang ingin diubah.',
             items: {
               type: 'object',
               properties: {
                 id: { type: 'string', description: 'ID unik singkat, misal "1", "2".' },
-                content: { type: 'string', description: 'Deskripsi tugas.' },
+                content: { type: 'string', description: 'Deskripsi tugas. Wajib untuk item baru; opsional saat memperbarui item lama.' },
                 status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'cancelled'] },
                 parent: { type: 'string', description: 'Opsional: id item lain untuk menjadikan ini sub-tugas.' },
               },
-              required: ['id', 'content', 'status'],
+              required: ['id'],
             },
           },
           merge: {

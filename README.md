@@ -261,6 +261,10 @@ Di dalam mode interaktif, cara pakainya sama — cukup `/model step`, `/model al
 }
 ```
 
+> Placeholder `${THETA_API_KEY}` (atau `$VAR` / `key_env`) diekspansi **saat request**, bukan saat disimpan. `config.json` tetap menyimpan placeholder sehingga nilai rahasia tidak ikut tersimpan ke disk.
+>
+> Endpoint yang hanya mendukung **OpenAI Responses API** bisa dipaksa lewat `"apiStyle": "responses"` pada entri `customProviders` di `config.json` (atau `"apiStyle": "chat"` untuk memaksa Chat Completions). Tanpa itu, bAIwor mendeteksi dari URL `/responses` atau nama model.
+
 ---
 
 ## 🛠️ Daftar Tool (15 Tools)
@@ -368,6 +372,8 @@ bAIwor Code dapat membaca, menulis, dan menjalankan perintah di komputermu. Kare
 5. **Update terkendali** — `baiwor update` memverifikasi origin repositori resmi, meminta konfirmasi, memakai `git pull --ff-only`, dan memasang dependensi dengan `--ignore-scripts`. Gunakan `--yes` hanya di skrip yang sudah kamu kontrol.
 
 > **Catatan:** pengaman perintah bekerja dengan mengenali pola, jadi sifatnya berlapis — bukan isolasi tingkat sistem operasi. Untuk pekerjaan yang sangat sensitif, tetap periksa perintah yang diminta bAIwor sebelum menyetujuinya.
+>
+> **Repo tidak tepercaya:** saat agen diminta menjalankan test/lint/diagnostics, script dari `package.json` proyek ikut dieksekusi. Buka hanya proyek yang kamu percaya, atau jalankan dulu di InstaBox/container terpisah.
 
 ---
 

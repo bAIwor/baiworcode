@@ -7,6 +7,9 @@ import { APP_NAME, VERSION, TAGLINE } from '../branding.js';
  * Kompatibel dengan berbagai aplikasi dan klien MCP berstandar stdio.
  */
 export function startMcpServer() {
+  // stdout adalah kanal JSON-RPC; log apa pun dari tool/handler harus ke stderr.
+  console.log = (...args) => console.error(...args);
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -38,6 +41,10 @@ export function startMcpServer() {
       sendError(null, -32700, 'Parse error: invalid JSON');
       return;
     }
+    if (!msg || typeof msg !== 'object' || Array.isArray(msg)) {
+      sendError(null, -32600, 'Invalid Request: message harus berupa object JSON-RPC.');
+      return;
+    }
 
     const { id, method, params } = msg;
 
@@ -59,7 +66,7 @@ export function startMcpServer() {
               name: 'baiworcode',
               version: VERSION,
             },
-            instructions: `${APP_NAME} — ${TAGLINE}. Menyediakan 14 tools bawaan untuk manipulasi berkas, terminal, penelusuran, diagnosa, dan kecerdasan web.`,
+            instructions: `${APP_NAME} — ${TAGLINE}. Menyediakan 15 tools bawaan untuk manipulasi berkas, terminal, penelusuran, diagnosa, dan kecerdasan web.`,
           });
           break;
         }

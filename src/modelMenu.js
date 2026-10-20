@@ -494,9 +494,9 @@ export async function runModelMenu() {
         }
 
         if (subChoice === 'edit_key') {
-          const inputKey = await p.text({
+          const inputKey = await p.password({
             message: 'Masukkan API Key baru untuk Agentik:',
-            placeholder: 'Dapatkan token/credit di https://agentik.my.id',
+            mask: '•',
             validate(val) {
               if (!val || !val.trim()) return 'API Key tidak boleh kosong';
             },
@@ -653,8 +653,9 @@ export async function runModelMenu() {
       if (subChoice === 'activate') {
         if (!cp.apiKey || !cp.apiKey.trim()) {
           console.log(chalk.yellow(`\n  ℹ️  API Key untuk ${cp.name} belum diatur.`));
-          const inputKey = await p.text({
+          const inputKey = await p.password({
             message: `Masukkan API Key ${cp.name}:`,
+            mask: '•',
             validate(val) {
               if (!val || !val.trim()) return 'API Key tidak boleh kosong';
             },
@@ -680,8 +681,9 @@ export async function runModelMenu() {
       }
 
       if (subChoice === 'edit_key') {
-        const inputKey = await p.text({
+        const inputKey = await p.password({
           message: `Masukkan API Key baru untuk ${cp.name}:`,
+          mask: '•',
           validate(val) {
             if (!val || !val.trim()) return 'API Key tidak boleh kosong';
           },

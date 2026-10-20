@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { resolveTimelineMode } from './chat/timeline.js';
 
 export const CONFIG_DIR = path.join(os.homedir(), '.baiwor');
 export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
-const CONFIG_TMP = path.join(CONFIG_DIR, 'config.json.tmp');
 
 export const DEFAULT_CONFIG = {
   activeProvider: 'Agentik',
@@ -59,12 +59,12 @@ export function maskSecret(str) {
 
 function ensureConfigDir() {
   if (!fs.existsSync(CONFIG_DIR)) {
-    fs.mkdirSync(CONFIG_DIR, { recursive: true });
-    try {
-      fs.chmodSync(CONFIG_DIR, 0o700);
-    } catch {
-      // Best effort, abaikan di Windows
-    }
+    fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+  }
+  try {
+    fs.chmodSync(CONFIG_DIR, 0o700);
+  } catch {
+    // Best effort, abaikan di Windows
   }
 }
 
@@ -81,15 +81,31 @@ export function clearConfigCache() {
 function writeAtomicConfig(data) {
   ensureConfigDir();
   const content = JSON.stringify(data, null, 2);
-  fs.writeFileSync(CONFIG_TMP, content, 'utf8');
+  // Nama tmp unik: dua proses CLI yang menyimpan bersamaan tidak saling
+  // menimpa file sementara satu sama lain.
+  const tmpPath = path.join(
+    CONFIG_DIR,
+    `config.json.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`
+  );
   try {
-    fs.chmodSync(CONFIG_TMP, 0o600);
-  } catch {}
-  fs.renameSync(CONFIG_TMP, CONFIG_FILE);
-  try {
-    fs.chmodSync(CONFIG_FILE, 0o600);
-  } catch {}
-  clearConfigCache();
+    fs.writeFileSync(tmpPath, content, { encoding: 'utf8', mode: 0o600 });
+    try {
+      const fd = fs.openSync(tmpPath, 'r+');
+      try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    } catch {}
+    try {
+      fs.chmodSync(tmpPath, 0o600);
+    } catch {}
+    fs.renameSync(tmpPath, CONFIG_FILE);
+    try {
+      fs.chmodSync(CONFIG_FILE, 0o600);
+    } catch {}
+  } catch (err) {
+    try { fs.unlinkSync(tmpPath); } catch {}
+    throw err;
+  } finally {
+    clearConfigCache();
+  }
 }
 
 export function getConfig() {

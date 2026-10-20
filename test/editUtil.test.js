@@ -141,4 +141,35 @@ describe('editUtil: Unified Diff & Patching', () => {
     assert.equal(res.ok, false);
     assert.equal(res.reason, 'hunk-not-found');
   });
+
+  it('mendukung hunk insert-only di awal, tengah, dan EOF', () => {
+    const awal = applyUnifiedDiff('lama\n', '@@ -0,0 +1,2 @@\n+baris 1\n+baris 2');
+    assert.equal(awal.ok, true);
+    assert.equal(awal.text, 'baris 1\nbaris 2\nlama\n');
+
+    const tengah = applyUnifiedDiff('a\nb\nc\n', '@@ -1,0 +2,1 @@\n+baru');
+    assert.equal(tengah.ok, true);
+    assert.equal(tengah.text, 'a\nbaru\nb\nc\n');
+
+    const akhir = applyUnifiedDiff('a\nb\n', '@@ -2,0 +3,1 @@\n+akhir');
+    assert.equal(akhir.ok, true);
+    assert.equal(akhir.text, 'a\nb\nakhir\n');
+  });
+
+  it('mempertahankan baris konten yang mirip header diff', () => {
+    const res = applyUnifiedDiff('-- dihapus\n', '@@ -1,1 +1,1 @@\n--- dihapus\n+++ ditambah');
+    assert.equal(res.ok, true);
+    assert.equal(res.text, '++ ditambah\n');
+  });
+
+  it('mempertahankan BOM saat edit dan patch', () => {
+    const original = '\uFEFFhalo\r\nbaris\r\n';
+    const edited = applyEdit(original, 'baris', 'baris baru');
+    assert.equal(edited.ok, true);
+    assert.equal(edited.text, '\uFEFFhalo\r\nbaris baru\r\n');
+
+    const patched = applyUnifiedDiff(original, '@@ -2,1 +2,1 @@\n-baris\n+baris patch');
+    assert.equal(patched.ok, true);
+    assert.equal(patched.text, '\uFEFFhalo\r\nbaris patch\r\n');
+  });
 });

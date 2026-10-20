@@ -12,7 +12,7 @@ import {
   isMcpProjectTrusted,
   trustMcpProject,
 } from '../config.js';
-import { registerTool, unregisterTool } from '../tools/registry.js';
+import { registerTool, unregisterTool, hasTool } from '../tools/registry.js';
 
 const MCP_TIMEOUT_MS = 60000;
 const activeSessions = new Map(); // serverName -> McpSession
@@ -500,9 +500,17 @@ export async function connectMcpServer(name, serverConfig) {
   await session.connect();
   activeSessions.set(name, session);
 
-  // Daftarkan setiap tool dari MCP server ke Tool Registry bAIwor Code
+  // Daftarkan setiap tool dari MCP server ke Tool Registry bAIwor Code.
+  // Prefix `mcp_` mencegah server eksternal menimpa tool bawaan (mis. tool
+  // bernama `file` pada server `read` tidak bisa menjadi `read_file`).
   for (const tool of session.tools) {
-    const safeToolName = `${name}_${tool.name}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const baseName = `mcp_${name}_${tool.name}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+    let safeToolName = baseName;
+    let suffix = 2;
+    while (hasTool(safeToolName)) {
+      safeToolName = `${baseName}_${suffix}`;
+      suffix += 1;
+    }
     registerTool({
       name: safeToolName,
       toolset: 'mcp',

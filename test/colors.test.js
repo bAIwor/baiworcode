@@ -36,6 +36,13 @@ describe('Warna: Deteksi Level', () => {
   it('harus memberi minimal 16 warna untuk TTY biasa', () => {
     assert.equal(detectColorLevel(tty, {}), 1);
   });
+
+  it('harus menghormati FORCE_COLOR eksplisit', () => {
+    assert.equal(detectColorLevel(tty, { FORCE_COLOR: '0', WT_SESSION: 'abc' }), 0);
+    assert.equal(detectColorLevel(tty, { FORCE_COLOR: 'false', WT_SESSION: 'abc' }), 0);
+    assert.equal(detectColorLevel(tty, { FORCE_COLOR: '2' }), 2);
+    assert.equal(detectColorLevel(notTty, { FORCE_COLOR: '1' }), 1);
+  });
 });
 
 describe('Warna: Koreksi Level Chalk', () => {
@@ -73,6 +80,13 @@ describe('Warna: Koreksi Level Chalk', () => {
   it('tidak boleh mengaktifkan warna saat NO_COLOR diset', () => {
     withLevel(0, () => {
       ensureColorSupport(tty, { NO_COLOR: '1' });
+      assert.equal(chalk.level, 0);
+    });
+  });
+
+  it('tidak boleh mengaktifkan warna saat FORCE_COLOR=0', () => {
+    withLevel(0, () => {
+      ensureColorSupport(tty, { FORCE_COLOR: '0', WT_SESSION: 'abc' });
       assert.equal(chalk.level, 0);
     });
   });

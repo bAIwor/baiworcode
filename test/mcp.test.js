@@ -110,6 +110,10 @@ describe('MCP Client: Remote HTTP Transport', () => {
 
     const active = listActiveMcpSessions();
     assert.ok(active.some((s) => s.name === 'mock'));
+
+    // Tool MCP diberi prefix agar tidak bisa menimpa tool bawaan.
+    const toolNames = getDefinitions().map((d) => d.function.name);
+    assert.ok(toolNames.includes('mcp_mock_echo'));
   });
 });
 

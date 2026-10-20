@@ -11,6 +11,7 @@ import {
   activeAliasName,
   validateAliasName,
 } from '../src/modelAlias.js';
+import { expandEnvSecret, findMissingEnvRefs } from '../src/auth/resolve.js';
 
 /**
  * Config contoh yang meniru ~/.baiwor/config.json pengguna nyata
@@ -86,6 +87,38 @@ test('parseAliasValue: referensi environment variable di-expand', () => {
     );
   } finally {
     delete process.env.BAIWOR_TEST_ALIAS_KEY;
+  }
+});
+
+test('alias env: placeholder disimpan, bukan nilai rahasia hasil ekspansi', () => {
+  process.env.BAIWOR_TEST_PERSIST_KEY = 'rahasia-env';
+  try {
+    const target = resolveModelTarget('theta', makeConfig({
+      customProviders: [],
+      modelAliases: {
+        theta: {
+          model: 'theta-1',
+          provider: 'custom',
+          baseUrl: 'https://theta.example.com/v1',
+          apiKey: '${BAIWOR_TEST_PERSIST_KEY}',
+        },
+      },
+    }));
+    assert.equal(target.apiKeyRef, '${BAIWOR_TEST_PERSIST_KEY}');
+    assert.equal(target.apiKey, 'rahasia-env');
+
+    const applied = applyModelTarget(target, makeConfig({ customProviders: [] }));
+    assert.equal(applied.ok, true);
+    assert.equal(
+      applied.patch.customProviders[0].apiKey,
+      '${BAIWOR_TEST_PERSIST_KEY}',
+      'config tidak boleh menyimpan nilai hasil ekspansi'
+    );
+
+    assert.equal(expandEnvSecret('${BAIWOR_TEST_PERSIST_KEY}'), 'rahasia-env');
+    assert.deepEqual(findMissingEnvRefs('${TIDAK_DISET_XYZ}'), ['TIDAK_DISET_XYZ']);
+  } finally {
+    delete process.env.BAIWOR_TEST_PERSIST_KEY;
   }
 });
 

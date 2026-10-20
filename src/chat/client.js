@@ -126,11 +126,15 @@ export async function streamAgyCompletion({
  * Helper untuk menyusun URL endpoint /chat/completions secara fleksibel
  * baik untuk AgentikMyID, OpenRouter, Groq, maupun endpoint OpenAI-compatible lainnya.
  */
-export function buildChatEndpoint(baseUrl, model) {
+export function buildChatEndpoint(baseUrl, model, apiStyle = null) {
   let url = (baseUrl || '').trim().replace(/\/+$/, '');
+  const forcedResponses = apiStyle === 'responses';
+  const forcedChat = apiStyle === 'chat' || apiStyle === 'chat_completions';
   const isResponsesModel =
-    typeof model === 'string' &&
-    (model === 'gpt-6.1-sol' || model === 'gpt-6-astra' || model.includes('responses'));
+    forcedResponses ||
+    (!forcedChat &&
+      (url.endsWith('/responses') ||
+        (typeof model === 'string' && model.includes('responses'))));
 
   if (isResponsesModel) {
     if (url.endsWith('/responses')) {
@@ -153,6 +157,133 @@ export function buildChatEndpoint(baseUrl, model) {
     return `${url}/chat/completions`;
   }
   return `${url}/v1/chat/completions`;
+}
+
+/**
+ * Mengubah riwayat format Chat Completions menjadi `input` untuk Responses API.
+ * Tool call & hasil tool menjadi item terpisah (`function_call` /
+ * `function_call_output`), sesuai spesifikasi OpenAI Responses.
+ *
+ * @param {Array} messages
+ * @returns {Array<Object>}
+ */
+export function buildResponsesInput(messages = []) {
+  const input = [];
+  let fallbackId = 0;
+  for (const m of messages) {
+    if (!m || typeof m !== 'object') continue;
+
+    if (m.role === 'tool') {
+      if (!m.tool_call_id) continue;
+      input.push({
+        type: 'function_call_output',
+        call_id: m.tool_call_id,
+        output: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
+      });
+      continue;
+    }
+
+    if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+      if (typeof m.content === 'string' && m.content.trim()) {
+        input.push({ role: 'assistant', content: m.content });
+      }
+      for (const tc of m.tool_calls) {
+        const name = tc?.function?.name || tc?.name;
+        if (!name) continue;
+        const args = tc?.function?.arguments ?? tc?.arguments ?? '{}';
+        input.push({
+          type: 'function_call',
+          call_id: tc?.id || tc?.call_id || `call_fallback_${fallbackId++}`,
+          name,
+          arguments: typeof args === 'string' ? args : JSON.stringify(args),
+        });
+      }
+      continue;
+    }
+
+    const role = m.role === 'system' || m.role === 'developer' ? m.role : m.role === 'assistant' ? 'assistant' : 'user';
+    input.push({
+      role,
+      content: typeof m.content === 'string' ? m.content : String(m.content ?? ''),
+    });
+  }
+  return input;
+}
+
+/** Tools Chat Completions ({type,function:{...}}) → format Responses yang datar. */
+export function buildResponsesTools(tools = []) {
+  return (Array.isArray(tools) ? tools : [])
+    .filter((t) => t?.function?.name)
+    .map((t) => ({
+      type: 'function',
+      name: t.function.name,
+      description: t.function.description || '',
+      parameters: t.function.parameters || { type: 'object', properties: {} },
+    }));
+}
+
+function createResponsesState() {
+  return { calls: new Map(), order: [] };
+}
+
+function registerResponsesCall(state, item) {
+  if (!item || typeof item !== 'object') return;
+  const key = item.id || item.call_id;
+  if (!key) return;
+  let call = state.calls.get(key);
+  if (!call) {
+    call = { id: item.call_id || key, name: '', args: '' };
+    state.calls.set(key, call);
+    state.order.push(key);
+  }
+  if (item.call_id) call.id = item.call_id;
+  if (item.name) call.name = item.name;
+  if (typeof item.arguments === 'string' && item.arguments) call.args = item.arguments;
+}
+
+/**
+ * Menyerap `response.completed` sebagai sumber kebenaran akhir. Dipakai untuk
+ * provider yang tidak mengirim delta lengkap (atau hanya mengirim event final).
+ *
+ * @returns {string} teks final (bila ada)
+ */
+function applyResponsesFinalResponse(state, response) {
+  let text = '';
+  const output = Array.isArray(response?.output) ? response.output : [];
+  for (const item of output) {
+    if (!item || typeof item !== 'object') continue;
+    if (item.type === 'function_call') {
+      registerResponsesCall(state, item);
+      continue;
+    }
+    if (item.type === 'message') {
+      const parts = Array.isArray(item.content) ? item.content : [];
+      for (const part of parts) {
+        if (part?.type === 'output_text' && typeof part.text === 'string') text += part.text;
+      }
+    }
+  }
+  return text;
+}
+
+function buildResponsesResult(state, content, reasoning) {
+  const calls = state.order
+    .map((key) => state.calls.get(key))
+    .filter((call) => call && call.name && call.id)
+    .map((call) => ({
+      id: call.id,
+      type: 'function',
+      function: {
+        name: call.name,
+        arguments: call.args || '{}',
+      },
+    }));
+  return {
+    content,
+    reasoning,
+    tool_calls: calls.length > 0 ? calls : null,
+    completed: true,
+  };
 }
 
 /**
@@ -313,7 +444,7 @@ export async function streamChatCompletion({
     });
   }
 
-  const url = buildChatEndpoint(credentials.baseUrl, credentials.model);
+  const url = buildChatEndpoint(credentials.baseUrl, credentials.model, credentials.apiStyle);
 
   // Bila provider ini pernah menolak karena `reasoning_content` hilang, rapikan
   // langsung di muka supaya tidak membuang satu request 400 + retry setiap turn.
@@ -326,10 +457,7 @@ export async function streamChatCompletion({
     ? {
         model: credentials.model,
         stream: true,
-        input: outgoingMessages.map((m) => ({
-          role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user',
-          content: m.content || '',
-        })),
+        input: buildResponsesInput(outgoingMessages),
       }
     : {
         model: credentials.model,
@@ -337,9 +465,17 @@ export async function streamChatCompletion({
         stream: true,
       };
 
-  if (!isResponsesApi && tools && Array.isArray(tools) && tools.length > 0) {
-    payload.tools = tools;
-    payload.tool_choice = 'auto';
+  if (tools && Array.isArray(tools) && tools.length > 0) {
+    if (isResponsesApi) {
+      const responseTools = buildResponsesTools(tools);
+      if (responseTools.length > 0) {
+        payload.tools = responseTools;
+        payload.tool_choice = 'auto';
+      }
+    } else {
+      payload.tools = tools;
+      payload.tool_choice = 'auto';
+    }
   }
 
   let response = await requestWithRetry(
@@ -386,7 +522,9 @@ export async function streamChatCompletion({
       /extra inputs are not permitted/i.test(errorDetail) ||
       (/reasoning_content/i.test(errorDetail) && /(?:unrecognized|not allowed|permitted|unexpected)/i.test(errorDetail));
 
-    if (response.status === 400 && isReasoningRequiredError) {
+    // Auto-recovery reasoning hanya berlaku untuk payload Chat Completions.
+    const canPatchReasoning = Array.isArray(payload.messages);
+    if (response.status === 400 && isReasoningRequiredError && canPatchReasoning) {
       // Tandai provider ini agar turn berikutnya langsung dirapikan di muka,
       // lalu isi reasoning_content yang hilang dengan placeholder non-kosong.
       REASONING_BACKFILL_HOSTS.add(credentials.baseUrl);
@@ -411,7 +549,7 @@ export async function streamChatCompletion({
           } catch {}
         }
       } catch {}
-    } else if (response.status === 400 && isReasoningNotAllowedError) {
+    } else if (response.status === 400 && isReasoningNotAllowedError && canPatchReasoning) {
       const strippedMessages = payload.messages.map((m) => {
         if (m.role === 'assistant' && 'reasoning_content' in m) {
           const copy = { ...m };
@@ -462,6 +600,13 @@ export async function streamChatCompletion({
   let fullContent = '';
   let fullReasoning = '';
   const accumulatedToolCalls = [];
+  const responsesState = isResponsesApi ? createResponsesState() : null;
+
+  const markStarted = () => {
+    if (hasStarted) return;
+    hasStarted = true;
+    if (onStart) onStart();
+  };
 
   /**
    * Menerapkan satu objek SSE ke akumulator.
@@ -471,14 +616,117 @@ export async function streamChatCompletion({
    * — yang mungkin tidak diakhiri newline atau `[DONE]` — tidak ikut terbuang.
    */
   const applyChunk = (parsed) => {
-    // Tangani event stream dari OpenAI Responses API (/v1/responses)
-    if (parsed?.type === 'response.output_text.delta' && typeof parsed.delta === 'string') {
-      if (!hasStarted) {
-        hasStarted = true;
-        if (onStart) onStart();
+    // Event stream OpenAI Responses API (/v1/responses).
+    if (isResponsesApi) {
+      const type = parsed?.type;
+      if (!type) return;
+
+      if (type === 'response.output_text.delta') {
+        if (typeof parsed.delta !== 'string') return;
+        markStarted();
+        fullContent += parsed.delta;
+        if (onDelta) onDelta(parsed.delta);
+        return;
       }
-      fullContent += parsed.delta;
-      if (onDelta) onDelta(parsed.delta);
+
+      if (
+        type === 'response.reasoning_summary_text.delta' ||
+        type === 'response.reasoning_text.delta'
+      ) {
+        if (typeof parsed.delta !== 'string') return;
+        markStarted();
+        fullReasoning += parsed.delta;
+        if (onReasoning) onReasoning(parsed.delta);
+        return;
+      }
+
+      if (type === 'response.output_text.done') {
+        if (!fullContent && typeof parsed.text === 'string' && parsed.text) {
+          fullContent = parsed.text;
+          markStarted();
+          if (onDelta) onDelta(parsed.text);
+        }
+        return;
+      }
+
+      if (type === 'response.output_item.added' || type === 'response.output_item.done') {
+        const item = parsed.item;
+        if (item?.type === 'function_call') {
+          markStarted();
+          registerResponsesCall(responsesState, item);
+        } else if (item?.type === 'message' && type === 'response.output_item.done' && !fullContent) {
+          const parts = Array.isArray(item.content) ? item.content : [];
+          const text = parts
+            .filter((part) => part?.type === 'output_text' && typeof part.text === 'string')
+            .map((part) => part.text)
+            .join('');
+          if (text) {
+            fullContent = text;
+            markStarted();
+            if (onDelta) onDelta(text);
+          }
+        }
+        return;
+      }
+
+      if (type === 'response.function_call_arguments.delta') {
+        const key = parsed.item_id || parsed.call_id;
+        if (!key) return;
+        let call = responsesState.calls.get(key);
+        if (!call) {
+          call = { id: parsed.call_id || key, name: parsed.name || '', args: '' };
+          responsesState.calls.set(key, call);
+          responsesState.order.push(key);
+        }
+        if (typeof parsed.delta === 'string') call.args += parsed.delta;
+        if (parsed.name && !call.name) call.name = parsed.name;
+        markStarted();
+        return;
+      }
+
+      if (type === 'response.function_call_arguments.done') {
+        const key = parsed.item_id || parsed.call_id;
+        if (key) {
+          let call = responsesState.calls.get(key);
+          if (!call) {
+            call = { id: parsed.call_id || key, name: parsed.name || '', args: '' };
+            responsesState.calls.set(key, call);
+            responsesState.order.push(key);
+          }
+          if (typeof parsed.arguments === 'string') call.args = parsed.arguments;
+          if (parsed.name) call.name = parsed.name;
+        }
+        return;
+      }
+
+      if (type === 'response.completed') {
+        const finalText = applyResponsesFinalResponse(responsesState, parsed.response);
+        if (finalText) {
+          if (!fullContent) {
+            fullContent = finalText;
+            markStarted();
+            if (onDelta) onDelta(finalText);
+          } else if (finalText.length > fullContent.length && finalText.startsWith(fullContent)) {
+            // Lengkapi bila delta terakhir tidak sempat terkirim.
+            const rest = finalText.slice(fullContent.length);
+            fullContent = finalText;
+            if (onDelta) onDelta(rest);
+          } else {
+            fullContent = finalText;
+          }
+        }
+        responsesState.completed = true;
+        return;
+      }
+
+      if (type === 'response.failed' || type === 'error') {
+        const message =
+          parsed.response?.error?.message ||
+          parsed.error?.message ||
+          parsed.message ||
+          JSON.stringify(parsed);
+        throw new Error(`Responses API error: ${message}`);
+      }
       return;
     }
 
@@ -592,6 +840,10 @@ export async function streamChatCompletion({
         if (line.startsWith('data:')) {
           const jsonStr = line.slice(5).trim();
           if (jsonStr === '[DONE]') {
+            try { await reader.cancel(); } catch {}
+            if (isResponsesApi) {
+              return buildResponsesResult(responsesState, fullContent, fullReasoning);
+            }
             const finalToolCalls = accumulatedToolCalls.filter(Boolean);
             return {
               content: fullContent,
@@ -600,10 +852,21 @@ export async function streamChatCompletion({
               completed: true,
             };
           }
+
+          let parsed;
           try {
-            applyChunk(JSON.parse(jsonStr));
+            parsed = JSON.parse(jsonStr);
           } catch {
-            // Abaikan potongan baris SSE individual yang tidak valid
+            // Abaikan potongan baris SSE individual yang tidak valid.
+            continue;
+          }
+          // Error dari event (mis. response.failed) HARUS diteruskan, bukan
+          // ikut tertelan sebagai "JSON rusak".
+          applyChunk(parsed);
+
+          if (isResponsesApi && responsesState.completed) {
+            try { await reader.cancel(); } catch {}
+            return buildResponsesResult(responsesState, fullContent, fullReasoning);
           }
         }
       }
@@ -622,7 +885,14 @@ export async function streamChatCompletion({
         }
       }
     }
+    if (isResponsesApi) {
+      return buildResponsesResult(responsesState, fullContent, fullReasoning);
+    }
   } catch (err) {
+    if (!err.partialContent && fullContent) {
+      err.partialContent = fullContent;
+      err.partialReasoning = fullReasoning;
+    }
     if (err.name === 'AbortError') {
       const abortErr = new Error('Streaming dihentikan oleh pengguna.');
       abortErr.name = 'AbortError';
@@ -642,6 +912,10 @@ export async function streamChatCompletion({
       err.partialToolCalls = finalToolCalls.length > 0 ? finalToolCalls : null;
     }
     throw err;
+  }
+
+  if (isResponsesApi) {
+    return buildResponsesResult(responsesState, fullContent, fullReasoning);
   }
 
   const finalToolCalls = accumulatedToolCalls.filter(Boolean);

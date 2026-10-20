@@ -151,6 +151,24 @@ describe('Child Subagent Delegation Engine (delegate_task)', () => {
     assert.ok(res.output.includes('melaporkan struktur saja'));
   });
 
+  it('harus mengembalikan gagal bila batas putaran tercapai tanpa laporan akhir', async () => {
+    const mockCompletionFn = async () => ({
+      content: '',
+      tool_calls: [{
+        id: `call_${Math.random().toString(16).slice(2)}`,
+        function: { name: 'list_directory', arguments: '{"dir_path":"src"}' },
+      }],
+    });
+
+    const res = await handleDelegateTask(
+      { role: 'pAItruk', task: 'Jelajahi terus', max_turns: 2 },
+      { completionFn: mockCompletionFn }
+    );
+
+    assert.equal(res.success, false);
+    assert.match(res.output, /batas 2 putaran tanpa laporan akhir/i);
+  });
+
   it('harus menangani pembatalan AbortSignal dengan elegan', async () => {
     const controller = new AbortController();
     controller.abort();

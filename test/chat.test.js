@@ -159,6 +159,21 @@ describe('Tahap 3A: Endpoint Builder', () => {
       'https://contoh.example.com/v1x/v1/chat/completions'
     );
   });
+
+  it('harus memilih /responses untuk model/API style yang sesuai', () => {
+    assert.equal(
+      buildChatEndpoint('https://api.contoh.com/v1', 'custom-responses-model'),
+      'https://api.contoh.com/v1/responses'
+    );
+    assert.equal(
+      buildChatEndpoint('https://api.contoh.com/v1', 'model-biasa', 'responses'),
+      'https://api.contoh.com/v1/responses'
+    );
+    assert.equal(
+      buildChatEndpoint('https://api.contoh.com/v1', 'custom-responses-model', 'chat'),
+      'https://api.contoh.com/v1/chat/completions'
+    );
+  });
 });
 
 describe('Tahap 3A: SSE Streaming & Line Buffering Parser', () => {
@@ -524,6 +539,162 @@ describe('Tahap 3A: Retry & Backoff Klien Streaming', () => {
 describe('Pembatalan Chat (abortCurrentChat)', () => {
   it('harus mengembalikan false bila tidak ada sesi streaming aktif', () => {
     assert.equal(abortCurrentChat(), false);
+  });
+});
+
+describe('Responses API (/v1/responses)', () => {
+  it('mengirim input/tools format Responses dan menangani function call + teks', async () => {
+    const requests = [];
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', () => {
+        const parsed = JSON.parse(body || '{}');
+        requests.push(parsed);
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        });
+        const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+        if (requests.length === 1) {
+          send({
+            type: 'response.output_item.added',
+            item: { type: 'function_call', id: 'item_1', call_id: 'call_1', name: 'read_file', arguments: '' },
+          });
+          send({ type: 'response.function_call_arguments.delta', item_id: 'item_1', delta: '{"file_path":"hello.txt"}' });
+          send({
+            type: 'response.output_item.done',
+            item: {
+              type: 'function_call',
+              id: 'item_1',
+              call_id: 'call_1',
+              name: 'read_file',
+              arguments: '{"file_path":"hello.txt"}',
+            },
+          });
+          send({
+            type: 'response.completed',
+            response: {
+              output: [{
+                type: 'function_call',
+                id: 'item_1',
+                call_id: 'call_1',
+                name: 'read_file',
+                arguments: '{"file_path":"hello.txt"}',
+              }],
+            },
+          });
+        } else {
+          send({ type: 'response.output_text.delta', delta: 'Halo ' });
+          send({ type: 'response.output_text.delta', delta: 'dunia' });
+          send({
+            type: 'response.completed',
+            response: {
+              output: [{
+                type: 'message',
+                id: 'msg_1',
+                content: [{ type: 'output_text', text: 'Halo dunia' }],
+              }],
+            },
+          });
+        }
+        res.write('data: [DONE]\n\n');
+        res.end();
+      });
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    const tools = [{
+      type: 'function',
+      function: {
+        name: 'read_file',
+        description: 'Baca berkas',
+        parameters: { type: 'object', properties: { file_path: { type: 'string' } } },
+      },
+    }];
+
+    try {
+      const first = await streamChatCompletion({
+        credentials: {
+          baseUrl: `http://127.0.0.1:${port}/v1`,
+          headers: { 'Content-Type': 'application/json' },
+          model: 'custom-responses-model',
+        },
+        messages: [{ role: 'user', content: 'baca hello.txt' }],
+        tools,
+      });
+
+      assert.equal(requests[0].tools[0].name, 'read_file');
+      assert.equal(requests[0].tools[0].function, undefined);
+      assert.equal(first.content, '');
+      assert.equal(first.tool_calls.length, 1);
+      assert.equal(first.tool_calls[0].id, 'call_1');
+      assert.equal(first.tool_calls[0].function.name, 'read_file');
+      assert.equal(first.tool_calls[0].function.arguments, '{"file_path":"hello.txt"}');
+
+      let started = false;
+      let deltas = '';
+      const second = await streamChatCompletion({
+        credentials: {
+          baseUrl: `http://127.0.0.1:${port}/v1`,
+          headers: { 'Content-Type': 'application/json' },
+          model: 'custom-responses-model',
+        },
+        messages: [
+          { role: 'user', content: 'baca hello.txt' },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [{
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'read_file', arguments: '{"file_path":"hello.txt"}' },
+            }],
+          },
+          { role: 'tool', tool_call_id: 'call_1', content: 'isi berkas' },
+        ],
+        tools,
+        onStart: () => { started = true; },
+        onDelta: (chunk) => { deltas += chunk; },
+      });
+
+      assert.equal(requests[1].input.some((item) => item.type === 'function_call_output' && item.call_id === 'call_1'), true);
+      assert.equal(requests[1].input.some((item) => item.type === 'function_call' && item.call_id === 'call_1'), true);
+      assert.equal(started, true);
+      assert.equal(deltas, 'Halo dunia');
+      assert.equal(second.content, 'Halo dunia');
+      assert.equal(second.tool_calls, null);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('meneruskan event response.failed sebagai error', async () => {
+    const server = http.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"type":"response.failed","response":{"error":{"message":"boom"}}}\n\n');
+      res.end();
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    try {
+      await assert.rejects(
+        () => streamChatCompletion({
+          credentials: {
+            baseUrl: `http://127.0.0.1:${port}/v1`,
+            headers: { 'Content-Type': 'application/json' },
+            model: 'custom-responses-model',
+          },
+          messages: [{ role: 'user', content: 'halo' }],
+        }),
+        /Responses API error: boom/
+      );
+    } finally {
+      server.close();
+    }
   });
 });
 

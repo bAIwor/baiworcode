@@ -41,6 +41,12 @@ describe('wrapText: dasar', () => {
     assert.deepEqual(wrapText('halo lur', { width: 20 }), ['halo lur']);
   });
 
+  it('memakai lebar aman bila width tidak diberikan/invalid', () => {
+    assert.deepEqual(wrapText('kata pendek', {}), ['kata pendek']);
+    assert.deepEqual(wrapText('kata pendek', { width: 0 }), ['kata pendek']);
+    assert.deepEqual(wrapText('kata pendek', { width: undefined }), ['kata pendek']);
+  });
+
   it('memotong di batas kata, bukan di tengah karakter', () => {
     const out = wrapText('satu dua tiga empat lima', { width: 14 });
     assert.deepEqual(out, ['satu dua tiga', 'empat lima']);
