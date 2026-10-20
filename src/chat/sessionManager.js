@@ -103,11 +103,21 @@ export function generateSessionId() {
  */
 export function deriveSessionTitle(messages = [], fallback = 'Percakapan Baru') {
   if (!Array.isArray(messages)) return fallback;
-  const firstUser = messages.find((m) => m && m.role === 'user' && typeof m.content === 'string' && m.content.trim());
+  const firstUser = messages.find((m) => {
+    if (!m || m.role !== 'user') return false;
+    if (typeof m.content === 'string') return Boolean(m.content.trim());
+    if (Array.isArray(m.content)) return m.content.some((p) => p?.type === 'text' && p.text?.trim());
+    return false;
+  });
   if (!firstUser) return fallback;
 
+  const rawText =
+    typeof firstUser.content === 'string'
+      ? firstUser.content
+      : firstUser.content.find((p) => p?.type === 'text')?.text || 'Analisis Gambar';
+
   // Bersihkan baris baru dan karakter berulang
-  const clean = firstUser.content
+  const clean = rawText
     .replace(/[\r\n]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

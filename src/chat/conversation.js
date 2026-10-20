@@ -58,10 +58,11 @@ export class Conversation {
    * Menambahkan pesan dari pengguna.
    */
   addUserMessage(content) {
-    if (!content || typeof content !== 'string') return;
+    if (!content) return;
+    if (typeof content !== 'string' && !Array.isArray(content)) return;
     const msg = {
       role: 'user',
-      content: content.trim(),
+      content: typeof content === 'string' ? content.trim() : content,
     };
     this.messages.push(msg);
     this._persistMessage(msg);

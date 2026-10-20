@@ -1477,6 +1477,14 @@ async function startInteractive(opts = {}) {
       case '/logout':
         await logout(arg || undefined);
         break;
+      case '/image': {
+        if (!arg) {
+          console.log(chalk.yellow('\n  ⚠️  Sertakan path gambar. Contoh: /image screenshot.png Jelaskan bug ini\n'));
+          break;
+        }
+        await handleUserChat(`/image ${arg}`);
+        break;
+      }
       case '/undo': {
         const res = undoLastTurn();
         if (!res.success) {

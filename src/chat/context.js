@@ -62,6 +62,14 @@ export function resolveContextWindow(model) {
  */
 export function estimateTokens(text) {
   if (!text) return 0;
+  if (Array.isArray(text)) {
+    let total = 0;
+    for (const part of text) {
+      if (part?.type === 'text') total += estimateTokens(part.text);
+      else if (part?.type === 'image_url') total += 500;
+    }
+    return total;
+  }
   const length = String(text).length;
   if (length === 0) return 0;
   return Math.ceil(length / CHARS_PER_TOKEN);

@@ -1,9 +1,11 @@
+import path from 'node:path';
 import chalk from 'chalk';
 import { theme } from '../theme.js';
 import { resolveActiveCredentials } from '../auth/resolve.js';
 import { conversationSession } from './conversation.js';
 import { streamChatCompletion } from './client.js';
 import { TOOL_DEFINITIONS, executeTool } from '../tools/index.js';
+import { processMultimodalPrompt } from './multimodal.js';
 import { todoStore, resetTodoStore } from '../tools/todoTool.js';
 import {
   summarizeTodos,
@@ -155,8 +157,18 @@ export async function handleUserChat(promptText, options = {}) {
   // 2. Selaraskan system prompt dengan provider & model aktif
   conversationSession.refreshSystemPrompt(credentials);
 
-  // 3. Tambahkan pesan user ke memori sesi
-  conversationSession.addUserMessage(query);
+  // 3. Proses lampiran gambar (multi-modal) jika ada (@gambar atau /image)
+  const { content, images, errors } = processMultimodalPrompt(query);
+  if (errors.length > 0) {
+    for (const errMsg of errors) {
+      console.log(chalk.yellow(`  ⚠️  [Gambar] ${errMsg}`));
+    }
+  }
+  if (images.length > 0) {
+    const names = images.map((img) => path.basename(img.path)).join(', ');
+    console.log(chalk.cyan(`  📸 Melampirkan ${images.length} gambar ke prompt: ${chalk.bold(names)}`));
+  }
+  conversationSession.addUserMessage(content);
 
   // 3. Setup Indikator Berpikir (Thinking Spinner)
   const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];

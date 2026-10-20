@@ -204,7 +204,7 @@ export function buildResponsesInput(messages = []) {
     const role = m.role === 'system' || m.role === 'developer' ? m.role : m.role === 'assistant' ? 'assistant' : 'user';
     input.push({
       role,
-      content: typeof m.content === 'string' ? m.content : String(m.content ?? ''),
+      content: Array.isArray(m.content) ? m.content : typeof m.content === 'string' ? m.content : String(m.content ?? ''),
     });
   }
   return input;
