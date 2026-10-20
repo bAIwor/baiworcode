@@ -149,15 +149,20 @@ Alur kerja agen dari pengetikan input hingga pemanggilan tool berlangsung dalam 
        │
        ▼
 6. Eksekusi Tool (src/tools/registry.js -> dispatchTool)
+   • **Pre-tool-execute Hook** (src/hooks/hookManager.js): Sebelum tool dijalankan, trigger hook `pre-tool-execute` (jika terdaftar). Hook bisa memblokir eksekusi jika exit code non-zero atau output mengandung "BLOCK:". Kondisi opsional untuk trigger selektif (misal: hanya untuk tool tertentu).
    • Menjalankan fungsi handler terkait.
    • Memotong keluaran jika melampaui batas MAX_TOOL_OUTPUT_CHARS dan menyimpannya ke berkas laporan (.baiwor/reports/tool-outputs/).
    • Memasukkan hasil keluaran sebagai pesan dengan peran role: "tool" ke Conversation.
    • Memperbarui visual LiveActivity (ceklis hijau bila berhasil, silang merah bila gagal).
+   • **Post-tool-execute Hook** (src/hooks/hookManager.js): Setelah tool selesai, trigger hook `post-tool-execute` untuk logging/notifikasi. Hook error tidak mempengaruhi hasil tool.
        │
        ▼
 7. Evaluasi Loop (Agentic Turn Iteration)
    • Memeriksa deteksi loop macet (stuckLoop: pemanggilan tool identik >= 3 kali berturut-turut).
    • Memeriksa batas putaran maksimum (MAX_AGENT_TURNS = 100).
+   • **Self-Healing Diagnostics Loop** (src/chat/selfHealing.js): Jika ada berkas yang berhasil dimodifikasi oleh tool write_file/edit_file/patch_file pada turn ini, jalankan pemeriksaan diagnostik otomatis (lint/typecheck) pada proyek. Jika diagnostik gagal dan retry < 2, inject pesan auto-repair ke model agar memperbaiki error sebelum lanjut. Jika retry >= 2, tampilkan peringatan ke pengguna dengan rincian error.
+   • **Workflows Engine** (src/workflows/workflowEngine.js): Mendukung orkestrasi multi-stage deterministik via skrip JavaScript (.baiwor/workflows/*.js). API: agent(), parallel(), pipeline(), phase() untuk membangun alur kerja kompleks dengan fase-fase. Execution log terstruktur untuk audit trail.
+   • **Goal/Task Management** (src/goals/goalManager.js): Structured task tracking dengan dependencies (blocks/blockedBy), turn budgets per goal, dan status management (pending → in_progress → completed/deleted). Persistence ke .baiwor/goals.json. API: createGoal, getGoal, createTask, getTask, addDependency, getAvailableTasks.
    • Jika berulang atau mencapai batas: Kirim WRAPUP_INSTRUCTION tanpa definisi tool agar LLM menyimpulkan pekerjaan.
    • Jika normal: Ulangi langkah 4 dengan riwayat pesan yang telah diperbarui.
 ```

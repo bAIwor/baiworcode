@@ -35,6 +35,11 @@ import {
   planModeBlockMessage,
 } from './planMode.js';
 import { beginTurnSnapshot, commitTurnSnapshot } from '../tools/snapshot.js';
+import {
+  runSelfHealingDiagnostics,
+  buildAutoRepairPrompt,
+  buildDiagnosticWarningMessage,
+} from './selfHealing.js';
 
 export { conversationSession };
 
@@ -277,6 +282,12 @@ export async function handleUserChat(promptText, options = {}) {
   const planningNudgeThreshold = getPlanNudgeThreshold();
   let toolCallsThisTurn = 0;
   let lastPlanNudgeAt = 0;
+
+  // Self-Healing Diagnostics: lacak berkas yang dimodifikasi dan jumlah retry
+  const FILE_MODIFYING_TOOLS = ['write_file', 'edit_file', 'patch_file'];
+  const MAX_DIAGNOSTICS_RETRIES = 2;
+  let diagnosticsRetryCount = 0;
+  let modifiedFilesThisTurn = [];
 
   /** Sidik jari rangkaian tool satu putaran (nama + argumen), urutan diabaikan. */
   const toolCallSignature = (calls) =>
@@ -650,6 +661,15 @@ export async function handleUserChat(promptText, options = {}) {
           const durationMs = Date.now() - startedAt;
           toolCallsThisTurn += 1;
 
+          // Self-Healing: lacak berkas yang berhasil dimodifikasi oleh tool modifikasi
+          if (
+            toolResult.success &&
+            FILE_MODIFYING_TOOLS.includes(fnName) &&
+            parsedArgs.file_path
+          ) {
+            modifiedFilesThisTurn.push(parsedArgs.file_path);
+          }
+
           if (shouldSuspend) live.resume();
 
           // `todo_list` mengembalikan JSON untuk dibaca model, bukan untuk
@@ -704,6 +724,54 @@ export async function handleUserChat(promptText, options = {}) {
         if (seen >= MAX_REPEATED_TOOL_CALLS) stuckLoop = true;
 
         if (stuckLoop) break;
+
+        // Self-Healing Diagnostics: jika ada berkas yang dimodifikasi, jalankan
+        // pemeriksaan otomatis sebelum lanjut ke giliran berikutnya
+        if (modifiedFilesThisTurn.length > 0) {
+          const diagResult = await runSelfHealingDiagnostics(modifiedFilesThisTurn, {
+            signal: controller.signal,
+          });
+
+          if (!diagResult.passed) {
+            if (diagnosticsRetryCount < MAX_DIAGNOSTICS_RETRIES) {
+              // Inject pesan auto-repair ke model
+              const repairPrompt = buildAutoRepairPrompt(
+                diagnosticsRetryCount,
+                diagResult.output,
+                diagResult.errors
+              );
+              conversationSession.addUserMessage(repairPrompt);
+              diagnosticsRetryCount++;
+
+              // Reset modified files untuk retry berikutnya
+              modifiedFilesThisTurn = [];
+
+              process.stdout.write(
+                chalk.cyan(
+                  `\n  🔧 [Self-Healing] Diagnostik gagal (retry ${diagnosticsRetryCount}/${MAX_DIAGNOSTICS_RETRIES}). Meminta model memperbaiki error...\n`
+                )
+              );
+
+              // Lanjut ke giliran berikutnya agar model bisa auto-repair
+              continue;
+            } else {
+              // Retry habis: inject peringatan ke final answer nanti
+              const warningMsg = buildDiagnosticWarningMessage(
+                diagResult.output,
+                diagResult.errors
+              );
+              process.stdout.write(chalk.yellow(`\n  ${warningMsg}\n`));
+
+              // Reset agar tidak trigger lagi di giliran berikutnya
+              modifiedFilesThisTurn = [];
+              diagnosticsRetryCount = 0;
+            }
+          } else {
+            // Diagnostik lulus: reset counter untuk turn berikutnya
+            diagnosticsRetryCount = 0;
+            modifiedFilesThisTurn = [];
+          }
+        }
 
         // Lanjut ke giliran berikutnya agar LLM memproses hasil tool
         continue;

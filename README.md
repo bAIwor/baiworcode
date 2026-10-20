@@ -174,9 +174,30 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - `webfetch` & `websearch` — baca dokumentasi/halaman web dan cari solusi di internet. Didukung **TinyFish Web Intelligence** (rendering JavaScript modern, anti-bot bypass, hasil terstruktur & markdown bersih untuk LLM) dengan fallback mulus ke DuckDuckGo & native fetch.
   - `webautomate` — mengemudikan browser headless (Web Agent TinyFish / Mako) untuk menyelesaikan misi interaktif, ekstraksi data dinamis, dan pengisian formulir.
   - `diagnostics` — deteksi & jalankan pemeriksaan mutu proyek (script `lint`/`typecheck`/`check`, atau `tsc`/`eslint`) supaya bAIwor memverifikasi pekerjaannya sebelum menyatakan selesai.
+  - **Self-Healing Diagnostics Loop** — setelah bAIwor selesai mengedit berkas, sistem otomatis menjalankan pemeriksaan diagnostik (lint/typecheck). Jika ada error syntax atau tipe, model langsung diberi konteks error dan diminta memperbaiki secara otomatis (maksimal 2x retry) sebelum memberikan jawaban akhir. Jika auto-repair gagal, pengguna mendapat peringatan jelas dengan rincian error.
   - `todo_list` — susun rencana tugas untuk pekerjaan besar dan lacak progresnya.
   - `delegate_task` & `ask_user` — orkestrasi subagent (satu tugas atau **mode paralel hingga 6 tugas, 3 berjalan bersamaan**) dan konfirmasi interaktif.
   - Mode paralel cocok untuk eksplorasi/audit independen: setiap subagent Punakawan punya histori, tool, dan laporan terisolasi; hasilnya disintesis kembali ke agen utama.
+- **🔗 Hooks System (Event-Driven Automation)**:
+  - Otomatis menjalankan shell command saat event tertentu terjadi: `pre-tool-execute`, `post-tool-execute`, `session-start`, `session-end`.
+  - **Pre-hook** bisa memblokir eksekusi tool (misal: validasi command berbahaya sebelum `run_command`).
+  - **Post-hook** untuk logging/notifikasi setelah tool selesai (misal: auto-format setelah `edit_file`).
+  - Konfigurasi fleksibel di `.baiwor/hooks.json` (per-proyek) atau `~/.baiwor/hooks.json` (global).
+  - Kondisi opsional untuk trigger selektif (misal: hanya untuk tool tertentu).
+  - Timeout default 30 detik per hook untuk mencegah hang.
+- **🔄 Workflows (Multi-Stage Orchestration)**:
+  - Skrip JavaScript untuk orkestrasi multi-agent deterministik dengan fase (pipeline/parallel).
+  - API sederhana: `agent()`, `parallel()`, `pipeline()`, `phase()` untuk membangun alur kerja kompleks.
+  - Workflow disimpan di `.baiwor/workflows/*.js` dan bisa dijalankan ulang kapan saja.
+  - Contoh use case: Review kode → Verifikasi temuan → Generate laporan, semua berjalan paralel per dimensi.
+  - Execution log terstruktur untuk debugging dan audit trail.
+- **🎯 Goal/Task Management System**:
+  - Structured task tracking dengan dependencies, turn budgets, dan status management.
+  - **Goals**: Objective besar dengan optional turn budget untuk kontrol cost.
+  - **Tasks**: Unit kerja individual dengan status (pending → in_progress → completed/deleted).
+  - **Dependencies**: `blocks`/`blockedBy` untuk urutan eksekusi — task hanya bisa dijalankan jika semua blocker sudah completed.
+  - Persistence otomatis ke `.baiwor/goals.json` (project) atau `~/.baiwor/goals.json` (global).
+  - API lengkap: `createGoal`, `getGoal`, `updateGoalStatus`, `createTask`, `getTask`, `updateTask`, `addDependency`, `getAvailableTasks`.
 - **🔒 Keamanan Berlapis**:
   - **Sandbox workspace** — akses berkas dibatasi pada folder proyek; area kredensial seperti `.ssh` dan `~/.baiwor` selalu ditolak.
   - **Approval Gate (Y/n)** — perintah berisiko seperti `git push`, `npm publish`, atau penghapusan rekursif akan meminta konfirmasi lebih dulu, dengan default **Tidak**.

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { hookManager } from '../hooks/hookManager.js';
 
 /**
  * Tool Registry untuk bAIwor Code.
@@ -184,11 +185,34 @@ export async function dispatchTool(name, rawArgs, options = {}) {
 
   args = args || {};
 
+  // Pre-tool-execute hook: check if tool execution is allowed
+  try {
+    const preHookResult = await hookManager.triggerPreToolExecute(name, args);
+    if (!preHookResult.allowed) {
+      return {
+        success: false,
+        output: `Tool diblokir oleh hook: ${preHookResult.reason || 'Tidak ada alasan yang diberikan'}`,
+      };
+    }
+  } catch (err) {
+    // Hook error tidak boleh memblokir eksekusi tool
+    console.warn(`[Hooks] Pre-hook error untuk ${name}: ${err.message}`);
+  }
+
   try {
     const res = await t.handler(args, options);
     const success = res && typeof res === 'object' && 'success' in res ? res.success : true;
     const rawOutput = res && typeof res === 'object' && 'output' in res ? res.output : String(res || '');
     const extra = res && typeof res === 'object' ? res : {};
+
+    // Post-tool-execute hook: log/notify after tool completes
+    try {
+      await hookManager.triggerPostToolExecute(name, args, { success, output: rawOutput });
+    } catch (err) {
+      // Hook error tidak boleh mempengaruhi hasil tool
+      console.warn(`[Hooks] Post-hook error untuk ${name}: ${err.message}`);
+    }
+
     return {
       ...extra,
       success,
