@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { resolveSafePath, IGNORE_DIRS } from './handlers.js';
+import { isSensitivePath } from './sandbox.js';
 
 // IGNORE_DIRS diimpor dari ./handlers.js (satu sumber kebenaran).
 
@@ -55,9 +56,37 @@ export function detectRiskyRegex(pattern) {
   if (/\([^()]*[+*][^()]*\)\s*[+*{]/.test(p)) {
     return 'quantifier bersarang yang bisa memicu backtracking ekstrem';
   }
+  // Grup bertingkat yang diulang: ((a+))+, ((a|b)*)+.
+  if (/\(\([^()]*[+*][^()]*\)\)\s*[+*{]/.test(p)) {
+    return 'grup bersarang yang diulang (quantifier bertumpuk)';
+  }
   // Rangkaian .* beruntun seperti .*.* yang bisa meledak pada baris panjang.
   if (/(\.\*){2,}/.test(p)) {
     return 'rangkaian .* berulang';
+  }
+
+  // Alternasi di dalam grup yang diulang. Hanya berbahaya bila alternatifnya
+  // tumpang tindih (a|aa, a|a+) atau salah satunya memuat quantifier.
+  // (foo|bar)+ tetap diizinkan karena tidak ada ambiguitas.
+  const quantifiedGroupRe = /\(([^()]*)\)\s*[+*{]/g;
+  let match;
+  while ((match = quantifiedGroupRe.exec(p)) !== null) {
+    const inner = match[1];
+    if (/[+*{]/.test(inner)) {
+      return 'grup berulang yang memuat quantifier di dalamnya';
+    }
+    if (inner.includes('|')) {
+      const alternatives = inner.split('|').map((a) => a.trim()).filter(Boolean);
+      for (let i = 0; i < alternatives.length; i += 1) {
+        for (let j = i + 1; j < alternatives.length; j += 1) {
+          const a = alternatives[i];
+          const b = alternatives[j];
+          if (a.startsWith(b) || b.startsWith(a)) {
+            return 'alternasi tumpang tindih di dalam grup berulang (mis. (a|aa)+)';
+          }
+        }
+      }
+    }
   }
   return null;
 }
@@ -78,18 +107,19 @@ export function globToRegExp(glob) {
   return new RegExp(`^${body}$`, 'i');
 }
 
-/** Membaca berkas sebagai teks; mengembalikan null bila biner atau terlalu besar. */
+/** Membaca berkas sebagai teks; mengembalikan null bila biner, sensitif, symlink, atau terlalu besar. */
 function readTextFile(fullPath) {
   const ext = path.extname(fullPath).toLowerCase();
   if (BINARY_EXT.has(ext)) return null;
+  if (isSensitivePath(fullPath)) return null;
 
   let stat;
   try {
-    stat = fs.statSync(fullPath);
+    stat = fs.lstatSync(fullPath);
   } catch {
     return null;
   }
-  if (!stat.isFile() || stat.size > MAX_FILE_BYTES) return null;
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_FILE_BYTES) return null;
 
   let buf;
   try {
@@ -208,6 +238,7 @@ export async function handleSearchFiles({
     const collect = (fullPath) => {
       const name = path.basename(fullPath);
       if (globRe && !globRe.test(name)) return;
+      if (isSensitivePath(fullPath)) return;
       if (nameRe.test(name)) matches.push(toRelative(fullPath, baseDir));
     };
 
@@ -252,6 +283,7 @@ export async function handleSearchFiles({
   const scanFile = (fullPath) => {
     const name = path.basename(fullPath);
     if (globRe && !globRe.test(name)) return;
+    if (isSensitivePath(fullPath)) return;
 
     const text = readTextFile(fullPath);
     if (text === null) return;
@@ -261,7 +293,11 @@ export async function handleSearchFiles({
     const lines = text.split(/\r?\n/);
 
     for (let i = 0; i < lines.length; i += 1) {
-      if (contentRe.test(lines[i])) {
+      // Batasi input regex per baris: mengecilkan dampak pola yang lolos
+      // detektor statis tanpa membuat hasil pencarian normal berubah.
+      const line = lines[i];
+      const matchTarget = line.length > 8000 ? line.slice(0, 8000) : line;
+      if (contentRe.test(matchTarget)) {
         let snippet = lines[i].trim();
         if (snippet.length > MAX_LINE_CHARS) {
           snippet = snippet.slice(0, MAX_LINE_CHARS) + '…';

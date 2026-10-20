@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { buildChatEndpoint, streamChatCompletion } from '../src/chat/client.js';
 import { isNetworkError, abortCurrentChat } from '../src/chat/index.js';
-import { Conversation } from '../src/chat/conversation.js';
+import { Conversation, normalizeLoadedMessages } from '../src/chat/conversation.js';
 import { getSystemPrompt } from '../src/chat/systemPrompt.js';
 
 describe('Tahap 3A: System Prompt & Karakter bAIwor', () => {
@@ -537,5 +537,35 @@ describe('Klasifikasi Error Jaringan', () => {
     );
     assert.equal(isNetworkError(Object.assign(new Error('x'), { status: 401 })), false);
     assert.equal(isNetworkError(null), false);
+  });
+});
+
+describe('Sanitasi sesi yang dimuat (normalizeLoadedMessages)', () => {
+  it('membuang tool_calls tanpa hasil dan tool result yatim', () => {
+    const cleaned = normalizeLoadedMessages([
+      { role: 'user', content: 'halo' },
+      {
+        role: 'assistant',
+        content: 'mau baca berkas',
+        tool_calls: [
+          { id: 'call_1', type: 'function', function: { name: 'read_file', arguments: '{}' } },
+          { id: 'call_2', type: 'function', function: { name: 'read_file', arguments: '{}' } },
+        ],
+      },
+      { role: 'tool', tool_call_id: 'call_1', content: 'isi' },
+      { role: 'tool', tool_call_id: 'call_orphan', content: 'yatim' },
+    ]);
+    assert.equal(cleaned[0].role, 'system');
+    const assistant = cleaned.find((m) => m.role === 'assistant');
+    assert.equal(assistant.tool_calls.length, 1);
+    assert.equal(assistant.tool_calls[0].id, 'call_1');
+    assert.equal(cleaned.filter((m) => m.role === 'tool').length, 1);
+    assert.equal(cleaned.find((m) => m.role === 'tool').tool_call_id, 'call_1');
+  });
+
+  it('mengabaikan addToolResult dengan tool_call_id kosong', () => {
+    const conv = new Conversation();
+    assert.equal(conv.addToolResult('', 'x'), null);
+    assert.equal(conv.getMessages().filter((m) => m.role === 'tool').length, 0);
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "baiworcode",
-  "version": "1.0.0",
+  "version": "1.0.0-alpha.1",
   "description": "bAIwor Code [Alpha] — Terminal AI Coding Agent · Jiwa Punakawan, Pikiran AI, Guardian Banyumas (https://baiwor.my.id)",
   "type": "module",
   "bin": {
@@ -10,9 +10,14 @@
   "files": [
     "bin",
     "src",
+    "scripts",
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bAIwor/baiworcode.git"
@@ -23,7 +28,7 @@
   },
   "scripts": {
     "start": "node ./bin/baiwor.js",
-    "test": "node --test test/*.test.js",
+    "test": "node scripts/run-tests.mjs",
     "check": "npm test",
     "prepublishOnly": "npm test"
   },

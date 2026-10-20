@@ -8,6 +8,8 @@ import { theme } from '../theme.js';
 import {
   isSubPath,
   isSensitivePath,
+  realpathOrResolved,
+  realpathWithMissingTail,
   analyzeCommand,
   classifyCommand,
   parseDestructiveAllowlist,
@@ -122,11 +124,21 @@ export function resolveSafePath(filePath, baseDir = process.cwd(), allowTmp = tr
     throw new Error(`Akses ditolak: Jalur '${filePath}' merupakan area konfigurasi/kredensial sensitif yang dilindungi oleh bAIwor.`);
   }
 
-  const inWorkspace = isSubPath(normalizedBase, resolved);
-  const inTmp = allowTmp && isSubPath(os.tmpdir(), resolved);
+  // Validasi berbasis realpath: junction/symlink di dalam workspace tidak
+  // boleh dipakai untuk membaca/menulis area di luar workspace atau area
+  // sensitif. realpathWithMissingTail juga bekerja untuk berkas baru.
+  const realResolved = realpathWithMissingTail(resolved);
+  if (isSensitivePath(realResolved)) {
+    throw new Error(`Akses ditolak: Jalur '${filePath}' mengarah ke area konfigurasi/kredensial sensitif melalui symlink.`);
+  }
+
+  const realBase = realpathOrResolved(normalizedBase);
+  const realTmp = realpathOrResolved(os.tmpdir());
+  const inWorkspace = isSubPath(realBase, realResolved);
+  const inTmp = allowTmp && isSubPath(realTmp, realResolved);
 
   if (!inWorkspace && !inTmp) {
-    throw new Error(`Akses ditolak: Jalur '${filePath}' berada di luar direktori workspace proyek (${normalizedBase}).`);
+    throw new Error(`Akses ditolak: Jalur '${filePath}' berada di luar direktori workspace proyek (${normalizedBase})${realResolved !== resolved ? ' — target symlink berada di luar workspace' : ''}.`);
   }
 
   return resolved;
@@ -158,6 +170,14 @@ export async function handleReadFile({ file_path, offset = 1, limit = 200 }) {
     return {
       success: false,
       output: `Error: Jalur tersebut bukan sebuah berkas: ${file_path}`,
+    };
+  }
+
+  const MAX_READ_BYTES = 5 * 1024 * 1024;
+  if (stat.size > MAX_READ_BYTES) {
+    return {
+      success: false,
+      output: `Error: Berkas terlalu besar untuk dibaca sekaligus (${(stat.size / (1024 * 1024)).toFixed(1)} MB, maksimum 5 MB). Minta pengguna membuka bagian tertentu atau gunakan search_files untuk menemukan bagian yang relevan.`,
     };
   }
 
@@ -629,6 +649,20 @@ export async function handleRunCommand({
   // Eksekusi di latar belakang jika diminta
   const shouldBackground = Boolean(run_in_background || is_background);
   if (shouldBackground) {
+    // Batasi jumlah task agar memori tidak tumbuh tanpa batas. Task yang sudah
+    // selesai dibersihkan lebih dulu; bila semuanya masih berjalan, tolak task baru.
+    if (backgroundTasks.size >= 50) {
+      for (const [id, task] of backgroundTasks) {
+        if (task.status !== 'running') backgroundTasks.delete(id);
+      }
+      if (backgroundTasks.size >= 50) {
+        return {
+          success: false,
+          output: 'Error: terlalu banyak background task aktif (maksimum 50). Hentikan task lama terlebih dahulu.',
+        };
+      }
+    }
+
     const taskId = `task_${Date.now().toString(36)}_${crypto.randomBytes(2).toString('hex')}`;
     const isWindows = os.platform() === 'win32';
     const shellOpt = isWindows ? (process.env.ComSpec || 'cmd.exe') : '/bin/bash';

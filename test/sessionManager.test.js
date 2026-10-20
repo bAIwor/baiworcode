@@ -36,6 +36,63 @@ describe('SessionManager: Manajemen Sesi Persisten', () => {
     } catch {}
   });
 
+  describe('Keamanan ID sesi dan izin berkas', () => {
+    it('menolak ID yang mencoba path traversal / karakter aneh', () => {
+      for (const id of ['../../outside', '..', 'foo/bar', 'foo\\bar', 'nama sesi']) {
+        assert.throws(
+          () => saveSession({ id, messages: [{ role: 'user', content: 'x' }] }, {
+            projectPath: testProjectDir,
+            baseConfigDir: tempBaseDir,
+          }),
+          /tidak valid/i,
+          `ID seharusnya ditolak: ${id}`
+        );
+        assert.equal(appendSessionMessage(id, { role: 'assistant', content: 'x' }, {
+          projectPath: testProjectDir,
+          baseConfigDir: tempBaseDir,
+        }), false);
+        assert.equal(loadSession(id, {
+          projectPath: testProjectDir,
+          baseConfigDir: tempBaseDir,
+        }), null);
+        assert.equal(deleteSession(id, {
+          projectPath: testProjectDir,
+          baseConfigDir: tempBaseDir,
+        }), false);
+      }
+    });
+
+    it('menulis transkrip dengan mode 0600 di POSIX', { skip: process.platform === 'win32' }, () => {
+      const id = generateSessionId();
+      saveSession({
+        id,
+        messages: [{ role: 'user', content: 'halo' }],
+      }, { projectPath: testProjectDir, baseConfigDir: tempBaseDir });
+      const dir = getProjectSessionDir(testProjectDir, tempBaseDir);
+      const mode = fs.statSync(path.join(dir, `${id}.jsonl`)).mode & 0o777;
+      assert.equal(mode, 0o600);
+    });
+  });
+
+  describe('deleteAllSessions lintas proyek tidak menyentuh snapshot', () => {
+    it('menghapus sesi semua proyek tetapi mempertahankan folder snapshots', () => {
+      const id = generateSessionId();
+      saveSession({
+        id,
+        messages: [{ role: 'user', content: 'halo' }],
+      }, { projectPath: testProjectDir, baseConfigDir: tempBaseDir });
+
+      const snapshotsDir = path.join(tempBaseDir, 'sessions', 'snapshots');
+      fs.mkdirSync(snapshotsDir, { recursive: true });
+      const snapshotFile = path.join(snapshotsDir, 'snapshot-test.json');
+      fs.writeFileSync(snapshotFile, '[]');
+
+      const deleted = deleteAllSessions({ allProjects: true, baseConfigDir: tempBaseDir });
+      assert.ok(deleted >= 1);
+      assert.equal(fs.existsSync(snapshotFile), true, 'snapshot tidak boleh ikut terhapus');
+    });
+  });
+
   describe('getProjectKey & Direktori Sesi', () => {
     it('harus menghasilkan key proyek yang konsisten untuk path yang sama', () => {
       const key1 = getProjectKey(testProjectDir);

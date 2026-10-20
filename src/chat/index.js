@@ -17,6 +17,7 @@ import {
 import { renderTimelineByMode, renderTodoChecklist, formatTodoProgress } from './timeline.js';
 import { LiveActivity } from './liveActivity.js';
 import { AnswerStyler } from './answerStyle.js';
+import { sanitizeTerminalText } from './wrapText.js';
 import { createOutputWriter } from './outputWriter.js';
 import { classifyCommand } from '../tools/sandbox.js';
 import { resolveSafePath } from '../tools/handlers.js';
@@ -125,10 +126,12 @@ export function resetConversation() {
  * Mendukung Agentic Execution Loop dengan pemanggilan tools (Tahap 3B).
  *
  * @param {string} promptText
+ * @param {{agentMode?: 'build'|'plan'}} [options]
+ * @returns {Promise<{ok:boolean, aborted:boolean}>}
  */
-export async function handleUserChat(promptText) {
+export async function handleUserChat(promptText, options = {}) {
   const query = (promptText || '').trim();
-  if (!query) return;
+  if (!query) return { ok: true, aborted: false };
 
   // 0. Buang daftar tugas yang sudah tuntas (semua item completed/cancelled)
   // di awal giliran baru agar widget tidak terus menampilkan mis. "0/3".
@@ -141,7 +144,7 @@ export async function handleUserChat(promptText) {
   } catch (err) {
     console.log(chalk.yellow(`\n  ⚠️  ${err.message}`));
     console.log(chalk.gray(`     Ketik ${chalk.cyan('/model')} untuk mengatur model atau ${chalk.cyan('/login')} untuk login provider.\n`));
-    return;
+    return { ok: false, aborted: false };
   }
 
   // 2. Selaraskan system prompt dengan provider & model aktif
@@ -244,8 +247,12 @@ export async function handleUserChat(promptText) {
 
   // Agen utama (Build/Plan) dikunci sekali di awal giliran: peralihan yang
   // terjadi di tengah giliran (lewat prompt) tidak boleh mengubah aturan main
-  // yang sedang berjalan.
-  const agentMode = getAgentMode();
+  // yang sedang berjalan. Pemanggil (mis. `baiworcode plan`) dapat menimpa
+  // mode untuk satu giliran tanpa mengubah konfigurasi permanen.
+  const agentMode =
+    options.agentMode === 'plan' || options.agentMode === 'build'
+      ? options.agentMode
+      : getAgentMode();
 
   // Penegakan perencanaan (adaptasi aturan `todowrite` mcode): hitung tool yang
   // sudah dijalankan pada giliran ini, lalu tagih model menyusun `todo_list`
@@ -330,7 +337,7 @@ export async function handleUserChat(promptText) {
             isReasoningActive = true;
             process.stdout.write(theme.thinking('💭 Thinking: '));
           }
-          process.stdout.write(chalk.dim.gray(writer.wrapReasoning(chunk)));
+          process.stdout.write(chalk.dim.gray(writer.wrapReasoning(sanitizeTerminalText(chunk))));
           printed = true;
         },
         onDelta: (chunk) => {
@@ -340,7 +347,9 @@ export async function handleUserChat(promptText) {
             process.stdout.write('\n');
           }
 
-          let text = chunk;
+          // Model/provider adalah sumber tidak tepercaya: jangan pernah
+          // menulis escape ANSI/OSC mentah ke terminal.
+          let text = sanitizeTerminalText(chunk);
           if (!inDeliverTag) {
             const startIdx = text.toLowerCase().indexOf('<deliver-assets');
             if (startIdx !== -1) {
@@ -679,15 +688,16 @@ export async function handleUserChat(promptText) {
     if (err.name === 'AbortError') {
       clearSpinnerLine();
       process.stdout.write(chalk.yellow('\n  ⏹ [Dibatalkan oleh pengguna]\n\n'));
-      // Jika sudah ada respons sebagian sebelum dibatalkan, simpan agar histori tetap utuh
+      // Simpan respons sebagian TANPA tool_calls: tool call yang tidak punya
+      // pasangan `role:tool` akan membuat provider menolak request berikutnya.
       if (err.partialContent && err.partialContent.trim()) {
         conversationSession.addAssistantMessage(
           err.partialContent.trim() + ' [Dibatalkan]',
-          err.partialToolCalls || null,
+          null,
           err.partialReasoning || undefined
         );
       }
-      return;
+      return { ok: false, aborted: true };
     }
 
     // Bersihkan baris spinner sebelum cetak pesan error
@@ -724,10 +734,21 @@ export async function handleUserChat(promptText) {
       console.log();
     }
 
+    // Respons parsial (mis. stream macet) sudah tampil di layar; simpan tanpa
+    // tool_calls agar pengguna tidak kehilangan jawaban yang sudah dilihat.
+    if (err.partialContent && String(err.partialContent).trim()) {
+      conversationSession.addAssistantMessage(
+        String(err.partialContent).trim() + ' [Terputus]',
+        null,
+        err.partialReasoning || undefined
+      );
+    }
+
     // Rollback pesan user terakhir hanya jika gagal di awal sebelum ada balasan asisten
     if (!hasFirstTurnSucceeded) {
       conversationSession.removeLastUserMessage();
     }
+    return { ok: false, aborted: false };
   } finally {
     stopThinkingSpinner();
     live.stop();
@@ -735,4 +756,6 @@ export async function handleUserChat(promptText) {
     activeAbortController = null;
     process.removeListener('SIGINT', sigintHandler);
   }
+
+  return { ok: true, aborted: false };
 }

@@ -1,12 +1,18 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import http from 'node:http';
 import {
   McpSession,
   loadMcpConfig,
+  loadMcpConfigDetailed,
   connectMcpServer,
   listActiveMcpSessions,
   disconnectAllMcpServers,
+  buildSafeMcpEnv,
+  validateMcpUrl,
 } from '../src/mcp/client.js';
 import { startMcpServer } from '../src/mcp/server.js';
 import { getDefinitions } from '../src/tools/index.js';
@@ -113,6 +119,51 @@ describe('MCP Client: Config Loader', () => {
     assert.ok(configs.tinyfish);
     assert.equal(configs.tinyfish.url, 'https://agent.tinyfish.ai/mcp');
     assert.ok(configs.tinyfish.headers?.['X-API-Key']);
+  });
+
+  it('loadMcpConfigDetailed menandai konfigurasi proyek + hash-nya', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'baiwor-mcp-'));
+    try {
+      fs.writeFileSync(
+        path.join(dir, '.mcp.json'),
+        JSON.stringify({ mcpServers: { proyek: { command: 'node', args: ['server.js'] } } })
+      );
+      const detail = loadMcpConfigDetailed(dir);
+      assert.equal(detail.project.file, path.join(dir, '.mcp.json'));
+      assert.equal(detail.project.hash.length, 64);
+      assert.deepEqual(detail.project.servers.proyek, { command: 'node', args: ['server.js'] });
+      assert.ok(detail.configs.proyek);
+      assert.ok(!detail.globalConfigs.proyek);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('MCP Client: Hardening', () => {
+  it('buildSafeMcpEnv hanya mewariskan variabel sistem dan env eksplisit', () => {
+    const env = buildSafeMcpEnv(
+      { CUSTOM_TOKEN: 'dari-config' },
+      {
+        PATH: '/usr/bin',
+        HOME: '/home/uji',
+        GEMINI_API_KEY: 'jangan-bocor',
+        AWS_SECRET_ACCESS_KEY: 'jangan-bocor',
+      }
+    );
+    assert.equal(env.PATH, '/usr/bin');
+    assert.equal(env.HOME, '/home/uji');
+    assert.equal(env.CUSTOM_TOKEN, 'dari-config');
+    assert.equal(env.GEMINI_API_KEY, undefined);
+    assert.equal(env.AWS_SECRET_ACCESS_KEY, undefined);
+  });
+
+  it('validateMcpUrl menolak HTTP non-loopback dan menerima HTTPS/loopback', () => {
+    assert.equal(validateMcpUrl('https://mcp.example.com/sse'), 'https://mcp.example.com/sse');
+    assert.equal(validateMcpUrl('http://127.0.0.1:3000'), 'http://127.0.0.1:3000/');
+    assert.equal(validateMcpUrl('http://localhost:3000/mcp'), 'http://localhost:3000/mcp');
+    assert.throws(() => validateMcpUrl('http://mcp.example.com'), /HTTPS/);
+    assert.throws(() => validateMcpUrl('file:///etc/passwd'), /tidak didukung/);
   });
 });
 

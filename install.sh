@@ -42,20 +42,42 @@ fi
 
 echo -e "${GREEN}  ✓ Node.js terdeteksi: v$NODE_VER${NC}"
 
+if ! command -v npm >/dev/null 2>&1; then
+    echo -e "${YELLOW}  ⚠️  npm tidak ditemukan. Pasang Node.js lengkap (termasuk npm) terlebih dahulu.${NC}"
+    exit 1
+fi
+
 # 2. Pasang secara Global
 echo -e "${CYAN}  [2/3] Memasang bAIwor Code secara global...${NC}"
 
 if [ -f "./package.json" ] && [ -f "./bin/baiwor.js" ]; then
     echo -e "${GRAY}  Terdeteksi repositori lokal. Menjalankan npm link...${NC}"
+    if ! grep -qE '"name"[[:space:]]*:[[:space:]]*"baiworcode"' package.json; then
+        echo -e "${YELLOW}  ⚠️  Folder ini bukan paket baiworcode; 'npm link' dibatalkan.${NC}"
+        exit 1
+    fi
     if ! npm link --force >/dev/null 2>&1; then
         echo -e "${YELLOW}  ⚠️  'npm link' gagal. Coba jalankan manual: npm link --force${NC}"
         exit 1
     fi
 else
-    echo -e "${GRAY}  Memasang paket dari npm/GitHub...${NC}"
-    if ! npm install -g baiworcode >/dev/null 2>&1; then
-        # Fallback ke GitHub jika belum dirilis di registry npm publik
-        echo -e "${YELLOW}  Paket belum tersedia di registry npm publik. Beralih memasang dari GitHub...${NC}"
+    # Verifikasi identitas paket npm SEBELUM memasang. Tanpa ini, siapa pun
+    # yang lebih dulu mendaftarkan nama 'baiworcode' bisa dieksekusi oleh
+    # installer resmi (dependency confusion / typosquatting).
+    NPM_REPO_URL=$(npm view baiworcode repository.url 2>/dev/null || true)
+    NPM_INSTALLED=0
+    if printf '%s' "$NPM_REPO_URL" | grep -qiE 'github\.com[:/]bAIwor/baiworcode'; then
+        echo -e "${GRAY}  Memasang paket resmi dari npm...${NC}"
+        if npm install -g baiworcode >/dev/null 2>&1; then
+            NPM_INSTALLED=1
+        elif npm install -g baiworcode@alpha >/dev/null 2>&1; then
+            # Selama tahap alpha, paket dirilis dengan dist-tag 'alpha'.
+            NPM_INSTALLED=1
+        fi
+    fi
+
+    if [ "$NPM_INSTALLED" -ne 1 ]; then
+        echo -e "${YELLOW}  Paket npm belum tersedia/resmi. Beralih memasang dari GitHub...${NC}"
         if ! npm install -g git+https://github.com/bAIwor/baiworcode.git >/dev/null 2>&1; then
             echo -e "${YELLOW}  ⚠️  Pemasangan gagal.${NC}"
             echo -e "${GRAY}      Pastikan koneksi internet stabil dan 'git' sudah terpasang.${NC}"

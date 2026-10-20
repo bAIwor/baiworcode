@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { createPainter } from '../colors.js';
 import { palette } from '../theme.js';
+import { sanitizeTerminalText } from './wrapText.js';
 
 /**
  * Menghasilkan hyperlink OSC 8 standar terminal agar tautan atau berkas
@@ -14,6 +15,10 @@ import { palette } from '../theme.js';
  */
 export function createOsc8Link(text, target, { useColor = true } = {}) {
   if (!text || !target) return text || '';
+  const safeText = sanitizeTerminalText(text, { preserveNewlines: false });
+  const safeTarget = String(target).replace(/[\x00-\x1f\x7f\u0080-\u009f]/g, '');
+  text = safeText;
+  target = safeTarget;
 
   // Normalisasi target ke format file:// jika berupa path lokal
   let url = target;
@@ -98,7 +103,9 @@ export function renderDeliverableCard(items = [], { useColor = true } = {}) {
     const icon = item.action === 'dibuat' ? '📄' : item.action === 'dihapus' ? '🗑️' : '📝';
     const actionLabel = item.action === 'dibuat' ? c.green('[Dibuat]') : item.action === 'dihapus' ? c.red('[Dihapus]') : c.yellow('[Diperbarui]');
     const clickableFile = createOsc8Link(item.path, item.path, { useColor });
-    const detailText = item.detail ? c.dim(` (${item.detail})`) : '';
+    const detailText = item.detail
+      ? c.dim(` (${sanitizeTerminalText(item.detail, { preserveNewlines: false })})`)
+      : '';
 
     lines.push(`  ${c.gray('│')}  ${icon} ${c.bold(clickableFile)} ${actionLabel}${detailText}`);
   }
@@ -128,5 +135,6 @@ export function renderDeliverAssetsIfPresent(text = '', options = {}) {
   if (items.length === 0) return text.replace(tagPattern, '').trim();
 
   const renderedCard = renderDeliverableCard(items, options);
-  return text.replace(tagPattern, `\n\n${renderedCard}\n\n`).trim();
+  // Replacer fungsi: hindari interpretasi `$&`/`$1` yang bisa muncul di kartu.
+  return text.replace(tagPattern, () => `\n\n${renderedCard}\n\n`).trim();
 }

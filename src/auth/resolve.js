@@ -50,7 +50,8 @@ export async function resolveActiveCredentials() {
       headers: {
         Authorization: `Bearer ${cp.apiKey}`,
         'Content-Type': 'application/json',
-        'User-Agent': USER_AGENT,
+        'User-Agent': cp.headers?.['User-Agent'] || USER_AGENT,
+        ...(cp.headers || {}),
       },
       model: activeModel,
     };

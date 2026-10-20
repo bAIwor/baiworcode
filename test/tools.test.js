@@ -341,7 +341,11 @@ describe('Tahap 5: Human-in-the-Loop Command Approval Gate', () => {
   it('harus mengeksekusi perintah confirm jika pengguna menyetujui', async () => {
     setApprovalHandler(async () => ({ approved: true }));
 
-    const res = await handleRunCommand({ command: 'npm publish --dry-run' });
+    // --ignore-scripts penting: tanpa itu npm menjalankan prepublishOnly →
+    // seluruh test suite, yang bisa melebihi timeout 60 detik di Node 18.
+    const res = await handleRunCommand({
+      command: 'npm publish --dry-run --ignore-scripts --tag alpha',
+    });
     assert.equal(res.success, true);
     assert.match(res.output, /baiworcode/i);
   });
@@ -381,6 +385,8 @@ describe('search_files: pengaman ReDoS', () => {
     assert.ok(detectRiskyRegex('(.*)*'));
     assert.ok(detectRiskyRegex('(\\d+)+'));
     assert.ok(detectRiskyRegex('.*.*'));
+    assert.ok(detectRiskyRegex('(a|aa)+$'));
+    assert.ok(detectRiskyRegex('((a+))+'));
     assert.equal(detectRiskyRegex('function\\s+\\w+'), null);
     assert.equal(detectRiskyRegex('(foo|bar)+'), null);
     assert.equal(detectRiskyRegex('TODO'), null);

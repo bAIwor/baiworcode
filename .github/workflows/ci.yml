@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [18, 20, 22]
+        node-version: [18, 20, 22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,13 +27,40 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  test-windows:
+    name: Unit tests (Windows, Node 22)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  package-smoke:
+    name: Package & dependency smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm pack --dry-run
+
   test-instabox:
     name: Full suite in InstaBox (Linux 4 vCPU / 8 GiB)
     runs-on: ubuntu-latest
     needs: test-local
-    # Job ini hanya jalan bila secret INSTABOX_API_KEY diisi di repo settings.
-    # Tanpa secret, job ini di-skip (bukan gagal) — aman untuk fork/PR eksternal.
-    if: ${{ secrets.INSTABOX_API_KEY != '' }}
+    # Gate memakai repository variable (secrets tidak tersedia di if level job).
+    # Aktifkan dengan: Settings → Variables → INSTABOX_ENABLED=true, lalu isi
+    # secret INSTABOX_API_KEY. Hanya berjalan untuk push (bukan PR) agar kode
+    # dari pull request tidak pernah menerima secret.
+    if: ${{ vars.INSTABOX_ENABLED == 'true' && github.event_name != 'pull_request' }}
     env:
       INSTABOX_API_KEY: ${{ secrets.INSTABOX_API_KEY }}
       INSTABOX_MACHINE_ID: ${{ secrets.INSTABOX_MACHINE_ID }}

@@ -59,6 +59,18 @@ describe('Context Compactor: Perangkuman Riwayat Cerdas (/compact)', () => {
       assert.match(res.reason, /terlalu singkat/);
     });
 
+    it('mempertahankan prompt user terakhir saat preserveLastUserPrompt aktif', async () => {
+      const conv = new Conversation();
+      conv.addUserMessage('permintaan lama');
+      conv.addAssistantMessage('jawaban lama');
+      conv.addUserMessage('PERMINTAAN AKTIF YANG TIDAK BOLEH HILANG');
+      const res = await compactConversation(conv, { preserveLastUserPrompt: true });
+      assert.equal(res.compacted, true);
+      const last = conv.messages[conv.messages.length - 1];
+      assert.equal(last.role, 'user');
+      assert.equal(last.content, 'PERMINTAAN AKTIF YANG TIDAK BOLEH HILANG');
+    });
+
     it('harus berhasil merangkum dengan summarizeFn kustom', async () => {
       const conv = new Conversation();
       conv.addUserMessage('Tolong buatkan endpoint GET /users lengkap dengan schema database berikut:\n' + 'line of code\n'.repeat(50));

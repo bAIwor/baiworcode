@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { wrapText, visibleWidth, hangingIndent, stripAnsi } from '../src/chat/wrapText.js';
+import { wrapText, visibleWidth, hangingIndent, stripAnsi, sanitizeTerminalText } from '../src/chat/wrapText.js';
 import { createOutputWriter } from '../src/chat/outputWriter.js';
 
 const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
@@ -20,6 +20,21 @@ function fakeStream() {
     },
   };
 }
+
+describe('sanitizeTerminalText: keamanan output', () => {
+  it('membuang SGR, OSC (hyperlink/clipboard), dan escape tunggal', () => {
+    assert.equal(sanitizeTerminalText('\x1b[31mMERAH\x1b[0m'), 'MERAH');
+    assert.equal(sanitizeTerminalText('\x1b]8;;https://x.test\x1b\\Tautan\x1b]8;;\x1b\\'), 'Tautan');
+    assert.equal(sanitizeTerminalText('awal\x1b]52;c;cGF5bG9hZA==\x07akhir'), 'awalakhir');
+    assert.equal(sanitizeTerminalText('x\x1b'), 'x');
+  });
+
+  it('mempertahankan newline/tab dan membuang kontrol/bidi', () => {
+    assert.equal(sanitizeTerminalText('a\r\nb\tc'), 'a\nb\tc');
+    assert.equal(sanitizeTerminalText('a\u202eb'), 'ab');
+    assert.equal(sanitizeTerminalText('a\u0000b'), 'ab');
+  });
+});
 
 describe('wrapText: dasar', () => {
   it('tidak mengubah baris yang sudah muat', () => {

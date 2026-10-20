@@ -40,6 +40,11 @@ if (-not $nodeInstalled) {
         if ($ans -eq "" -or $ans -match "^[Yy]") {
             Write-Host "  Memasang Node.js LTS via winget..." -ForegroundColor Cyan
             & winget install OpenJS.NodeJS.LTS --silent --accept-package-agreements --accept-source-agreements
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "  [!] winget gagal memasang Node.js (exit $LASTEXITCODE)." -ForegroundColor Red
+                Write-Host "      Silakan unduh manual dari: https://nodejs.org" -ForegroundColor Gray
+                exit 1
+            }
             Write-Host "  [OK] Node.js berhasil dipasang! Silakan buka terminal baru lalu jalankan installer ini kembali." -ForegroundColor Green
             exit 0
         }
@@ -64,9 +69,20 @@ Write-Host "  [OK] Node.js terdeteksi: $nodeVersion" -ForegroundColor Green
 # 2. Pasang / Tautkan bAIwor Code secara Global
 Write-Host "  [2/3] Memasang bAIwor Code secara global..." -ForegroundColor Cyan
 
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    Write-Host "  [!] npm tidak ditemukan. Pasang Node.js lengkap (termasuk npm) terlebih dahulu." -ForegroundColor Red
+    exit 1
+}
+
 $isLocalRepo = (Test-Path "package.json") -and (Test-Path "bin\baiwor.js")
 
 if ($isLocalRepo) {
+    $pkgName = $null
+    try { $pkgName = (Get-Content "package.json" -Raw | ConvertFrom-Json).name } catch {}
+    if ($pkgName -ne 'baiworcode') {
+        Write-Host "  [!] Folder ini bukan paket baiworcode; 'npm link' dibatalkan." -ForegroundColor Red
+        exit 1
+    }
     Write-Host "  Terdeteksi repositori lokal. Menjalankan npm link..." -ForegroundColor Gray
     & npm link --force | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -74,14 +90,25 @@ if ($isLocalRepo) {
         exit 1
     }
 } else {
-    Write-Host "  Memasang paket bAIwor Code..." -ForegroundColor Gray
+    # Verifikasi identitas paket npm SEBELUM memasang, agar nama 'baiworcode'
+    # yang didaftarkan pihak lain tidak dieksekusi oleh installer resmi.
+    $npmRepo = (& npm view baiworcode repository.url 2>$null) -join ''
+    $npmInstalled = $false
 
-    # PENTING: di PowerShell, try/catch TIDAK menangkap kegagalan perintah native
-    # (non-zero exit code) — hanya menangkap error cmdlet. Karena itu pengecekan
-    # dilakukan lewat $LASTEXITCODE, bukan try/catch.
-    & npm install -g baiworcode --loglevel=error
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "  Paket belum tersedia di registry npm publik. Beralih memasang dari GitHub..." -ForegroundColor Yellow
+    if ($npmRepo -match 'github\.com[:/]bAIwor/baiworcode') {
+        Write-Host "  Memasang paket resmi dari npm..." -ForegroundColor Gray
+        & npm install -g baiworcode --loglevel=error
+        if ($LASTEXITCODE -eq 0) {
+            $npmInstalled = $true
+        } else {
+            # Selama tahap alpha, paket dirilis dengan dist-tag 'alpha'.
+            & npm install -g baiworcode@alpha --loglevel=error
+            if ($LASTEXITCODE -eq 0) { $npmInstalled = $true }
+        }
+    }
+
+    if (-not $npmInstalled) {
+        Write-Host "  Paket npm belum tersedia/resmi. Beralih memasang dari GitHub..." -ForegroundColor Yellow
         & npm install -g git+https://github.com/bAIwor/baiworcode.git --loglevel=error
         if ($LASTEXITCODE -ne 0) {
             Write-Host "  [!] Pemasangan gagal." -ForegroundColor Red

@@ -91,7 +91,10 @@ ${promptList || '  (Tidak ada instruksi khusus)'}
  * @param {string} [options.provider]
  * @returns {Promise<{compacted:boolean, reason?:string, tokensBefore?:number, tokensAfter?:number, savedTokens?:number, summary?:string}>}
  */
-export async function compactConversation(conversation, { summarizeFn = null, model = null, provider = null } = {}) {
+export async function compactConversation(
+  conversation,
+  { summarizeFn = null, model = null, provider = null, preserveLastUserPrompt = false } = {}
+) {
   if (!conversation || !Array.isArray(conversation.messages)) {
     return { compacted: false, reason: 'Conversation tidak valid' };
   }
@@ -124,7 +127,21 @@ export async function compactConversation(conversation, { summarizeFn = null, mo
     ? conversation.messages[0]
     : { role: 'system', content: 'bAIwor Code System' };
 
-  // Ganti seluruh riwayat lama dengan 1 pasangan rangkuman konteks
+  // Prompt user yang sedang dikerjakan harus tetap terlihat verbatim oleh
+  // model. Tanpa ini, auto-compact di tengah giliran bisa mengganti request
+  // aktif dengan rangkuman + balasan "siap", sehingga tugas tidak dikerjakan.
+  let preservedUser = null;
+  if (preserveLastUserPrompt) {
+    for (let i = conversation.messages.length - 1; i >= 0; i -= 1) {
+      if (conversation.messages[i]?.role === 'user') {
+        preservedUser = conversation.messages[i];
+        break;
+      }
+    }
+  }
+
+  // Ganti seluruh riwayat lama dengan rangkuman; prompt aktif (bila diminta)
+  // ditempatkan setelah blok rangkuman.
   conversation.messages = [
     systemMsg,
     {
@@ -136,6 +153,7 @@ export async function compactConversation(conversation, { summarizeFn = null, mo
       content: 'Konteks sebelumnya telah dipahami dan disimpan. Silakan berikan instruksi selanjutnya, saya siap melanjutkan pekerjaan!',
       reasoning_content: 'Konteks sebelumnya telah diringkas dan dipahami.',
     },
+    ...(preservedUser ? [preservedUser] : []),
   ];
 
   const tokensAfter = estimateMessagesTokens(conversation.messages);
@@ -203,14 +221,28 @@ export async function autoCompactConversation(conversation, options = {}) {
   } else {
     try {
       const snapDir = path.join(os.homedir(), '.baiwor', 'sessions', 'snapshots');
-      fs.mkdirSync(snapDir, { recursive: true });
-      const snapFile = `snapshot-${conversation.sessionId || 'session'}-${Date.now()}.json`;
+      fs.mkdirSync(snapDir, { recursive: true, mode: 0o700 });
+      try {
+        fs.chmodSync(snapDir, 0o700);
+      } catch {}
+      const safeSession = String(conversation.sessionId || 'session')
+        .replace(/[^A-Za-z0-9_-]/g, '_')
+        .slice(0, 80);
+      const snapFile = `snapshot-${safeSession}-${Date.now()}.json`;
       snapshotPath = path.join(snapDir, snapFile);
-      fs.writeFileSync(snapshotPath, JSON.stringify(conversation.messages, null, 2), 'utf8');
+      fs.writeFileSync(snapshotPath, JSON.stringify(conversation.messages, null, 2), {
+        encoding: 'utf8',
+        mode: 0o600,
+      });
     } catch {}
   }
 
-  const compactRes = await compactConversation(conversation, options);
+  // Auto-compact terjadi setelah prompt user aktif ditambahkan; pertahankan
+  // prompt itu agar request tidak hilang dari konteks model.
+  const compactRes = await compactConversation(conversation, {
+    ...options,
+    preserveLastUserPrompt: true,
+  });
   if (!compactRes.compacted) {
     return { triggered: false, reason: compactRes.reason };
   }

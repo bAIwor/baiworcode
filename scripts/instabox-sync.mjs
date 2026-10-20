@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { Sandbox } from '@insforge/instabox-sdk';
 import { getInstaboxApiKey, getInstaboxMachineId } from '../src/config.js';
 import { USER_AGENT } from '../src/branding.js';
+import { isSubPath } from '../src/tools/sandbox.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const INSTABOX_API_ENDPOINT = 'https://api.instabox.sh';
@@ -32,12 +33,48 @@ function parseArgs(argv) {
   const opts = { files: [], dest: DEFAULT_DEST, run: null, machine: null };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--dest') opts.dest = argv[++i];
-    else if (arg === '--run') opts.run = argv[++i];
-    else if (arg === '--machine') opts.machine = argv[++i];
-    else opts.files.push(arg);
+    if (arg === '--dest' || arg === '--run' || arg === '--machine') {
+      const value = argv[++i];
+      if (!value) throw new Error(`Opsi ${arg} membutuhkan nilai.`);
+      if (arg === '--dest') opts.dest = value;
+      else if (arg === '--run') opts.run = value;
+      else opts.machine = value;
+    } else {
+      opts.files.push(arg);
+    }
   }
   return opts;
+}
+
+/**
+ * Validasi path relatif yang akan diunggah: harus berada di dalam repo dan
+ * bukan symlink yang mengarah keluar. Path absolut/`..` ditolak.
+ */
+function resolveRepoFile(rel) {
+  if (!rel || typeof rel !== 'string' || path.isAbsolute(rel)) {
+    throw new Error(`Path berkas harus relatif: ${rel}`);
+  }
+  const abs = path.resolve(REPO_ROOT, rel);
+  if (!isSubPath(REPO_ROOT, abs)) {
+    throw new Error(`Path keluar dari repo: ${rel}`);
+  }
+  let real;
+  try {
+    real = fs.realpathSync(abs);
+  } catch {
+    throw new Error(`Berkas tidak ditemukan: ${abs}`);
+  }
+  if (!isSubPath(fs.realpathSync(REPO_ROOT), real)) {
+    throw new Error(`Berkas symlink mengarah keluar repo: ${rel}`);
+  }
+  if (!fs.statSync(real).isFile()) {
+    throw new Error(`Bukan berkas biasa: ${rel}`);
+  }
+  const normalized = path.relative(REPO_ROOT, abs).split(path.sep).join('/');
+  if (normalized.startsWith('..') || normalized.includes('/../')) {
+    throw new Error(`Path tidak aman: ${rel}`);
+  }
+  return { abs: real, normalized };
 }
 
 async function main() {
@@ -47,6 +84,12 @@ async function main() {
     console.error('API Key InstaBox belum dikonfigurasi. Atur via /sandbox key <api_key>.');
     process.exit(1);
   }
+
+  if (typeof opts.dest !== 'string' || !opts.dest.startsWith('/') || opts.dest.split('/').includes('..')) {
+    throw new Error(`Direktori tujuan tidak aman: ${opts.dest}`);
+  }
+
+  const files = opts.files.map(resolveRepoFile);
 
   const machine = opts.machine || getInstaboxMachineId() || 'baiwor';
   const box = await Sandbox.connect(machine, {
@@ -59,16 +102,11 @@ async function main() {
     },
   });
 
-  for (const rel of opts.files) {
-    const abs = path.resolve(REPO_ROOT, rel);
-    if (!fs.existsSync(abs)) {
-      console.error(`Berkas tidak ditemukan: ${abs}`);
-      process.exit(1);
-    }
-    const target = `${opts.dest.replace(/\/+$/, '')}/${rel.split(path.sep).join('/')}`;
+  for (const { abs, normalized } of files) {
+    const target = `${opts.dest.replace(/\/+$/, '')}/${normalized}`;
     const data = fs.readFileSync(abs);
     await box.files.write(target, data);
-    console.log(`[push] ${rel} -> ${target} (${data.length} bytes)`);
+    console.log(`[push] ${normalized} -> ${target} (${data.length} bytes)`);
   }
 
   if (opts.run) {

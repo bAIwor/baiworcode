@@ -126,8 +126,22 @@ export async function streamAgyCompletion({
  * Helper untuk menyusun URL endpoint /chat/completions secara fleksibel
  * baik untuk AgentikMyID, OpenRouter, Groq, maupun endpoint OpenAI-compatible lainnya.
  */
-export function buildChatEndpoint(baseUrl) {
+export function buildChatEndpoint(baseUrl, model) {
   let url = (baseUrl || '').trim().replace(/\/+$/, '');
+  const isResponsesModel =
+    typeof model === 'string' &&
+    (model === 'gpt-6.1-sol' || model === 'gpt-6-astra' || model.includes('responses'));
+
+  if (isResponsesModel) {
+    if (url.endsWith('/responses')) {
+      return url;
+    }
+    if (/\/(v\d+(?:beta|alpha|rc)?)(?=\/|$)/.test(url)) {
+      return `${url}/responses`;
+    }
+    return `${url}/v1/responses`;
+  }
+
   if (url.endsWith('/chat/completions')) {
     return url;
   }
@@ -299,7 +313,7 @@ export async function streamChatCompletion({
     });
   }
 
-  const url = buildChatEndpoint(credentials.baseUrl);
+  const url = buildChatEndpoint(credentials.baseUrl, credentials.model);
 
   // Bila provider ini pernah menolak karena `reasoning_content` hilang, rapikan
   // langsung di muka supaya tidak membuang satu request 400 + retry setiap turn.
@@ -307,13 +321,23 @@ export async function streamChatCompletion({
     ? backfillReasoningContent(messages)
     : messages;
 
-  const payload = {
-    model: credentials.model,
-    messages: outgoingMessages,
-    stream: true,
-  };
+  const isResponsesApi = url.endsWith('/responses');
+  const payload = isResponsesApi
+    ? {
+        model: credentials.model,
+        stream: true,
+        input: outgoingMessages.map((m) => ({
+          role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user',
+          content: m.content || '',
+        })),
+      }
+    : {
+        model: credentials.model,
+        messages: outgoingMessages,
+        stream: true,
+      };
 
-  if (tools && Array.isArray(tools) && tools.length > 0) {
+  if (!isResponsesApi && tools && Array.isArray(tools) && tools.length > 0) {
     payload.tools = tools;
     payload.tool_choice = 'auto';
   }
@@ -447,6 +471,17 @@ export async function streamChatCompletion({
    * — yang mungkin tidak diakhiri newline atau `[DONE]` — tidak ikut terbuang.
    */
   const applyChunk = (parsed) => {
+    // Tangani event stream dari OpenAI Responses API (/v1/responses)
+    if (parsed?.type === 'response.output_text.delta' && typeof parsed.delta === 'string') {
+      if (!hasStarted) {
+        hasStarted = true;
+        if (onStart) onStart();
+      }
+      fullContent += parsed.delta;
+      if (onDelta) onDelta(parsed.delta);
+      return;
+    }
+
     const choice = parsed?.choices?.[0];
     const delta = choice?.delta;
 

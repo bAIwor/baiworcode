@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   assertHttpUrl,
+  assertSafeFetchUrl,
+  isPrivateAddress,
   htmlToText,
   parseDuckDuckGo,
   handleWebFetch,
@@ -41,6 +43,59 @@ describe('webTool: assertHttpUrl', () => {
   it('menolak skema lain dan URL rusak', () => {
     assert.throws(() => assertHttpUrl('ftp://example.com'), /Skema URL tidak didukung/);
     assert.throws(() => assertHttpUrl('bukan url'), /URL tidak valid/);
+  });
+});
+
+describe('webTool: proteksi SSRF', () => {
+  it('mengenali alamat privat/loopback/link-local dan metadata cloud', () => {
+    for (const ip of [
+      '127.0.0.1',
+      '10.1.2.3',
+      '172.16.0.1',
+      '192.168.1.1',
+      '169.254.169.254',
+      '0.0.0.0',
+      '::1',
+      'fd00::1',
+      'fe80::1',
+      '::ffff:127.0.0.1',
+      '::ffff:7f00:1',
+      '0:0:0:0:0:ffff:a9fe:a9fe',
+    ]) {
+      assert.equal(isPrivateAddress(ip), true, ip);
+    }
+    for (const ip of ['8.8.8.8', '1.1.1.1', '2001:4860:4860::8888', '::ffff:8.8.8.8']) {
+      assert.equal(isPrivateAddress(ip), false, ip);
+    }
+  });
+
+  it('menolak URL ke localhost/IP privat dan menerima host publik', async () => {
+    await assert.rejects(() => assertSafeFetchUrl('http://127.0.0.1:3000'), /SSRF|privat|loopback/i);
+    await assert.rejects(() => assertSafeFetchUrl('http://localhost:3000'), /SSRF|localhost/i);
+    await assert.rejects(() => assertSafeFetchUrl('http://169.254.169.254/latest/meta-data'), /SSRF|privat/i);
+    const ok = await assertSafeFetchUrl('https://8.8.8.8/x', { skipDns: true });
+    assert.equal(ok.hostname, '8.8.8.8');
+  });
+
+  it('handleWebFetch menolak redirect yang menuju localhost', async () => {
+    globalThis.fetch = async (url) => {
+      assert.equal(String(url), 'https://example.com/start');
+      return {
+        ok: false,
+        status: 302,
+        statusText: 'Found',
+        url: String(url),
+        headers: {
+          get: (name) => (String(name).toLowerCase() === 'location' ? 'http://127.0.0.1/secret' : null),
+        },
+        body: { cancel: async () => {} },
+        arrayBuffer: async () => Buffer.from(''),
+      };
+    };
+
+    const res = await handleWebFetch({ url: 'https://example.com/start' });
+    assert.equal(res.success, false);
+    assert.match(res.output, /SSRF|privat|loopback/i);
   });
 });
 

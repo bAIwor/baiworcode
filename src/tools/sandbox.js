@@ -14,11 +14,15 @@
  * container / user terbatas di level OS.
  */
 
+import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
 /** Direktori yang selalu dianggap area kredensial sensitif. */
-const SENSITIVE_DIRS = ['.ssh', '.baiwor', '.aws', '.gnupg', '.azure', '.kube'];
+const SENSITIVE_DIRS = [
+  '.ssh', '.baiwor', '.aws', '.gnupg', '.azure', '.kube',
+  '.tinyfish', '.docker', '.npm',
+];
 
 /** Nama berkas kredensial — dicocokkan PERSIS (agar `id_rsa.pub` tidak ikut terblokir). */
 const SENSITIVE_FILES = [
@@ -27,6 +31,7 @@ const SENSITIVE_FILES = [
   'id_ecdsa',
   '.netrc',
   '.git-credentials',
+  '.gitconfig',
   '.npmrc',
   '.pgpass',
 ];
@@ -38,7 +43,13 @@ const HOME_ENV_REFS = [
   /%USERPROFILE%/i,
   /%APPDATA%/i,
   /%HOMEDRIVE%/i,
-  /(?:^|[\s"'`(=])~[\\/]/,
+  /%HOMEPATH%/i,
+  /%LOCALAPPDATA%/i,
+  // PowerShell: $env:USERPROFILE, ${env:APPDATA}
+  /\$env:/i,
+  /\$\{env:/i,
+  // Semua bentuk tilde (~, ~/, ~user) menunjuk ke home / home pengguna lain.
+  /(?:^|[\s"'`(=])~/,
 ];
 
 /** Lokasi binary sistem yang tetap diizinkan agar perintah wajar tidak ikut terblokir. */
@@ -111,6 +122,54 @@ const DANGEROUS_RULES = [
 ];
 
 /**
+ * Realpath yang tetap bekerja untuk path yang belum ada: bagian yang ada
+ * di-resolve, sisa segmennya ditempel kembali. Ini menutup celah symlink/
+ * junction di dalam workspace yang mengarah ke luar.
+ *
+ * @param {string} targetPath
+ * @returns {string}
+ */
+export function realpathWithMissingTail(targetPath) {
+  const resolved = path.resolve(targetPath);
+  let current = resolved;
+  const tail = [];
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    tail.unshift(path.basename(current));
+    current = parent;
+  }
+  let real;
+  try {
+    real = fs.realpathSync.native(current);
+  } catch {
+    try {
+      real = fs.realpathSync(current);
+    } catch {
+      real = current;
+    }
+  }
+  return tail.length > 0 ? path.join(real, ...tail) : real;
+}
+
+/**
+ * Realpath bila memungkinkan; fallback ke path.resolve.
+ * @param {string} targetPath
+ * @returns {string}
+ */
+export function realpathOrResolved(targetPath) {
+  try {
+    return fs.realpathSync.native(targetPath);
+  } catch {
+    try {
+      return fs.realpathSync(targetPath);
+    } catch {
+      return path.resolve(targetPath);
+    }
+  }
+}
+
+/**
  * Memeriksa apakah `child` berada di dalam direktori `parent`.
  * Menggunakan perbandingan string path (bukan realpath), sehingga path yang
  * belum ada di disk tetap dapat divalidasi.
@@ -132,17 +191,27 @@ export function isSubPath(parent, child) {
  * (kunci publik, aman dibaca) tidak lagi ikut ditolak.
  */
 export function isSensitivePath(targetPath) {
-  const resolved = path.resolve(targetPath);
   const home = path.resolve(os.homedir());
-  const segments = resolved.split(path.sep).map((s) => s.toLowerCase());
-  const base = segments[segments.length - 1] || '';
+  // Periksa path literal DAN realpath-nya: symlink/junction di dalam workspace
+  // bisa menunjuk ke ~/.ssh atau ~/.baiwor tanpa namanya terlihat di path asli.
+  const candidates = new Set([
+    path.resolve(targetPath),
+    realpathWithMissingTail(targetPath),
+  ]);
 
-  for (const dir of SENSITIVE_DIRS) {
-    if (segments.includes(dir)) return true;
-    if (isSubPath(path.join(home, dir), resolved)) return true;
+  for (const resolved of candidates) {
+    const segments = resolved.split(path.sep).map((s) => s.toLowerCase());
+    const base = segments[segments.length - 1] || '';
+
+    for (const dir of SENSITIVE_DIRS) {
+      if (segments.includes(dir)) return true;
+      if (isSubPath(path.join(home, dir), resolved)) return true;
+    }
+
+    if (SENSITIVE_FILES.includes(base)) return true;
   }
 
-  return SENSITIVE_FILES.includes(base);
+  return false;
 }
 
 /**
@@ -217,7 +286,21 @@ function isOutsideWorkspace(candidate, workspace) {
   if (!isPathAllowed(candidate, workspace)) return true;
 
   const resolvedNative = path.resolve(candidate);
-  if (!isSubPath(workspace, resolvedNative)) return false;
+  const insideWorkspaceByString = isSubPath(workspace, resolvedNative);
+  const insideTmpByString = isSubPath(os.tmpdir(), resolvedNative);
+
+  // Path yang secara string berada di workspace/tmp tetapi realpath-nya
+  // menunjuk keluar adalah symlink/junction escape.
+  if (insideWorkspaceByString) {
+    const realWorkspace = realpathOrResolved(workspace);
+    if (!isSubPath(realWorkspace, realpathWithMissingTail(resolvedNative))) return true;
+  }
+  if (insideTmpByString) {
+    const realTmp = realpathOrResolved(os.tmpdir());
+    if (!isSubPath(realTmp, realpathWithMissingTail(resolvedNative))) return true;
+  }
+
+  if (!insideWorkspaceByString) return false;
   if (!looksLikeWindowsPath(candidate)) return false;
 
   const lower = path.win32.resolve(candidate).toLowerCase();
@@ -245,6 +328,10 @@ function extractAbsolutePaths(command) {
   const winRe = /(?:^|[\s"'`=(,;|&<>])([a-zA-Z]:[\\/][^\s"'`|&;<>()]*)/g;
   while ((m = winRe.exec(command)) !== null) found.push(m[1]);
 
+  // UNC / device path (\\server\share, \\?\C:\...) selalu di luar workspace.
+  const uncRe = /(?:^|[\s"'`=(,;|&<>])(\\\\[^\s"'`|&;<>()]+)/g;
+  while ((m = uncRe.exec(command)) !== null) found.push(m[1]);
+
   // Pola POSIX hanya relevan di luar Windows; di Windows `/b` adalah flag, bukan path.
   if (process.platform !== 'win32') {
     const posixRe = /(?:^|[\s"'`=(])(\/[^\s"'`|&;<>()]*)/g;
@@ -270,6 +357,13 @@ export const CONFIRM_RULES = [
   { re: /\bgit\s+(?:checkout|restore)\s+--?\s*\./i, reason: 'membuang perubahan pada seluruh berkas' },
   { re: /\brm\s+(?:-[a-zA-Z]+\s+)*-[a-zA-Z]*[rR][a-zA-Z]*\b/i, reason: 'menghapus berkas secara rekursif' },
   { re: /\bdel\s+\/[a-z]*[fq][a-z]*\b/i, reason: 'menghapus berkas secara paksa' },
+  // Windows: pola /s tidak selalu berada tepat setelah perintah (del /s /q),
+  // jadi periksa seluruh argumen. rmdir/rd dan Remove-Item juga harus minta izin.
+  { re: /\bdel\b[^|;&]*\/s\b/i, reason: 'menghapus berkas secara rekursif' },
+  { re: /\berase\b[^|;&]*\/s\b/i, reason: 'menghapus berkas secara rekursif' },
+  { re: /\b(?:rmdir|rd)\b[^|;&]*\/s\b/i, reason: 'menghapus direktori beserta isinya' },
+  { re: /\bremove-item\b/i, reason: 'menghapus item melalui PowerShell' },
+  { re: /\bclear-content\b/i, reason: 'mengosongkan isi berkas melalui PowerShell' },
   { re: /\b(?:kill|taskkill|pkill)\b/i, reason: 'menghentikan proses yang sedang berjalan' },
   { re: /\bchmod\b|\bchown\b|\bicacls\b/i, reason: 'mengubah izin atau kepemilikan berkas' },
 ];
@@ -386,9 +480,13 @@ function findEscapingRelativePath(command, workspace) {
   let m;
   while ((m = tokenRe.exec(command)) !== null) {
     const token = m[0];
-    if (token !== '..' && !/\.\.[\\/]/.test(token)) continue;
+    if (token.includes('://')) continue; // URL, bukan path lokal
+    const hasSeparator = token.includes('/') || token.includes('\\');
+    if (token !== '..' && !hasSeparator) continue;
     if (path.isAbsolute(token)) continue;
-    if (!isSubPath(workspace, path.resolve(workspace, token))) return token;
+
+    const resolved = path.resolve(workspace, token);
+    if (!isSubPath(workspace, resolved)) return token;
 
     // Fail-open guard: di host POSIX, `..\..\secret.txt` terbaca sebagai satu
     // nama berkas (backslash bukan separator) sehingga tidak tertangkap di
@@ -396,8 +494,45 @@ function findEscapingRelativePath(command, workspace) {
     if (looksLikeWindowsPath(token) && escapesWorkspaceBy(token, workspace, path.win32)) {
       return token;
     }
+
+    // Token relatif (mis. `link/secret`) bisa keluar workspace lewat junction.
+    if (!isSubPath(realpathOrResolved(workspace), realpathWithMissingTail(resolved))) {
+      return token;
+    }
   }
   return null;
+}
+
+/**
+ * Apakah target `cd`/`pushd` menunjuk ke luar workspace (termasuk via symlink).
+ * Pengganti pemeriksaan `startsWith('..')` yang bisa dilewati `./..`.
+ *
+ * @param {string} target
+ * @param {string} workspace
+ * @returns {boolean}
+ */
+function isCommandPathOutside(target, workspace) {
+  if (!target || target.includes('://')) return false;
+  // `cd ~`, `cd -`, `cd` tanpa argumen (ditangani pemanggil) menuju home /
+  // direktori sebelumnya yang berada di luar workspace.
+  if (target === '~' || target.startsWith('-')) return true;
+
+  const native = path.isAbsolute(target)
+    ? path.resolve(target)
+    : path.resolve(workspace, target);
+
+  if (!isPathAllowed(native, workspace)) return true;
+
+  if (isSubPath(workspace, native)) {
+    const realWorkspace = realpathOrResolved(workspace);
+    if (!isSubPath(realWorkspace, realpathWithMissingTail(native))) return true;
+  }
+
+  if (looksLikeWindowsPath(target) && escapesWorkspaceBy(target, workspace, path.win32)) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -518,19 +653,21 @@ export function analyzeCommand(command, options = {}) {
   }
 
   // 3. Percobaan keluar dari workspace lewat cd/pushd
+  // `cd`/`pushd` tanpa argumen berpindah ke HOME / direktori sebelumnya.
+  if (/(?:^|[;&|]\s*)(?:cd|chdir|pushd|set-location|sl)\s*(?:[;&|]|$)/i.test(raw)) {
+    return deny(
+      'workspace-escape',
+      'Perintah cd/pushd tanpa argumen menuju direktori home atau direktori sebelumnya. Gunakan path di dalam workspace.'
+    );
+  }
+
   const cdMatches = raw.matchAll(/\b(?:cd|chdir|pushd|set-location|sl)\s+([^\s;&|]+)/gi);
   for (const match of cdMatches) {
     const target = match[1].replace(/^["']|["']$/g, '');
-    if (target.startsWith('..')) {
+    if (isCommandPathOutside(target, workspace)) {
       return deny(
         'workspace-escape',
-        `'cd ${target}' keluar dari workspace. Jalankan perintah dengan path relatif di dalam workspace saja.`
-      );
-    }
-    if (path.isAbsolute(target) && !isPathAllowed(target, workspace)) {
-      return deny(
-        'workspace-escape',
-        `'cd ${target}' menuju lokasi di luar workspace (${workspace}).`
+        `'cd ${target}' menuju lokasi di luar workspace (${workspace}). Gunakan path di dalam workspace saja.`
       );
     }
   }

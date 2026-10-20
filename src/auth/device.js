@@ -6,7 +6,10 @@ import { USER_AGENT } from '../branding.js';
 export function openBrowser(url) {
   try {
     if (process.platform === 'win32') {
-      execFile('cmd', ['/c', 'start', '', url], (err) => {
+      // Jangan lewat cmd.exe: argumen URL dengan '&' (parameter OAuth) akan
+      // dipotong/diinterpretasikan sebagai perintah lain. rundll32 menerima
+      // URL apa adanya; explorer dipakai sebagai fallback.
+      execFile('rundll32', ['url.dll,FileProtocolHandler', url], (err) => {
         if (err) {
           execFile('explorer', [url], () => {});
         }

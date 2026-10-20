@@ -4,6 +4,7 @@ import { theme } from '../theme.js';
 import { spinner } from '../spinner.js';
 import { openBrowser } from './device.js';
 import { USER_AGENT } from '../branding.js';
+import { getConfig } from '../config.js';
 
 function base64url(buffer) {
   return buffer
@@ -11,6 +12,16 @@ function base64url(buffer) {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '');
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[ch]);
 }
 
 /**
@@ -57,25 +68,27 @@ export async function runPkceFlow(provider, clientId, clientSecret = '') {
         const error = reqUrl.searchParams.get('error');
         const errorDesc = reqUrl.searchParams.get('error_description');
 
-        if (error) {
-          res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-          res.end(`
-            <html><body style="font-family:sans-serif; text-align:center; padding:50px; background:#1e1e2e; color:#f38ba8;">
-              <h2>❌ Otorisasi Dibatalkan</h2>
-              <p>${errorDesc || error}</p>
-              <p>Anda dapat menutup jendela ini.</p>
-            </body></html>
-          `);
-          cleanup();
-          reject(new Error(`Otorisasi dibatalkan: ${errorDesc || error}`));
-          return;
-        }
-
+        // Validasi state HARUS lebih dulu: parameter error dari penyerang
+        // tidak boleh bisa membatalkan login tanpa melewati pemeriksaan CSRF.
         if (state !== expectedState) {
           res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end('<h2>❌ State Mismatch (Kemungkinan serangan CSRF)</h2>');
           cleanup();
           reject(new Error('State CSRF tidak cocok. Otorisasi digagalkan.'));
+          return;
+        }
+
+        if (error) {
+          res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(`
+            <html><body style="font-family:sans-serif; text-align:center; padding:50px; background:#1e1e2e; color:#f38ba8;">
+              <h2>❌ Otorisasi Dibatalkan</h2>
+              <p>${escapeHtml(errorDesc || error)}</p>
+              <p>Anda dapat menutup jendela ini.</p>
+            </body></html>
+          `);
+          cleanup();
+          reject(new Error(`Otorisasi dibatalkan: ${errorDesc || error}`));
           return;
         }
 
@@ -92,14 +105,14 @@ export async function runPkceFlow(provider, clientId, clientSecret = '') {
         res.end(`
           <html><body style="font-family:sans-serif; text-align:center; padding:50px; background:#181825; color:#a6e3a1;">
             <h2>✓ Login bAIwor Code Berhasil!</h2>
-            <p>Otorisasi ${provider.name} berhasil. Anda dapat menutup tab ini dan kembali ke terminal.</p>
+            <p>Otorisasi ${escapeHtml(provider.name)} berhasil. Anda dapat menutup tab ini dan kembali ke terminal.</p>
           </body></html>
         `);
 
         // Tukar authorization code dengan access token
         const port = server.address().port;
         const redirectPath = provider.redirectPath || '/oauth2callback';
-        const redirectHost = provider.redirectHost || 'localhost';
+        const redirectHost = provider.redirectHost || '127.0.0.1';
         const redirectUri = `http://${redirectHost}:${port}${redirectPath}`;
 
         const s = spinner();
@@ -115,7 +128,9 @@ export async function runPkceFlow(provider, clientId, clientSecret = '') {
 
         const sec =
           clientSecret ||
-          (provider.getClientSecret ? provider.getClientSecret() : provider.clientSecret);
+          (provider.getClientSecret
+            ? provider.getClientSecret(getConfig())
+            : provider.clientSecret);
         if (sec) {
           tokenBody.set('client_secret', sec);
         }
@@ -128,6 +143,7 @@ export async function runPkceFlow(provider, clientId, clientSecret = '') {
             'User-Agent': USER_AGENT,
           },
           body: tokenBody.toString(),
+          signal: AbortSignal.timeout(15000),
         });
 
         if (!tokenRes.ok) {
@@ -162,7 +178,9 @@ export async function runPkceFlow(provider, clientId, clientSecret = '') {
     server.listen(0, '127.0.0.1', () => {
       const port = server.address().port;
       const redirectPath = provider.redirectPath || '/oauth2callback';
-      const redirectHost = provider.redirectHost || 'localhost';
+      // Samakan host callback dengan alamat bind (127.0.0.1). Memakai
+      // 'localhost' bisa resolve ke ::1 di Windows sehingga callback gagal.
+      const redirectHost = provider.redirectHost || '127.0.0.1';
       const redirectUri = `http://${redirectHost}:${port}${redirectPath}`;
 
       const authUrl = new URL(provider.authEndpoint);

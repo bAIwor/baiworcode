@@ -106,6 +106,7 @@ export class Conversation {
    * Menambahkan hasil eksekusi tool (persiapan Tahap 3B).
    */
   addToolResult(toolCallId, content, name = null) {
+    if (!toolCallId || typeof toolCallId !== 'string') return null;
     const msg = {
       role: 'tool',
       tool_call_id: toolCallId,
@@ -230,7 +231,22 @@ export class Conversation {
       }
     }
 
-    this.messages = systemMsg ? [systemMsg, ...body.slice(start)] : body.slice(start);
+    let keptBody = body.slice(start);
+
+    // Prompt user terakhir adalah inti request yang sedang berjalan; jangan
+    // pernah membuangnya hanya karena riwayat lama/tool output sangat besar.
+    let lastUser = null;
+    for (let i = body.length - 1; i >= 0; i -= 1) {
+      if (body[i]?.role === 'user') {
+        lastUser = body[i];
+        break;
+      }
+    }
+    if (lastUser && !keptBody.includes(lastUser)) {
+      keptBody = [lastUser, ...keptBody];
+    }
+
+    this.messages = systemMsg ? [systemMsg, ...keptBody] : keptBody;
 
     return {
       trimmed: true,
@@ -319,8 +335,11 @@ export class Conversation {
     if (!data || !Array.isArray(data.messages)) return false;
     this.sessionId = data.id;
     this.sessionTitle = data.title || null;
-    this.messages = data.messages;
-    repairLegacyAssistantReasoning(this.messages);
+    this.messages = normalizeLoadedMessages(data.messages);
+    // State persistensi milik sesi lama tidak boleh menempel ke sesi yang
+    // baru dimuat; handleUserChat akan mengaktifkannya kembali bila perlu.
+    this.incrementalSave = null;
+    this.incrementalStarted = false;
     return true;
   }
 
@@ -337,10 +356,62 @@ export class Conversation {
     if (!data || !Array.isArray(data.messages)) return false;
     this.sessionId = data.id;
     this.sessionTitle = data.title || null;
-    this.messages = data.messages;
-    repairLegacyAssistantReasoning(this.messages);
+    this.messages = normalizeLoadedMessages(data.messages);
+    this.incrementalSave = null;
+    this.incrementalStarted = false;
     return true;
   }
+}
+
+/**
+ * Menormalkan riwayat yang dimuat dari disk:
+ * - memastikan system prompt berada di awal,
+ * - membuang tool result yatim / tool_calls tanpa hasil (penyebab 400),
+ * - memperbaiki reasoning_content untuk model reasoning.
+ *
+ * @param {Array} messages
+ * @returns {Array}
+ */
+export function normalizeLoadedMessages(messages) {
+  const source = Array.isArray(messages) ? messages.filter((m) => m && typeof m === 'object') : [];
+
+  // Kumpulkan ID tool result yang benar-benar ada.
+  const resultIds = new Set(
+    source
+      .filter((m) => m.role === 'tool' && typeof m.tool_call_id === 'string' && m.tool_call_id)
+      .map((m) => m.tool_call_id)
+  );
+
+  // Hanya tool_calls yang punya hasil yang dipertahankan.
+  const validCallIds = new Set();
+  for (const m of source) {
+    if (m.role !== 'assistant' || !Array.isArray(m.tool_calls)) continue;
+    for (const tc of m.tool_calls) {
+      if (tc && typeof tc.id === 'string' && resultIds.has(tc.id)) validCallIds.add(tc.id);
+    }
+  }
+
+  const cleaned = [];
+  for (const m of source) {
+    if (m.role === 'assistant' && Array.isArray(m.tool_calls)) {
+      const calls = m.tool_calls.filter((tc) => tc && validCallIds.has(tc.id));
+      const copy = { ...m };
+      if (calls.length > 0) copy.tool_calls = calls;
+      else delete copy.tool_calls;
+      cleaned.push(copy);
+    } else if (m.role === 'tool') {
+      if (!m.tool_call_id || !validCallIds.has(m.tool_call_id)) continue;
+      cleaned.push(m);
+    } else {
+      cleaned.push(m);
+    }
+  }
+
+  if (!cleaned[0] || cleaned[0].role !== 'system') {
+    cleaned.unshift({ role: 'system', content: getSystemPrompt() });
+  }
+  repairLegacyAssistantReasoning(cleaned);
+  return cleaned;
 }
 
 /**

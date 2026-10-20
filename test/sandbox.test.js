@@ -1,9 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { analyzeCommand, classifyCommand, isSubPath, isSensitivePath, isPathAllowed, parseDestructiveAllowlist, isDestructiveAllowed, DANGEROUS_RULE_IDS } from '../src/tools/sandbox.js';
-import { handleRunCommand } from '../src/tools/handlers.js';
+import { handleRunCommand, resolveSafePath } from '../src/tools/handlers.js';
 
 const WORKSPACE = process.cwd();
 
@@ -19,6 +20,67 @@ describe('Sandbox A5: penjaga perintah terminal', () => {
       const v = analyzeCommand(cmd, { workspace: WORKSPACE });
       assert.equal(v.allowed, false, `seharusnya ditolak: ${cmd}`);
       assert.equal(v.category, 'workspace-escape');
+    }
+  });
+
+  it('menolak varian cd yang dinormalisasi (regresi: ./.. dan .\\..)', () => {
+    for (const cmd of ['cd ./.. && dir /b', 'cd .\\.. && dir /b', 'cd x/../.. && dir /b']) {
+      const v = analyzeCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(v.allowed, false, `seharusnya ditolak: ${cmd}`);
+      assert.equal(v.category, 'workspace-escape');
+    }
+    // cd normal di dalam workspace tetap diizinkan.
+    assert.equal(analyzeCommand('cd src && npm test', { workspace: WORKSPACE }).allowed, true);
+  });
+
+  it('menolak cd ke home/sebelumnya tanpa argumen eksplisit', () => {
+    for (const cmd of ['cd', 'cd && dir', 'pushd && dir', 'cd ~', 'cd -', 'ls ~']) {
+      const v = analyzeCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(v.allowed, false, `seharusnya ditolak: ${cmd}`);
+    }
+  });
+
+  it('menolak akses home via $env: PowerShell dan UNC path', () => {
+    for (const cmd of [
+      'Get-Content $env:USERPROFILE\\Documents\\secret.txt',
+      'Get-Content ${env:APPDATA}\\secret.txt',
+      'type \\\\server\\share\\x.txt',
+    ]) {
+      const v = analyzeCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(v.allowed, false, `seharusnya ditolak: ${cmd}`);
+    }
+  });
+
+  it('menolak escape melalui junction di dalam workspace', (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'baiwor-link-'));
+    const ws = path.join(root, 'ws');
+    const outside = path.join(WORKSPACE, '.sandbox-outside-test');
+    fs.mkdirSync(ws, { recursive: true });
+    fs.mkdirSync(outside, { recursive: true });
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 'TOPSECRET');
+
+    const link = path.join(ws, 'link');
+    try {
+      fs.symlinkSync(outside, link, 'junction');
+    } catch {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(outside, { recursive: true, force: true });
+      t.skip('Tidak bisa membuat symlink/junction di lingkungan ini');
+      return;
+    }
+
+    try {
+      assert.throws(
+        () => resolveSafePath(path.join(link, 'secret.txt'), ws),
+        /di luar direktori workspace|symlink/i
+      );
+      const v = analyzeCommand('cat link/secret.txt', { workspace: ws });
+      assert.equal(v.allowed, false);
+      assert.equal(v.category, 'workspace-escape');
+    } finally {
+      fs.rmdirSync(link);
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(outside, { recursive: true, force: true });
     }
   });
 
@@ -183,6 +245,21 @@ describe('Sandbox: klasifikasi tiga tingkat untuk approval gate', () => {
   it('perintah aman langsung "allow" tanpa konfirmasi', () => {
     for (const cmd of ['npm test', 'git status --short', 'node -e "1"', 'ls src']) {
       assert.equal(classifyCommand(cmd, { workspace: WORKSPACE }).decision, 'allow', cmd);
+    }
+  });
+
+  it('menandai penghapusan rekursif Windows sebagai "confirm"', () => {
+    for (const cmd of [
+      'rmdir /s /q build',
+      'rd /s /q build',
+      'del /s /q build',
+      'powershell -c "Remove-Item -Recurse -Force build"',
+      'Remove-Item build -Recurse',
+      'Clear-Content catatan.txt',
+    ]) {
+      const r = classifyCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(r.decision, 'confirm', `seharusnya minta konfirmasi: ${cmd}`);
+      assert.equal(r.category, 'needs-approval');
     }
   });
 

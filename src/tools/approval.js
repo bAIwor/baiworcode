@@ -1,4 +1,5 @@
 import * as p from '@clack/prompts';
+import { sanitizeTerminalText } from '../chat/wrapText.js';
 
 let customApprovalHandler = null;
 
@@ -42,8 +43,13 @@ export async function requestCommandApproval(command, reason = '') {
 
   try {
     console.log();
+    const safeCommand = sanitizeTerminalText(command, { preserveNewlines: false });
+    const safeReason = sanitizeTerminalText(
+      reason || 'Perintah berpotensi mengubah status sistem atau repositori.',
+      { preserveNewlines: false }
+    );
     const answer = await p.confirm({
-      message: `Perintah berisiko terdeteksi: "${command}"\n  Alasan: ${reason || 'Perintah berpotensi mengubah status sistem atau repositori.'}\n  Izinkan bAIwor menjalankan perintah ini?`,
+      message: `Perintah berisiko terdeteksi: "${safeCommand}"\n  Alasan: ${safeReason}\n  Izinkan bAIwor menjalankan perintah ini?`,
       initialValue: false, // Default: Tidak (aman secara bawaan)
     });
 

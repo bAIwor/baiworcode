@@ -45,6 +45,9 @@ export const DEFAULT_CONFIG = {
   instaboxMachineId: 'baiwor',
   // Model Context Protocol (MCP): daftar server terdaftar { <name>: { type, url?, command?, args?, headers? } }
   mcpServers: {},
+  // Folder proyek yang MCP-nya sudah disetujui pengguna. Entri baru berbentuk
+  // { path, hash } agar perubahan .mcp.json memicu persetujuan ulang.
+  mcpTrustedProjects: [],
 };
 
 export function maskSecret(str) {
@@ -233,6 +236,70 @@ export function setAgentMode(mode) {
     saveConfig({ agentMode: next });
   }
   return getAgentMode();
+}
+
+/**
+ * Menormalkan path proyek untuk perbandingan trust MCP.
+ * Memakai realpath bila tersedia agar symlink/junction tidak memicu prompt
+ * berbeda untuk folder yang sama.
+ *
+ * @param {string} projectPath
+ * @returns {string}
+ */
+export function normalizeMcpProjectPath(projectPath) {
+  let resolved;
+  try {
+    resolved = fs.realpathSync.native(projectPath);
+  } catch {
+    try {
+      resolved = fs.realpathSync(projectPath);
+    } catch {
+      resolved = path.resolve(projectPath);
+    }
+  }
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+/**
+ * Apakah konfigurasi MCP proyek ini sudah dipercaya.
+ * Entri hash hanya cocok bila isi file konfigurasi tidak berubah.
+ *
+ * @param {string} projectPath
+ * @param {string|null} [configHash]
+ * @returns {boolean}
+ */
+export function isMcpProjectTrusted(projectPath, configHash = null) {
+  const list = getConfig().mcpTrustedProjects;
+  if (!Array.isArray(list) || list.length === 0) return false;
+  const normalized = normalizeMcpProjectPath(projectPath);
+  return list.some((entry) => {
+    if (typeof entry === 'string') {
+      return normalizeMcpProjectPath(entry) === normalized;
+    }
+    if (!entry || typeof entry !== 'object' || !entry.path) return false;
+    if (normalizeMcpProjectPath(entry.path) !== normalized) return false;
+    return !configHash || entry.hash === configHash;
+  });
+}
+
+/**
+ * Menyimpan persetujuan MCP untuk satu folder proyek beserta hash konfigurasi.
+ *
+ * @param {string} projectPath
+ * @param {string} configHash
+ */
+export function trustMcpProject(projectPath, configHash) {
+  const current = Array.isArray(getConfig().mcpTrustedProjects)
+    ? getConfig().mcpTrustedProjects
+    : [];
+  const normalized = normalizeMcpProjectPath(projectPath);
+  const others = current.filter((entry) => {
+    const entryPath = typeof entry === 'string' ? entry : entry?.path;
+    return !entryPath || normalizeMcpProjectPath(entryPath) !== normalized;
+  });
+  saveConfig({
+    mcpTrustedProjects: [...others, { path: path.resolve(projectPath), hash: configHash }],
+  });
 }
 
 export function saveConfig(partialConfig) {  try {

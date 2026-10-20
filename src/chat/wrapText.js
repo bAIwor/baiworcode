@@ -15,6 +15,37 @@
 /** Escape sequence ANSI (SGR dan lainnya) — diabaikan saat mengukur lebar. */
 const ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
 
+/**
+ * Membersihkan teks dari escape sequence/terminal control yang berasal dari
+ * sumber tidak tepercaya (model, output tool, halaman web, perintah remote).
+ *
+ * Yang dibuang: OSC (termasuk hyperlink & clipboard OSC 52), DCS, CSI/ANSI,
+ * escape ESC tunggal, karakter kontrol C0/C1, dan karakter bidi. Newline/tab
+ * dipertahankan agar teks multi-baris tetap utuh.
+ *
+ * @param {unknown} value
+ * @param {{preserveNewlines?:boolean}} [options]
+ * @returns {string}
+ */
+export function sanitizeTerminalText(value, { preserveNewlines = true } = {}) {
+  let text = String(value ?? '');
+  text = text.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
+  text = text.replace(/\x1b\][^\x07]*\x07/g, '');
+  text = text.replace(/\x1bP[\s\S]*?\x1b\\/g, '');
+  text = text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+  text = text.replace(/\x1b[@-_]/g, '');
+  text = text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
+  text = text.replace(/[\u0080-\u009f]/g, '');
+  text = text.replace(/[\u202a-\u202e\u2066-\u2069]/g, '');
+  if (preserveNewlines) {
+    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '');
+  } else {
+    text = text.replace(/[\r\n]+/g, ' ');
+  }
+  // Sisa ESC tunggal (termasuk sequence yang terpotong antar-chunk stream).
+  return text.replace(/\x1b/g, '');
+}
+
 /** Escape sequence SGR (pengatur warna/gaya) — perlu dilacak antar baris. */
 const SGR_RE = /^\x1b\[[0-9;]*m$/;
 

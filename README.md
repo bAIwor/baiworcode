@@ -46,15 +46,16 @@ curl -fsSL https://raw.githubusercontent.com/bAIwor/baiworcode/main/install.sh |
 
 Installer di atas otomatis mengecek Node.js (minimal v18), memasang bAIwor Code secara global, dan langsung siap dipakai.
 
-### Cara 2 — Install global via npm
+### Cara 2 — Install global via npm (tahap alpha)
 ```bash
-npm install -g baiworcode
+npm install -g baiworcode@alpha
 ```
 Setelah itu, perintah `baiworcode` (atau `baiwor`) bisa dipakai di mana saja.
+> Paket npm dirilis dengan dist-tag **alpha** selama status proyek masih Alpha. Setelah stabil, `npm install -g baiworcode` akan menjadi jalur utama.
 
 ### Cara 3 — Coba dulu tanpa install
 ```bash
-npx baiworcode
+npx baiworcode@alpha
 ```
 
 ### Cara 4 — Dari sumber (untuk kontributor)
@@ -66,7 +67,7 @@ npm link
 ```
 
 ### Prasyarat
-- [Node.js](https://nodejs.org/) versi **18 atau lebih baru**
+- [Node.js](https://nodejs.org/) versi **18 atau lebih baru**. Node.js 22 LTS direkomendasikan karena Node 18/20 sudah melewati masa dukungan resmi.
 
 Cek versi Node kamu:
 ```bash
@@ -162,9 +163,9 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Menekan `Ctrl+C` juga menghentikan perintah terminal yang sedang berjalan, termasuk mematikan seluruh pohon proses di Windows.
   - Riwayat percakapan multi-turn dengan pemangkasan otomatis agar tidak melebihi context window.
   - Berkas berakhiran baris CRLF (khas Windows) dibaca dan disunting tanpa menyisakan `\r` atau mengubah akhir baris seluruh berkas.
-  - Loop agentic hingga 12 putaran: model bisa memanggil tool, membaca hasilnya, lalu melanjutkan sendiri.
+  - Loop agentic hingga 100 putaran: model bisa memanggil tool, membaca hasilnya, lalu melanjutkan sendiri.
   - **Selalu berakhir dengan jawaban**: bila batas putaran tercapai — atau terdeteksi model mengulang rangkaian tool yang sama tiga kali — bAIwor otomatis meminta satu giliran kesimpulan **tanpa tool**, jadi pekerjaan tidak berhenti tanpa keputusan.
-- **🛠️ 14 Tool Bawaan** — bAIwor tidak hanya menjawab, tapi benar-benar mengerjakan:
+- **🛠️ 15 Tool Bawaan** — bAIwor tidak hanya menjawab, tapi benar-benar mengerjakan:
   - `read_file`, `write_file`, `edit_file`, `patch_file`, `list_directory` — baca, tulis, dan sunting berkas proyek.
   - `edit_file` **tahan banting** — pencocokannya toleran terhadap perbedaan indentasi, spasi ujung baris, dan CRLF/LF, jadi refactor tidak gagal hanya karena spasi. Ada `replace_all` untuk mengganti semua kemunculan, dan `edits` untuk banyak perubahan sekaligus secara **atomik** (semua berhasil atau tidak ada yang ditulis).
   - `patch_file` — menerapkan unified diff (format `git diff`); blok konteksnya dicari ulang sehingga patch tetap kena walau nomor baris bergeser.
@@ -186,6 +187,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 ### Di Dalam Mode Interaktif (`baiworcode` / `baiwor`)
 - `/help` — Panduan bantuan & daftar perintah
 - `/plan [instruksi]` — Mode arsitek semAIr: susun rencana & analisis tanpa ubah kode (read-only + checklist)
+- `/build` — Kembali ke agen Build (boleh mengubah kode) dari mode Plan
+- `/access [safe|full]` — Atur gerbang persetujuan perintah: safe (selalu tanya) atau full (lewati konfirmasi perintah berisiko kelas confirm; kelas deny tetap ditolak)
 - `/compact` — Ringkas konteks percakapan untuk menghemat ruang token
 - `/timeline [compact|detail]` — Ganti mode tampilan timeline: compact (satu baris cepat) atau detail (pohon lengkap)
 - `/session [list|resume|delete|clear]` — Kelola sesi percakapan proyek (daftar sesi, lanjutkan, hapus satu, atau hapus semua)
@@ -216,7 +219,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `baiworcode skill [action] [target]` — Kelola modul keahlian & plugin (`.baiwor/skills`)
 - `baiworcode rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
 - `baiworcode doctor` — Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox cloud
-- `baiworcode update [sandbox]` — Perbarui bAIwor Code ke versi terbaru dari GitHub
+- `baiworcode update [sandbox] [--yes]` — Perbarui bAIwor Code ke versi terbaru dari GitHub (verifikasi origin + konfirmasi; `--yes` untuk skrip)
 - `baiworcode status` — Status konfigurasi dan sesi login
 - `baiworcode mcp` — Jalankan bAIwor Code sebagai MCP Server (stdio) untuk berbagai klien MCP eksternal
 - `baiworcode model [target]` — Tanpa argumen: menu kelola model/provider. Dengan argumen: switch langsung (`baiworcode model step`, `baiworcode model stepfun/step-5-preview`, `baiworcode model alias add ...`)
@@ -260,7 +263,7 @@ Di dalam mode interaktif, cara pakainya sama — cukup `/model step`, `/model al
 
 ---
 
-## 🛠️ Daftar Tool (14 Tools)
+## 🛠️ Daftar Tool (15 Tools)
 
 | Tool | Kegunaan |
 |---|---|
@@ -278,6 +281,7 @@ Di dalam mode interaktif, cara pakainya sama — cukup `/model step`, `/model al
 | `todo_list` | Menyusun dan memperbarui daftar tugas multi-langkah, ditampilkan sebagai checklist |
 | `delegate_task` | Mendelegasikan sub-tugas ke subagent otonom terspesialisasi |
 | `ask_user` | Mengajukan pertanyaan atau mengonfirmasi pilihan interaktif kepada pengguna |
+| `instabox_exec` | Menjalankan perintah di MicroVM Linux InstaBox (aktif bila API key sandbox dikonfigurasi) |
 
 ### 🐟 Integrasi TinyFish Web Intelligence
 
@@ -297,6 +301,8 @@ bAIwor Code mendukung standar terbuka **Model Context Protocol (MCP)** secara du
 
 #### 1. Sebagai MCP Client (Konsumsi Tool Eksternal)
 bAIwor Code dapat terhubung ke berbagai server MCP (baik via **remote HTTP** maupun **stdio command**), membaca seluruh tools yang diekspos server tersebut, dan langsung menyediakannya ke dalam loop agentic bAIwor.
+- Server dari konfigurasi **global** (`~/.baiwor/config.json` / `~/.baiwor/mcp.json`) aktif otomatis.
+- Server dari berkas **proyek** (`.mcp.json` / `.baiwor/mcp.json`) **tidak dijalankan otomatis**. Saat masuk sesi interaktif, bAIwor menampilkan perintah/URL yang akan dijalankan dan meminta persetujuan. Persetujuan disimpan per folder + hash berkas; jika isi berkas berubah, persetujuan diminta ulang. Di mode non-TTY, server proyek dilewati.
 - Konfigurasi server MCP tersimpan di `~/.baiwor/config.json` (key `"mcpServers"`) atau berkas lokal proyek `.baiwor/mcp.json`:
   ```json
   {
@@ -320,7 +326,7 @@ bAIwor Code dapat terhubung ke berbagai server MCP (baik via **remote HTTP** mau
   - `/mcp refresh` — Muat ulang dan sambungkan kembali seluruh koneksi server MCP.
 
 #### 2. Sebagai MCP Server (Gunakan bAIwor Code di Klien MCP Eksternal)
-bAIwor Code dapat bertindak sebagai server MCP berstandar stdio JSON-RPC 2.0 untuk mengekspos **14 tools bawaan bAIwor Code** ke berbagai aplikasi klien MCP eksternal:
+bAIwor Code dapat bertindak sebagai server MCP berstandar stdio JSON-RPC 2.0 untuk mengekspos **15 tools bawaan bAIwor Code** ke berbagai aplikasi klien MCP eksternal:
 ```bash
 baiworcode mcp
 ```
@@ -353,12 +359,15 @@ Cukup tulis dalam bahasa sehari-hari — bAIwor memilih tool-nya sendiri:
 
 ## 🔒 Keamanan
 
-bAIwor Code dapat membaca, menulis, dan menjalankan perintah di komputermu. Karena itu ada dua lapis pengaman:
+bAIwor Code dapat membaca, menulis, dan menjalankan perintah di komputermu. Karena itu ada beberapa lapis pengaman:
 
-1. **Sandbox workspace** — semua akses berkas dibatasi pada folder proyek tempat kamu menjalankannya. Percobaan keluar dari folder (misalnya `cd ..`) atau menyentuh area kredensial (`.ssh`, `.aws`, `~/.baiwor`) akan ditolak, dan penolakannya disertai penjelasan. Pencocokannya sadar konteks: **menyebut** `.ssh` di dalam pesan commit tidak diblokir, tetapi **akses berkasnya** tetap ditolak.
-2. **Approval Gate** — perintah yang berpotensi mengubah status sistem atau repositori (`git push`, `npm publish`, `rm -rf`, `git reset --hard`, dan sejenisnya) tidak dijalankan sebelum kamu menyetujuinya. Jawaban default adalah **Tidak**.
+1. **Sandbox workspace** — akses berkas dibatasi pada folder proyek (dan folder temp). Pemeriksaan memakai **realpath**, sehingga symlink/junction yang mengarah ke luar workspace (`~/.ssh`, `~/.baiwor`, folder lain) ditolak. Upaya keluar lewat `cd ..`, `cd ./..`, path `..\\`, `$env:USERPROFILE`, dan UNC path juga ditolak. Pencocokannya sadar konteks: **menyebut** `.ssh` di dalam pesan commit tidak diblokir, tetapi **akses berkasnya** tetap ditolak.
+2. **Approval Gate** — perintah berisiko (`git push`, `npm publish`, `rm -rf`, `git reset --hard`, `rmdir /s`, `Remove-Item -Recurse`, dan sejenisnya) tidak dijalankan sebelum kamu menyetujuinya. Jawaban default adalah **Tidak**.
+3. **Trust MCP proyek** — server MCP dari `.mcp.json` proyek harus disetujui dulu; perintah yang akan dijalankan ditampilkan sebelum eksekusi. Environment MCP juga dibatasi (allowlist), tidak lagi mewariskan seluruh token/API key.
+4. **Proteksi web fetch** — alamat loopback/privat/link-local dan hostname yang resolve ke IP privat ditolak (anti-SSRF), redirect divalidasi per hop, ukuran body dibatasi, dan konten web ditandai sebagai tidak tepercaya. Untuk pengembangan lokal, set `BAIWOR_ALLOW_PRIVATE_FETCH=1`.
+5. **Update terkendali** — `baiwor update` memverifikasi origin repositori resmi, meminta konfirmasi, memakai `git pull --ff-only`, dan memasang dependensi dengan `--ignore-scripts`. Gunakan `--yes` hanya di skrip yang sudah kamu kontrol.
 
-> **Catatan:** pengaman ini bekerja dengan mengenali pola perintah, jadi sifatnya berlapis — bukan isolasi tingkat sistem operasi. Untuk pekerjaan yang sangat sensitif, tetap periksa perintah yang diminta bAIwor sebelum menyetujuinya.
+> **Catatan:** pengaman perintah bekerja dengan mengenali pola, jadi sifatnya berlapis — bukan isolasi tingkat sistem operasi. Untuk pekerjaan yang sangat sensitif, tetap periksa perintah yang diminta bAIwor sebelum menyetujuinya.
 
 ---
 

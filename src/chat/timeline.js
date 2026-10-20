@@ -1,5 +1,6 @@
 import { createPainter } from '../colors.js';
 import { palette } from '../theme.js';
+import { sanitizeTerminalText } from './wrapText.js';
 
 const DEFAULT_SUMMARY_LEN = 80;
 
@@ -164,7 +165,9 @@ export function countOutputLines(text) {
  * @returns {string}
  */
 export function summarize(text, maxLen = DEFAULT_SUMMARY_LEN) {
-  const flat = String(text ?? '').replace(/\s+/g, ' ').trim();
+  const flat = sanitizeTerminalText(text, { preserveNewlines: false })
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!flat) return '';
   return flat.length > maxLen ? `${flat.slice(0, maxLen - 1)}…` : flat;
 }
@@ -396,19 +399,23 @@ export function renderTimeline(
     // (mis. `todo_list` yang mengembalikan JSON) — ia menggantikan ringkasan
     // argumen/hasil, bukan menambahkannya.
     if (ev.detail) {
+      // Detail dihasilkan aplikasi (mis. checklist todo) setelah kontennya
+      // disanitasi di summarize(); warna internalnya harus dipertahankan.
       for (const line of String(ev.detail).split('\n')) {
         out.push(`  ${stem}${childIndent}${line}`);
       }
       return;
     }
 
-    const argsText = summarizeArgs(ev.args, maxSummary);
+    const argsText = sanitizeTerminalText(summarizeArgs(ev.args, maxSummary), {
+      preserveNewlines: false,
+    });
     if (argsText) out.push(`  ${stem}${childIndent}${c.dim(argsText)}`);
 
     // Saat masih berjalan belum ada keluaran untuk diringkas.
     if (isRunning) return;
 
-    const rawOut = String(ev.output ?? '').trim();
+    const rawOut = sanitizeTerminalText(ev.output).trim();
     if (!rawOut) {
       out.push(`  ${stem}${childIndent}${c.dim('selesai')}`);
     } else {

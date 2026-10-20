@@ -25,8 +25,11 @@ async function refreshAccessToken(provider, currentAuth) {
       refresh_token: currentAuth.refreshToken,
       client_id: clientId,
     });
-    if (provider.clientSecret) {
-      bodyParams.set('client_secret', provider.clientSecret);
+    const clientSecret = provider.getClientSecret
+      ? provider.getClientSecret(config)
+      : provider.clientSecret;
+    if (clientSecret) {
+      bodyParams.set('client_secret', clientSecret);
     }
 
     const res = await fetch(provider.tokenEndpoint, {

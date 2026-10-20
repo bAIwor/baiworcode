@@ -40,7 +40,7 @@ baiworcode/
     ├── mcp/
     │   ├── client.js               # Klien MCP (Model Context Protocol) untuk koneksi ke MCP Server eksternal (TinyFish)
     │   ├── index.js                # Ekspor modul integrasi MCP
-    │   └── server.js               # MCP Server bawaan untuk mengekspos 14 tools bAIwor ke host luar
+    │   └── server.js               # MCP Server bawaan untuk mengekspos 15 tools bAIwor ke host luar
     ├── rules/
     │   └── ruleManager.js          # Pemuat aturan proyek custom (BAIWORS.md dan .baiwor/rules/*.md)
     ├── skills/
@@ -80,7 +80,7 @@ baiworcode/
 
 ## 2. Daftar Tools yang Sudah Diimplementasi
 
-bAIwor Code memiliki **14 tools bawaan** yang didaftarkan ke OpenAI Function Calling format:
+bAIwor Code memiliki **15 tools bawaan** yang didaftarkan ke OpenAI Function Calling format:
 
 | No | Nama Tool | Berkas Implementasi | Toolset | Fungsi Utama |
 |---|---|---|---|---|
@@ -98,9 +98,10 @@ bAIwor Code memiliki **14 tools bawaan** yang didaftarkan ke OpenAI Function Cal
 | 12 | `diagnostics` | `src/tools/diagnosticsTool.js` | `quality` | Menjalankan pemeriksaan otomatis mutu proyek (skrip `check`, `typecheck`, `lint` di package.json, `tsc`, atau `eslint`). |
 | 13 | `delegate_task` | `src/tools/subagentTool.js` | `agent` | Mendelegasikan sub-tugas terisolasi ke peran Punakawan (`pAItruk` untuk eksplorasi *read-only*, `gAIreng` untuk audit/test, `bAIwor` untuk coding spesifik). |
 | 14 | `ask_user` | `src/tools/questionnaireTool.js` | `interactive` | Mengajukan pertanyaan interaktif dengan pilihan jawaban (*single-select* atau *multi-select*) ke pengguna di terminal. |
+| 15 | `instabox_exec` | `src/tools/instaboxTool.js` | `sandbox` | Menjalankan perintah di MicroVM Linux InstaBox (aktif bila API key sandbox dikonfigurasi). |
 
 *Catatan Tambahan:*  
-Selain 14 tool bawaan di atas, sistem mendukung integrasi protokol **MCP (Model Context Protocol)** melalui `src/mcp/client.js` yang secara otomatis mengimpor suite tool TinyFish (manajemen monitor web, kontrol sesi browser jarak jauh, manajemen profil, dan status dompet).
+Selain 15 tool bawaan di atas, sistem mendukung integrasi protokol **MCP (Model Context Protocol)** melalui `src/mcp/client.js` (klien) dan `src/mcp/server.js` (server stdio). Tool MCP dinamis didaftarkan dengan prefix nama server. Server MCP dari konfigurasi proyek (`.mcp.json` / `.baiwor/mcp.json`) memerlukan persetujuan pengguna per folder + hash konfigurasi sebelum dijalankan.
 
 ---
 
@@ -176,8 +177,8 @@ Berdasarkan tinjauan arsitektur dan status fase Alpha saat ini, berikut adalah d
 3. **Multi-Modal / Media Asset Ingestion**:
    - Belum ada kemampuan membaca dan menganalisis berkas biner/gambar (seperti screenshot UI, diagram arsitektur, atau aset visual) langsung dari prompt masukan terminal ke model vision-capable.
 
-4. **Perintah Pembaruan Otomatis CLI (`/update` / `baiwor update`)**:
-   - Mekanisme pengecekan versi rilis terbaru dari npm registry dan proses pembaruan mandiri satu perintah (*self-updater*) di terminal belum tersedia.
+4. **Pembaruan & Verifikasi Rilis**:
+   - `/update` dan `baiwor update` sudah tersedia untuk instalasi berbasis Git (verifikasi origin, konfirmasi, `--ff-only`, `--ignore-scripts`). Pembaruan untuk instalasi npm masih mengandalkan `npm update -g baiworcode`; verifikasi signature/checksum rilis belum diimplementasikan.
 
 5. **Dukungan OAuth untuk Provider Tambahan**:
    - Modul `src/auth/` saat ini fokus mendukung alur Device Authorization Flow dan PKCE untuk ekosistem Agentik dan GitHub/Gemini. Provider lain (seperti Anthropic atau Azure OpenAI Service) masih bergantung penuh pada konfigurasi API key manual.

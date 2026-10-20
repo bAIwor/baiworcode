@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { isSubPath } from '../tools/sandbox.js';
+
+const MAX_RULE_BYTES = 64 * 1024;
 
 /**
  * Batas maksimum karakter aturan yang disuntikkan ke context window (~3.000 token).
@@ -82,6 +85,8 @@ export function discoverRules(options = {}) {
         if (!ent.isFile() || !ent.name.endsWith('.md')) continue;
         const filePath = path.join(globalRulesDir, ent.name);
         try {
+          const stat = fs.lstatSync(filePath);
+          if (!stat.isFile() || stat.size > MAX_RULE_BYTES) continue;
           const raw = fs.readFileSync(filePath, 'utf8');
           const { metadata, content } = parseRuleContent(raw, filePath);
           const name = metadata.name || path.basename(ent.name, '.md');
@@ -107,6 +112,10 @@ export function discoverRules(options = {}) {
         if (!ent.isFile() || !ent.name.endsWith('.md')) continue;
         const filePath = path.join(projectRulesDir, ent.name);
         try {
+          const stat = fs.lstatSync(filePath);
+          if (!stat.isFile() || stat.size > MAX_RULE_BYTES) continue;
+          const realFile = fs.realpathSync(filePath);
+          if (!isSubPath(fs.realpathSync(projectRulesDir), realFile)) continue;
           const raw = fs.readFileSync(filePath, 'utf8');
           const { metadata, content } = parseRuleContent(raw, filePath);
           const name = metadata.name || path.basename(ent.name, '.md');
@@ -127,23 +136,28 @@ export function discoverRules(options = {}) {
   const rootCandidates = ['BAIWORS.md', 'baiwors.md', 'RULES.md', 'rules.md'];
   for (const candidate of rootCandidates) {
     const candidatePath = path.join(cwd, candidate);
-    if (fs.existsSync(candidatePath)) {
-      try {
-        const raw = fs.readFileSync(candidatePath, 'utf8');
-        const { metadata, content } = parseRuleContent(raw, candidatePath);
-        const name = 'root-' + candidate.toLowerCase().replace(/\.md$/, '');
-        // Prioritas tertinggi untuk file root instruksi
-        rules.set(name, {
-          name,
-          title: metadata.title || candidate,
-          path: candidatePath,
-          scope: 'project',
-          content,
-          metadata,
-        });
-      } catch {}
-      break; // Ambil file root pertama yang cocok agar tidak menduplikasi
-    }
+    if (!fs.existsSync(candidatePath)) continue;
+    try {
+      // Tolak symlink/hard escape: file aturan harus berkas biasa di dalam
+      // proyek, bukan tautan ke ~/.baiwor/config.json atau berkas lain.
+      const stat = fs.lstatSync(candidatePath);
+      if (!stat.isFile() || stat.size > MAX_RULE_BYTES) continue;
+      if (!isSubPath(fs.realpathSync(cwd), fs.realpathSync(candidatePath))) continue;
+
+      const raw = fs.readFileSync(candidatePath, 'utf8');
+      const { metadata, content } = parseRuleContent(raw, candidatePath);
+      const name = 'root-' + candidate.toLowerCase().replace(/\.md$/, '');
+      // Prioritas tertinggi untuk file root instruksi
+      rules.set(name, {
+        name,
+        title: metadata.title || candidate,
+        path: candidatePath,
+        scope: 'project',
+        content,
+        metadata,
+      });
+      break; // Ambil file root pertama yang valid agar tidak menduplikasi
+    } catch {}
   }
 
   return rules;

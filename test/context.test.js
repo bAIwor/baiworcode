@@ -288,8 +288,11 @@ describe('Context: Pemangkasan Sadar-Token', () => {
     const conv = buatPercakapan();
     const result = conv.trimToTokenBudget(1);
     assert.equal(result.stillOverBudget, true);
-    assert.equal(conv.getMessages().length, 1);
-    assert.equal(conv.getMessages()[0].role, 'system');
+    const messages = conv.getMessages();
+    // Prompt user terakhir selalu dipertahankan agar request tidak hilang.
+    assert.equal(messages.length, 2);
+    assert.equal(messages[0].role, 'system');
+    assert.equal(messages[1].role, 'user');
   });
 
   it('harus menjamin anggaran terpenuhi setelah pemangkasan', () => {

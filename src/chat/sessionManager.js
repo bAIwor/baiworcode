@@ -7,6 +7,22 @@ import { estimateMessagesTokens } from './context.js';
 
 export const SESSIONS_DIR_NAME = 'sessions';
 
+const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
+
+/**
+ * Memvalidasi ID sesi sebelum dipakai sebagai nama berkas.
+ * ID yang tidak valid (mis. mengandung `..`, separator path, atau karakter
+ * aneh) ditolak agar tidak bisa menulis ke luar direktori sesi.
+ *
+ * @param {string} raw
+ * @returns {string|null}
+ */
+export function sanitizeSessionId(raw) {
+  if (typeof raw !== 'string') return null;
+  const id = raw.trim().replace(/\.(jsonl?)$/i, '');
+  return SESSION_ID_RE.test(id) ? id : null;
+}
+
 /**
  * Menghasilkan slug dan hash unik untuk suatu direktori proyek.
  * Path dinormalisasi (lowercase di Windows) agar perbedaan case tidak membuat hash ganda.
@@ -53,12 +69,12 @@ export function getProjectSessionDir(projectPath = process.cwd(), baseConfigDir 
   const projectKey = getProjectKey(projectPath);
   const dir = path.join(baseConfigDir, SESSIONS_DIR_NAME, projectKey);
   if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-    try {
-      fs.chmodSync(dir, 0o700);
-    } catch {
-      // Best effort di Windows
-    }
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+  try {
+    fs.chmodSync(dir, 0o700);
+  } catch {
+    // Best effort di Windows
   }
   return dir;
 }
@@ -120,16 +136,24 @@ export function saveSession(sessionData, { projectPath = process.cwd(), baseConf
   if (!sessionData || !sessionData.id) {
     throw new Error('saveSession: data sesi tidak valid atau tidak memiliki id');
   }
+  const safeId = sanitizeSessionId(sessionData.id);
+  if (!safeId) {
+    throw new Error(`saveSession: ID sesi tidak valid: ${String(sessionData.id).slice(0, 80)}`);
+  }
 
   const dir = getProjectSessionDir(projectPath, baseConfigDir);
-  const filePath = path.join(dir, `${sessionData.id}.jsonl`);
-  const tmpPath = path.join(dir, `${sessionData.id}.jsonl.tmp`);
+  const filePath = path.join(dir, `${safeId}.jsonl`);
+  // Nama tmp unik agar dua proses yang menyimpan bersamaan tidak saling timpa.
+  const tmpPath = path.join(
+    dir,
+    `${safeId}.jsonl.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`
+  );
 
   const messages = Array.isArray(sessionData.messages) ? sessionData.messages : [];
   const now = new Date().toISOString();
 
   const payload = {
-    id: sessionData.id,
+    id: safeId,
     title: sessionData.title || deriveSessionTitle(messages),
     projectPath: path.resolve(projectPath),
     createdAt: sessionData.createdAt || now,
@@ -161,7 +185,7 @@ export function saveSession(sessionData, { projectPath = process.cwd(), baseConf
   }
   const fileContent = lines.join('\n') + '\n';
 
-  fs.writeFileSync(tmpPath, fileContent, 'utf8');
+  fs.writeFileSync(tmpPath, fileContent, { encoding: 'utf8', mode: 0o600 });
 
   try {
     fs.renameSync(tmpPath, filePath);
@@ -171,13 +195,17 @@ export function saveSession(sessionData, { projectPath = process.cwd(), baseConf
         fs.unlinkSync(filePath);
         fs.renameSync(tmpPath, filePath);
       } catch {
-        fs.writeFileSync(filePath, fileContent, 'utf8');
+        fs.writeFileSync(filePath, fileContent, { encoding: 'utf8', mode: 0o600 });
         try { fs.unlinkSync(tmpPath); } catch {}
       }
     } else {
+      try { fs.unlinkSync(tmpPath); } catch {}
       throw err;
     }
   }
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {}
 
   return payload;
 }
@@ -195,7 +223,8 @@ export function saveSession(sessionData, { projectPath = process.cwd(), baseConf
 export function appendSessionMessage(sessionId, message, { projectPath = process.cwd(), baseConfigDir = CONFIG_DIR } = {}) {
   if (!sessionId || !message) return false;
 
-  const safeId = path.basename(sessionId.replace(/\.(jsonl?)$/i, ''));
+  const safeId = sanitizeSessionId(sessionId);
+  if (!safeId) return false;
   const dir = getProjectSessionDir(projectPath, baseConfigDir);
   const filePath = path.join(dir, `${safeId}.jsonl`);
 
@@ -211,7 +240,10 @@ export function appendSessionMessage(sessionId, message, { projectPath = process
     timestamp: new Date().toISOString(),
   }) + '\n';
 
-  fs.appendFileSync(filePath, record, 'utf8');
+  fs.appendFileSync(filePath, record, { encoding: 'utf8', mode: 0o600 });
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {}
   return true;
 }
 
@@ -280,8 +312,9 @@ function parseSessionFile(filePath) {
 export function loadSession(sessionId, { projectPath = process.cwd(), baseConfigDir = CONFIG_DIR } = {}) {
   if (!sessionId || typeof sessionId !== 'string') return null;
 
-  // Cegah directory traversal
-  const safeId = path.basename(sessionId.replace(/\.(jsonl?)$/i, ''));
+  // Cegah directory traversal / karakter aneh.
+  const safeId = sanitizeSessionId(sessionId);
+  if (!safeId) return null;
   const dir = getProjectSessionDir(projectPath, baseConfigDir);
 
   const jsonlPath = path.join(dir, `${safeId}.jsonl`);
@@ -299,7 +332,7 @@ export function loadSession(sessionId, { projectPath = process.cwd(), baseConfig
   if (fs.existsSync(rootSessionsDir)) {
     try {
       const subdirs = fs.readdirSync(rootSessionsDir, { withFileTypes: true })
-        .filter((d) => d.isDirectory())
+        .filter((d) => d.isDirectory() && d.name !== 'snapshots')
         .map((d) => d.name);
 
       for (const sub of subdirs) {
@@ -328,7 +361,8 @@ export function loadSession(sessionId, { projectPath = process.cwd(), baseConfig
  */
 export function deleteSession(sessionId, { projectPath = process.cwd(), baseConfigDir = CONFIG_DIR } = {}) {
   if (!sessionId || typeof sessionId !== 'string') return false;
-  const safeId = path.basename(sessionId.replace(/\.(jsonl?)$/i, ''));
+  const safeId = sanitizeSessionId(sessionId);
+  if (!safeId) return false;
   const dir = getProjectSessionDir(projectPath, baseConfigDir);
 
   let deleted = false;
@@ -348,7 +382,7 @@ export function deleteSession(sessionId, { projectPath = process.cwd(), baseConf
     if (fs.existsSync(rootSessionsDir)) {
       try {
         const subdirs = fs.readdirSync(rootSessionsDir, { withFileTypes: true })
-          .filter((d) => d.isDirectory())
+          .filter((d) => d.isDirectory() && d.name !== 'snapshots')
           .map((d) => d.name);
 
         for (const sub of subdirs) {
@@ -387,7 +421,7 @@ export function deleteAllSessions({ projectPath = process.cwd(), baseConfigDir =
     if (fs.existsSync(rootSessionsDir)) {
       try {
         const subdirs = fs.readdirSync(rootSessionsDir, { withFileTypes: true })
-          .filter((d) => d.isDirectory())
+          .filter((d) => d.isDirectory() && d.name !== 'snapshots')
           .map((d) => d.name);
 
         for (const sub of subdirs) {
@@ -408,7 +442,9 @@ export function deleteAllSessions({ projectPath = process.cwd(), baseConfigDir =
   const dir = getProjectSessionDir(projectPath, baseConfigDir);
   if (!fs.existsSync(dir)) return 0;
 
-  const files = fs.readdirSync(dir).filter((f) => (f.endsWith('.json') || f.endsWith('.jsonl')) && !f.endsWith('.tmp'));
+  const files = fs.readdirSync(dir).filter(
+    (f) => (f.endsWith('.json') || f.endsWith('.jsonl')) && !f.endsWith('.tmp') && !f.startsWith('snapshot-')
+  );
   for (const file of files) {
     try {
       fs.unlinkSync(path.join(dir, file));
@@ -530,7 +566,7 @@ export function listAllProjectsSessions({ baseConfigDir = CONFIG_DIR, includeMes
   if (!fs.existsSync(rootSessionsDir)) return [];
 
   const subdirs = fs.readdirSync(rootSessionsDir, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
+    .filter((d) => d.isDirectory() && d.name !== 'snapshots')
     .map((d) => d.name);
 
   const sessionMap = new Map();

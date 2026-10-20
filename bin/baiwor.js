@@ -66,6 +66,9 @@ import { resolveActiveCredentials } from '../src/auth/resolve.js';
 import { applyHelpStyle, helpHeader, helpFooter } from '../src/cliHelp.js';
 import { runDoctor } from '../src/doctor.js';
 import { runUpdate } from '../src/update.js';
+import { handleWebSearch, handleWebFetch } from '../src/tools/webTool.js';
+import { sanitizeTerminalText } from '../src/chat/wrapText.js';
+import { clearBackgroundTasks } from '../src/tools/handlers.js';
 import { APP_NAME, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE, COMPANY } from '../src/branding.js';
 
 // Cegah sistem operasi langsung mematikan proses saat Ctrl+C sekali di terminal,
@@ -75,6 +78,7 @@ process.on('SIGINT', () => {
   const now = Date.now();
   if (now - lastGlobalSigint < 1000) {
     process.stdout.write(chalk.red('\n\n  Keluar paksa (SIGINT ganda).\n\n'));
+    clearBackgroundTasks();
     process.exit(130);
   }
   lastGlobalSigint = now;
@@ -121,6 +125,7 @@ process.stdin.on('keypress', (_str, key) => {
   }, 1500);
   if (panicCtrlCCount >= 3) {
     restoreTerminal();
+    clearBackgroundTasks();
     process.stdout.write(chalk.red('\n\n  Keluar paksa (Ctrl+C darurat 3x).\n\n'));
     process.exit(130);
   }
@@ -145,7 +150,27 @@ process.on('unhandledRejection', (reason) => {
 });
 process.on('exit', () => {
   restoreTerminal();
+  try {
+    // Jangan meninggalkan proses background (mis. dev server) setelah CLI keluar.
+    clearBackgroundTasks();
+  } catch {}
 });
+
+/**
+ * Menutup proses mode non-interaktif dengan exit code yang benar tanpa
+ * memotong output yang masih di-pipe. stdin di-pause agar listener keypress
+ * (yang dipasang saat modul dimuat) tidak menahan proses hidup di TTY.
+ */
+function finishNonInteractive(code) {
+  process.exitCode = code;
+  try {
+    process.stdin.pause();
+    if (typeof process.stdin.unref === 'function') process.stdin.unref();
+  } catch {}
+  try {
+    clearBackgroundTasks();
+  } catch {}
+}
 
 function stripAnsi(str) {
   return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
@@ -642,6 +667,9 @@ async function printStatus() {
 }
 
 function showExitMessage() {
+  try {
+    clearBackgroundTasks();
+  } catch {}
   console.log(chalk.hex('#F59E0B')('\n  Matur nuwun! Sampun nganggo bAIwor Code. 🙏'));
   console.log(chalk.gray('  🏢 Company           : ') + chalk.whiteBright(COMPANY));
   console.log(chalk.gray('  🌐 Website official  : ') + chalk.cyan(WEBSITE));
@@ -697,7 +725,7 @@ async function handleTinyFishCommand(arg = '') {
     }
     console.log(chalk.cyan(`\n  🔍 Mencari via TinyFish: "${rest}"...`));
     const res = await handleWebSearch({ query: rest });
-    console.log('\n' + res.output + '\n');
+    console.log('\n' + sanitizeTerminalText(res.output) + '\n');
     return;
   }
 
@@ -708,7 +736,7 @@ async function handleTinyFishCommand(arg = '') {
     }
     console.log(chalk.cyan(`\n  🌐 Mengambil halaman via TinyFish: "${rest}"...`));
     const res = await handleWebFetch({ url: rest });
-    console.log('\n' + res.output + '\n');
+    console.log('\n' + sanitizeTerminalText(res.output) + '\n');
     return;
   }
 
@@ -774,12 +802,13 @@ async function handleSandboxCommand(arg = '') {
     const started = Date.now();
     const res = await handleInstaboxExec({ command: rest });
     const dur = ((Date.now() - started) / 1000).toFixed(2);
+    const safeOutput = sanitizeTerminalText(res.output);
     if (res.success) {
       console.log(chalk.green(`\n  ✓ Selesai dalam ${dur}s:\n`));
-      console.log(chalk.white(res.output) + '\n');
+      console.log(chalk.white(safeOutput) + '\n');
     } else {
       console.log(chalk.red(`\n  ✗ Gagal (${dur}s):\n`));
-      console.log(chalk.yellow(res.output) + '\n');
+      console.log(chalk.yellow(safeOutput) + '\n');
     }
     return;
   }
@@ -806,10 +835,10 @@ async function handleSandboxCommand(arg = '') {
 
     if (pullRes.success) {
       console.log(chalk.green('  ✓ Kode di InstaBox berhasil disinkronkan ke commit terbaru!'));
-      console.log(chalk.dim(pullRes.output) + '\n');
+      console.log(chalk.dim(sanitizeTerminalText(pullRes.output)) + '\n');
     } else {
       console.log(chalk.red('  ✗ Gagal menyinkronkan kode di InstaBox:'));
-      console.log(chalk.yellow(pullRes.output) + '\n');
+      console.log(chalk.yellow(sanitizeTerminalText(pullRes.output)) + '\n');
     }
     return;
   }
@@ -916,7 +945,11 @@ async function handleMcpCommand(arg = '') {
       return;
     }
     for (const r of results) {
-      const badge = r.status === 'connected' ? chalk.green('● Terhubung') : chalk.red('✗ Gagal');
+      const badge = r.status === 'connected'
+        ? chalk.green('● Terhubung')
+        : r.status === 'skipped'
+          ? chalk.yellow('○ Dilewati')
+          : chalk.red('✗ Gagal');
       console.log(`    ${badge} ${chalk.bold(r.name)}: ${r.toolCount} tool ${r.error ? chalk.gray(`(${r.error})`) : ''}`);
     }
     console.log();
@@ -936,7 +969,7 @@ async function handleMcpCommand(arg = '') {
   for (const s of active) {
     console.log(`    ${chalk.green('●')} ${chalk.white.bold(s.name)} ${chalk.dim(`[${s.type}]`)} ─ ${chalk.cyan(`${s.tools.length} tool aktif`)}`);
     for (const t of s.tools) {
-      console.log(`       - ${chalk.yellow(t.name)}: ${chalk.dim(t.description || '')}`);
+      console.log(`       - ${chalk.yellow(t.name)}: ${chalk.dim(sanitizeTerminalText(t.description || '', { preserveNewlines: false }))}`);
     }
   }
   console.log(chalk.gray('\n  Gunakan /mcp refresh untuk memuat ulang koneksi server.\n'));
@@ -970,16 +1003,17 @@ async function startInteractive(opts = {}) {
   // Cegah sistem operasi langsung mematikan proses saat Ctrl+C ditekan di terminal
   process.on('SIGINT', () => {});
 
-  // Hubungkan server MCP di latar belakang
-  try {
-    await initAllMcpServers();
-  } catch {}
-
   if (!opts.skipBanner) {
     showBanner();
   }
 
   warnIfHomeDirectory();
+
+  // Hubungkan server MCP setelah banner: server dari konfigurasi proyek perlu
+  // persetujuan pengguna lebih dulu (lihat initAllMcpServers).
+  try {
+    await initAllMcpServers();
+  } catch {}
 
   while (true) {
     const config = getConfig();
@@ -1291,9 +1325,9 @@ async function startInteractive(opts = {}) {
             }
             console.log();
           } else if (target === 'all' || target === '--all') {
-            const count = deleteAllSessions({ allProjects: true });
+            const count = deleteAllSessions();
             if (count > 0) {
-              console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi dari semua workspace.\n`));
+              console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi proyek ini.\n`));
               conversationSession.reset();
             } else {
               console.log(chalk.yellow('\n  Tidak ada sesi yang perlu dihapus.\n'));
@@ -1310,9 +1344,9 @@ async function startInteractive(opts = {}) {
             }
           }
         } else if (action === 'clear') {
-          const count = deleteAllSessions({ allProjects: true });
+          const count = deleteAllSessions();
           if (count > 0) {
-            console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi dari semua workspace.\n`));
+            console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi proyek ini.\n`));
             conversationSession.reset();
           } else {
             console.log(chalk.yellow('\n  Tidak ada sesi yang perlu dibersihkan.\n'));
@@ -1551,7 +1585,7 @@ program
         showResumedBanner();
       }
       warnIfHomeDirectory();
-      await handleUserChat(fullPrompt);
+      const chatResult = await handleUserChat(fullPrompt);
       try {
         const config = getConfig();
         conversationSession.saveToDisk({
@@ -1559,7 +1593,9 @@ program
           provider: config?.activeProvider,
         });
       } catch {}
-      process.exit(0);
+      // Exit code yang benar agar bisa dipakai di skrip/CI.
+      finishNonInteractive(chatResult?.ok ? 0 : chatResult?.aborted ? 130 : 1);
+      return;
     }
 
     if (resumed) {
@@ -1581,7 +1617,9 @@ program
       console.log(chalk.gray('     Contoh : ') + chalk.green('baiworcode plan "buatkan sistem auth JWT"\n'));
       process.exit(0);
     }
-    await handleUserChat(buildPlanUserPrompt(prompt));
+    // Subcommand `plan` WAJIB benar-benar read-only: mode plan dikirim untuk
+    // giliran ini saja (tanpa menulis agentMode ke config).
+    const chatResult = await handleUserChat(buildPlanUserPrompt(prompt), { agentMode: 'plan' });
     try {
       const config = getConfig();
       conversationSession.saveToDisk({
@@ -1589,7 +1627,8 @@ program
         provider: config?.activeProvider,
       });
     } catch {}
-    process.exit(0);
+    finishNonInteractive(chatResult?.ok ? 0 : chatResult?.aborted ? 130 : 1);
+    return;
   });
 
 program
@@ -1768,9 +1807,15 @@ program
 program
   .command('update [target]')
   .description('Perbarui bAIwor Code ke versi terbaru dari GitHub (opsional: update sandbox)')
-  .action(async (target) => {
-    await runUpdate({ syncSandbox: target === 'sandbox' || target === 'all' });
-    process.exit(0);
+  .option('-y, --yes', 'Terapkan pembaruan tanpa konfirmasi (untuk skrip/CI)')
+  .action(async (target, options = {}) => {
+    const result = await runUpdate({
+      syncSandbox: target === 'sandbox' || target === 'all',
+      yes: Boolean(options.yes),
+    });
+    const isError = /^Non-git|not a git|Untrusted|failed|Gagal/i.test(result.message || '');
+    finishNonInteractive(isError ? 1 : 0);
+    return;
   });
 
 program
