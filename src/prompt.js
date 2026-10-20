@@ -209,6 +209,7 @@ export const COMMANDS = [
   { name: '/provider', desc: 'Alias untuk perintah /model' },
   { name: '/login', desc: 'Login ke Google Gemini OAuth' },
   { name: '/logout', desc: 'Logout dari sesi Google Gemini OAuth' },
+  { name: '/undo', desc: 'Batalkan seluruh perubahan berkas pada putaran (turn) terakhir' },
   { name: '/clear', desc: 'Bersihkan layar & reset riwayat percakapan' },
   { name: '/reset', desc: 'Reset konteks percakapan AI tanpa clear layar' },
   { name: '/exit', desc: 'Keluar dari bAIwor Code (alias: /q, /quit)' },

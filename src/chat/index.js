@@ -31,6 +31,7 @@ import {
   isToolBlockedInPlanMode,
   planModeBlockMessage,
 } from './planMode.js';
+import { beginTurnSnapshot, commitTurnSnapshot } from '../tools/snapshot.js';
 
 export { conversationSession };
 
@@ -132,6 +133,9 @@ export function resetConversation() {
 export async function handleUserChat(promptText, options = {}) {
   const query = (promptText || '').trim();
   if (!query) return { ok: true, aborted: false };
+
+  // Mulai snapshotting berkas untuk putaran ini (/undo support)
+  beginTurnSnapshot();
 
   // 0. Buang daftar tugas yang sudah tuntas (semua item completed/cancelled)
   // di awal giliran baru agar widget tidak terus menampilkan mis. "0/3".
@@ -611,14 +615,20 @@ export async function handleUserChat(promptText, options = {}) {
               })
             : undefined;
 
+          // Tool modifikasi berkas menyertakan visual diff berwarna
+          const isDiffTool = Boolean(toolResult.diff && toolResult.success);
+          const diffDetail = isDiffTool ? toolResult.diff : undefined;
+
           const event = {
             name: fnName,
             args: parsedArgs,
             durationMs,
             output: toolResult.output,
             success: toolResult.success,
-            detail: todoDetail || undefined,
-            extraMeta: todoDetail ? formatTodoProgress(todoItems) : undefined,
+            detail: todoDetail || diffDetail || undefined,
+            extraMeta: todoDetail
+              ? formatTodoProgress(todoItems)
+              : (toolResult.diffStats || undefined),
           };
           turnEvents.push(event);
           live.settleTool(liveIndex, event);
@@ -750,6 +760,7 @@ export async function handleUserChat(promptText, options = {}) {
     }
     return { ok: false, aborted: false };
   } finally {
+    commitTurnSnapshot();
     stopThinkingSpinner();
     live.stop();
     isStreamingActive = false;

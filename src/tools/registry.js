@@ -188,7 +188,9 @@ export async function dispatchTool(name, rawArgs, options = {}) {
     const res = await t.handler(args, options);
     const success = res && typeof res === 'object' && 'success' in res ? res.success : true;
     const rawOutput = res && typeof res === 'object' && 'output' in res ? res.output : String(res || '');
+    const extra = res && typeof res === 'object' ? res : {};
     return {
+      ...extra,
       success,
       output: capToolOutput(rawOutput, t.maxChars),
     };

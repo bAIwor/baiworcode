@@ -171,8 +171,8 @@ Berdasarkan tinjauan arsitektur dan status fase Alpha saat ini, berikut adalah d
 1. **Terminal Stateful / Pseudo-TTY (PTY) Runner**:
    - `run_command` saat ini dieksekusi menggunakan `child_process.exec` perintah tunggal tanpa menjaga status *stateful shell session* (misal: perintah `export VAR=...` atau `cd ...` tidak bertahan ke pemanggilan berikutnya). Diperlukan backend PTY (misal `node-pty`) untuk sesi terminal interaktif persisten.
 
-2. **Interactive Staging & Visual Diff Review**:
-   - Belum ada antarmuka TUI interaktif untuk meninjau *side-by-side diff* sebelum perubahan berkas via `write_file`, `edit_file`, atau `patch_file` diaplikasikan ke disk saat berada di Safe Mode.
+2. **Visual Diff Review & Staging Berwarna** (Sudah Diimplementasikan / Shipped):
+   - Modul `src/tools/diffView.js` menghasilkan *unified diff* berwarna (ANSI) dan ringkasan statistik (`+X -Y`) saat berkas ditulis atau diedit via `write_file`, `edit_file`, atau `patch_file`, ditampilkan secara langsung pada timeline aktivitas terminal.
 
 3. **Multi-Modal / Media Asset Ingestion**:
    - Belum ada kemampuan membaca dan menganalisis berkas biner/gambar (seperti screenshot UI, diagram arsitektur, atau aset visual) langsung dari prompt masukan terminal ke model vision-capable.
@@ -183,5 +183,5 @@ Berdasarkan tinjauan arsitektur dan status fase Alpha saat ini, berikut adalah d
 5. **Dukungan OAuth untuk Provider Tambahan**:
    - Modul `src/auth/` saat ini fokus mendukung alur Device Authorization Flow dan PKCE untuk ekosistem Agentik dan GitHub/Gemini. Provider lain (seperti Anthropic atau Azure OpenAI Service) masih bergantung penuh pada konfigurasi API key manual.
 
-6. **Snapshot Undo / Rollback Workspace**:
-   - Belum ada tool bawaan untuk melakukan *undo* atau *revert* instan atas seluruh perubahan berkas yang telah dilakukan agen dalam satu sesi jika pengguna tidak puas dengan hasilnya.
+6. **Snapshot Undo / Rollback Workspace (`/undo`)** (Sudah Diimplementasikan / Shipped):
+   - Modul `src/tools/snapshot.js` secara otomatis mencatat kondisi awal berkas sesaat sebelum dimodifikasi oleh tool pengubah berkas, dan perintah slash `/undo` mengembalikan berkas-berkas tersebut ke kondisi sebelum putaran terakhir (termasuk menghapus berkas baru yang sempat dibuat).

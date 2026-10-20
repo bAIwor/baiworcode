@@ -54,6 +54,7 @@ import { listSessions, listAllProjectsSessions, deleteSession, deleteAllSessions
 import { discoverSkills, getSkill } from '../src/skills/skillManager.js';
 import { discoverRules } from '../src/rules/ruleManager.js';
 import { resetTodoStore } from '../src/tools/todoTool.js';
+import { undoLastTurn } from '../src/tools/snapshot.js';
 import { isHomeDirectory } from '../src/tools/searchTool.js';
 import {
   resolveWorkspace,
@@ -1476,6 +1477,19 @@ async function startInteractive(opts = {}) {
       case '/logout':
         await logout(arg || undefined);
         break;
+      case '/undo': {
+        const res = undoLastTurn();
+        if (!res.success) {
+          console.log(chalk.yellow(`\n  ℹ️  ${res.message}\n`));
+        } else {
+          console.log(chalk.green.bold(`\n  ↩️  Rollback Berhasil (${res.restoredCount} berkas):`));
+          for (const f of res.files) {
+            console.log(chalk.gray(`     • ${f}`));
+          }
+          console.log(chalk.gray('     Seluruh perubahan pada putaran terakhir telah dikembalikan.\n'));
+        }
+        break;
+      }
       case '/reset':
         resetConversation();
         break;

@@ -27,6 +27,18 @@ import {
   getInstaboxStatus,
   controlInstabox,
 } from './instaboxTool.js';
+import { generateVisualDiff } from './diffView.js';
+import {
+  beginTurnSnapshot,
+  commitTurnSnapshot,
+  recordFileBeforeChange,
+  undoLastTurn,
+  redoLastTurn,
+  canUndo,
+  canRedo,
+  clearSnapshots,
+  getSnapshotHistory,
+} from './snapshot.js';
 import {
   registerTool,
   unregisterTool,
@@ -117,4 +129,14 @@ export {
   handleInstaboxExec,
   getInstaboxStatus,
   controlInstabox,
+  generateVisualDiff,
+  beginTurnSnapshot,
+  commitTurnSnapshot,
+  recordFileBeforeChange,
+  undoLastTurn,
+  redoLastTurn,
+  canUndo,
+  canRedo,
+  clearSnapshots,
+  getSnapshotHistory,
 };

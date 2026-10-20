@@ -166,7 +166,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Loop agentic hingga 100 putaran: model bisa memanggil tool, membaca hasilnya, lalu melanjutkan sendiri.
   - **Selalu berakhir dengan jawaban**: bila batas putaran tercapai — atau terdeteksi model mengulang rangkaian tool yang sama tiga kali — bAIwor otomatis meminta satu giliran kesimpulan **tanpa tool**, jadi pekerjaan tidak berhenti tanpa keputusan.
 - **🛠️ 15 Tool Bawaan** — bAIwor tidak hanya menjawab, tapi benar-benar mengerjakan:
-  - `read_file`, `write_file`, `edit_file`, `patch_file`, `list_directory` — baca, tulis, dan sunting berkas proyek.
+  - `read_file`, `write_file`, `edit_file`, `patch_file`, `list_directory` — baca, tulis, dan sunting berkas proyek. Dilengkapi **Visual Diff Review berwarna** di timeline aktivitas dan **Snapshot Rollback instan (`/undo`)** untuk membatalkan seluruh perubahan putaran terakhir secara aman.
   - `edit_file` **tahan banting** — pencocokannya toleran terhadap perbedaan indentasi, spasi ujung baris, dan CRLF/LF, jadi refactor tidak gagal hanya karena spasi. Ada `replace_all` untuk mengganti semua kemunculan, dan `edits` untuk banyak perubahan sekaligus secara **atomik** (semua berhasil atau tidak ada yang ditulis).
   - `patch_file` — menerapkan unified diff (format `git diff`); blok konteksnya dicari ulang sehingga patch tetap kena walau nomor baris bergeser.
   - `search_files` — cari fungsi/teks di seluruh proyek tanpa membuka berkas satu per satu, dengan pengaman anti-ReDoS agar pola berat tidak membuat proses menggantung.
@@ -207,6 +207,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `/provider [target]` — Alias untuk perintah `/model`
 - `/login` — Login ke provider OAuth (Google Gemini)
 - `/logout` — Logout dari sesi provider OAuth
+- `/undo` — Batalkan seluruh perubahan berkas pada putaran (turn) terakhir secara aman tanpa merusak riwayat Git
 - `/clear` — Bersihkan layar & reset riwayat percakapan
 - `/reset` — Reset konteks percakapan tanpa membersihkan layar
 - `/exit` — Keluar dari bAIwor Code (alias: `/q`, `/quit`)

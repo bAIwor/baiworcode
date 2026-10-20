@@ -18,6 +18,8 @@ import {
 import { requestCommandApproval } from './approval.js';
 import { getAccessMode, getConfig } from '../config.js';
 import { applyEdit, applyEditList, applyUnifiedDiff } from './editUtil.js';
+import { recordFileBeforeChange } from './snapshot.js';
+import { generateVisualDiff } from './diffView.js';
 
 // Helper path tetap diekspor dari modul ini agar kontrak lama tidak berubah.
 export { isSubPath, isSensitivePath };
@@ -221,6 +223,9 @@ export async function handleWriteFile({ file_path, content }) {
     };
   }
 
+  const oldText = fs.existsSync(resolved) ? fs.readFileSync(resolved, 'utf8') : '';
+  recordFileBeforeChange(resolved);
+
   const dir = path.dirname(resolved);
 
   if (!fs.existsSync(dir)) {
@@ -230,10 +235,13 @@ export async function handleWriteFile({ file_path, content }) {
   fs.writeFileSync(resolved, content || '', 'utf8');
   const normalized = (content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const linesCount = !normalized ? 0 : normalized.endsWith('\n') ? normalized.slice(0, -1).split('\n').length : normalized.split('\n').length;
+  const diffResult = generateVisualDiff(oldText, content || '', { filePath: file_path });
 
   return {
     success: true,
     output: `Berhasil menulis berkas: ${file_path} (${linesCount} baris)`,
+    diff: diffResult.hasChanges ? diffResult.coloredDiff : undefined,
+    diffStats: diffResult.hasChanges ? diffResult.diffStats : undefined,
   };
 }
 
@@ -300,10 +308,14 @@ export async function handleEditFile({
         output: `Error pada edit ke-${res.index + 1}: ${describeEditFailure(res.reason, file_path, res.count, res.lines)}`,
       };
     }
+    recordFileBeforeChange(resolved);
     fs.writeFileSync(resolved, res.text, 'utf8');
+    const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
     return {
       success: true,
       output: `Berhasil menerapkan ${edits.length} edit pada ${file_path} (${res.count} penggantian).`,
+      diff: diffResult.hasChanges ? diffResult.coloredDiff : undefined,
+      diffStats: diffResult.hasChanges ? diffResult.diffStats : undefined,
     };
   }
 
@@ -321,10 +333,17 @@ export async function handleEditFile({
     return { success: false, output: describeEditFailure(res.reason, file_path, res.count, res.lines) };
   }
 
+  recordFileBeforeChange(resolved);
   fs.writeFileSync(resolved, res.text, 'utf8');
   const countNote = res.count > 1 ? ` — ${res.count} kemunculan diganti` : '';
   const fuzzyNote = res.strategy === 'exact' ? '' : ' (dicocokkan toleran spasi/indentasi)';
-  return { success: true, output: `Berhasil mengedit berkas ${file_path}${countNote}${fuzzyNote}.` };
+  const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
+  return {
+    success: true,
+    output: `Berhasil mengedit berkas ${file_path}${countNote}${fuzzyNote}.`,
+    diff: diffResult.hasChanges ? diffResult.coloredDiff : undefined,
+    diffStats: diffResult.hasChanges ? diffResult.diffStats : undefined,
+  };
 }
 
 /**
@@ -366,10 +385,14 @@ export async function handlePatchFile({ file_path, patch }) {
     };
   }
 
+  recordFileBeforeChange(resolved);
   fs.writeFileSync(resolved, res.text, 'utf8');
+  const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
   return {
     success: true,
     output: `Berhasil menerapkan patch (${res.applied} hunk) pada ${file_path}.`,
+    diff: diffResult.hasChanges ? diffResult.coloredDiff : undefined,
+    diffStats: diffResult.hasChanges ? diffResult.diffStats : undefined,
   };
 }
 
