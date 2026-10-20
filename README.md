@@ -198,6 +198,25 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - **Dependencies**: `blocks`/`blockedBy` untuk urutan eksekusi — task hanya bisa dijalankan jika semua blocker sudah completed.
   - Persistence otomatis ke `.baiwor/goals.json` (project) atau `~/.baiwor/goals.json` (global).
   - API lengkap: `createGoal`, `getGoal`, `updateGoalStatus`, `createTask`, `getTask`, `updateTask`, `addDependency`, `getAvailableTasks`.
+- **🔒 Security Scanning Integration**:
+  - **Secret Detection**: Scan hardcoded secrets (API keys, passwords, tokens) di berkas kode dengan pattern matching. Mendeteksi AWS keys, GitHub tokens, JWT, private keys, dan generic secrets.
+  - **Dependency Audit**: Wrapper untuk `npm audit` dan `pip-audit` untuk mendeteksi vulnerable dependencies dengan severity levels (critical, high, medium, low).
+  - **Auto-redaction**: Secret value otomatis di-redact di laporan (tampilkan hanya 4 karakter pertama).
+  - **Skip patterns**: Otomatis skip `node_modules`, `.git`, binary files, dan lock files.
+  - Laporan human-readable dengan rekomendasi perbaikan.
+- **⏰ Cron/Scheduled Tasks**:
+  - Jadwalkan prompt/perintah untuk dijalankan secara berkala (cron expression) atau one-shot.
+  - **Cron expression parser**: 5-field format (minute hour day month weekday) dengan support untuk wildcards (`*`), step values (`*/5`), ranges (`9-17`), dan lists (`0,15,30,45`).
+  - **Recurring tasks**: Task berulang sesuai cron schedule.
+  - **One-shot tasks**: Task sekali jalan pada waktu tertentu (ScheduleWakeup).
+  - **Background scheduler**: Berjalan di background dan trigger task saat waktunya tiba.
+  - Persistence ke `~/.baiwor/cron-tasks.json`.
+- **🤖 Custom Agent Creator**:
+  - Buat custom agents dengan konfigurasi spesifik: system prompt kustom, tool access yang dibatasi, model/temperature/max_tokens override.
+  - **Default agents**: Punakawan Squad (pAItruk 🔭, gAIreng ⚖️, bAIwor 🔨) sudah predefined.
+  - **Custom agents**: Disimpan di `.baiwor/agents/*.json` dan bisa dipanggil via `delegate_task`.
+  - **Tool filtering**: Otomatis filter tool definitions berdasarkan `allowedTools` agent.
+  - API: `createAgent`, `updateAgent`, `deleteAgent`, `getAgent`, `listAgents`, `filterToolsForAgent`.
 - **🔒 Keamanan Berlapis**:
   - **Sandbox workspace** — akses berkas dibatasi pada folder proyek; area kredensial seperti `.ssh` dan `~/.baiwor` selalu ditolak.
   - **Approval Gate (Y/n)** — perintah berisiko seperti `git push`, `npm publish`, atau penghapusan rekursif akan meminta konfirmasi lebih dulu, dengan default **Tidak**.
