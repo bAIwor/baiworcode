@@ -166,6 +166,7 @@ Alur kerja agen dari pengetikan input hingga pemanggilan tool berlangsung dalam 
    • **Security Scanning** (src/security/): Integrated security scanning dengan secret detection (src/security/secretDetector.js) untuk hardcoded secrets dan dependency audit (src/security/dependencyAuditor.js) untuk vulnerable packages. Main entry point: src/security/scanner.js.
    • **Cron/Scheduled Tasks** (src/cron/cronManager.js): Recurring task scheduler dengan cron expression parser (5-field format). Support untuk recurring tasks dan one-shot ScheduleWakeup. Background scheduler trigger task saat waktunya tiba. Persistence ke ~/.baiwor/cron-tasks.json.
    • **Custom Agent Creator** (src/agents/agentCreator.js): Buat custom agents dengan system prompt kustom, tool access yang dibatasi, dan model overrides. Default agents: Punakawan Squad (pAItruk, gAIreng, bAIwor). Custom agents disimpan di .baiwor/agents/*.json. API: createAgent, updateAgent, deleteAgent, filterToolsForAgent.
+   • **Messaging Platforms** (src/platforms/): Multi-platform messaging integration untuk Telegram Bot (src/platforms/telegramBot.js) dan WhatsApp Baileys (src/platforms/whatsappBaileys.js). PlatformManager (src/platforms/platformManager.js) sebagai abstraction layer dengan event-driven message routing. Requires: node-telegram-bot-api, @whiskeysockets/baileys.
    • Jika berulang atau mencapai batas: Kirim WRAPUP_INSTRUCTION tanpa definisi tool agar LLM menyimpulkan pekerjaan.
    • Jika normal: Ulangi langkah 4 dengan riwayat pesan yang telah diperbarui.
 ```

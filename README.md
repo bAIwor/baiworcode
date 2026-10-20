@@ -217,6 +217,13 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - **Custom agents**: Disimpan di `.baiwor/agents/*.json` dan bisa dipanggil via `delegate_task`.
   - **Tool filtering**: Otomatis filter tool definitions berdasarkan `allowedTools` agent.
   - API: `createAgent`, `updateAgent`, `deleteAgent`, `getAgent`, `listAgents`, `filterToolsForAgent`.
+- **💬 Messaging Platforms (Telegram & WhatsApp)**:
+  - Akses bAIwor Code dari Telegram Bot atau WhatsApp (Baileys) dengan unified API.
+  - **Telegram Bot**: Integrasi dengan `node-telegram-bot-api`, long polling, Markdown formatting, typing indicator.
+  - **WhatsApp Baileys**: Integrasi dengan `@whiskeysockets/baileys`, QR code authentication, session persistence, auto-reconnect.
+  - **PlatformManager**: Abstraction layer untuk multi-platform dengan event-driven message routing.
+  - Commands: `/platform start telegram|whatsapp`, `/platform stop`, `/platform status`.
+  - Requirements: `npm install node-telegram-bot-api @whiskeysockets/baileys`
 - **🔒 Keamanan Berlapis**:
   - **Sandbox workspace** — akses berkas dibatasi pada folder proyek; area kredensial seperti `.ssh` dan `~/.baiwor` selalu ditolak.
   - **Approval Gate (Y/n)** — perintah berisiko seperti `git push`, `npm publish`, atau penghapusan rekursif akan meminta konfirmasi lebih dulu, dengan default **Tidak**.
