@@ -1,6 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+/** Direktori modul skillManager.js (dipakai untuk menemukan skill bawaan). */
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Parsing sederhana frontmatter YAML dan markdown tanpa dependensi library eksternal berat.
@@ -100,10 +104,13 @@ export function discoverSkills(options = {}) {
     }
   };
 
-  // 1. Scan global skills (~/.baiwor/skills/)
+  // 1. Scan skill bawaan (shipped dengan bAIwor Code) — prioritas terendah.
+  scanDir(path.join(MODULE_DIR, 'bundled'), 'builtin');
+
+  // 2. Scan global skills (~/.baiwor/skills/) — menimpa builtin bila duplikasi nama
   scanDir(path.join(homeDir, '.baiwor', 'skills'), 'global');
 
-  // 2. Scan project skills (.baiwor/skills/), menimpa global bila ada duplikasi nama
+  // 3. Scan project skills (.baiwor/skills/) — menimpa global bila duplikasi nama
   scanDir(path.join(cwd, '.baiwor', 'skills'), 'project');
 
   return skills;

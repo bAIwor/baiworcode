@@ -191,7 +191,10 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `/session [list|resume|delete|clear]` — Kelola sesi percakapan proyek (daftar sesi, lanjutkan, hapus satu, atau hapus semua)
 - `/cd <folder>` — Pindah folder kerja (workspace) aktif secara langsung di dalam sesi
 - `/workspace [folder]` — Lihat status ruang kerja aktif atau ganti folder kerja
-- `/skill [list|info]` — Kelola modul keahlian & plugin (`.baiwor/skills`)
+- `/sandbox [status|exec|sync|open|screenshot|pause|resume|key]` — Kelola MicroVM Cloud Sandbox Linux InstaBox
+- `/update [sandbox]` — Perbarui bAIwor Code ke versi terbaru dari GitHub (opsional: sinkronkan ke InstaBox)
+- `/doctor` — Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox cloud
+- `/skill [list|info]` — Kelola modul keahlian & plugin (`.baiwor/skills` dan bawaan)
 - `/rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
 - `/status` — Status konfigurasi, provider aktif, **latency**, dan sesi login
 - `/tinyfish [status|search|fetch|key]` — Kelola integrasi TinyFish Web Intelligence
@@ -212,6 +215,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `baiworcode session [list|resume|delete|clear]` — Kelola riwayat sesi proyek (lihat, lanjutkan, hapus satu, atau hapus semua)
 - `baiworcode skill [action] [target]` — Kelola modul keahlian & plugin (`.baiwor/skills`)
 - `baiworcode rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
+- `baiworcode doctor` — Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox cloud
+- `baiworcode update [sandbox]` — Perbarui bAIwor Code ke versi terbaru dari GitHub
 - `baiworcode status` — Status konfigurasi dan sesi login
 - `baiworcode mcp` — Jalankan bAIwor Code sebagai MCP Server (stdio) untuk berbagai klien MCP eksternal
 - `baiworcode model [target]` — Tanpa argumen: menu kelola model/provider. Dengan argumen: switch langsung (`baiworcode model step`, `baiworcode model stepfun/step-5-preview`, `baiworcode model alias add ...`)

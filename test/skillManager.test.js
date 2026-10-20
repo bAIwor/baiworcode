@@ -127,6 +127,44 @@ Global old instruction`,
       assert.equal(docker.version, '1.2.0');
       assert.ok(docker.instructions.includes('multi-stage build'));
     });
+
+    it('harus menemukan skill bawaan (builtin) dengan scope "builtin"', () => {
+      const skills = discoverSkills({
+        cwd: path.join(tmpDir, 'project'),
+        homeDir: path.join(tmpDir, 'global'),
+      });
+      assert.equal(skills.has('instabox'), true, 'skill builtin instabox harus tersedia');
+      const ib = skills.get('instabox');
+      assert.equal(ib.scope, 'builtin');
+      assert.ok(ib.description.length > 0);
+    });
+
+    it('skill proyek menimpa builtin jika nama sama', () => {
+      // Buat skill proyek dengan nama 'instabox' (override builtin)
+      const overridePath = path.join(projectSkillsDir, 'instabox');
+      fs.mkdirSync(overridePath, { recursive: true });
+      fs.writeFileSync(
+        path.join(overridePath, 'SKILL.md'),
+        `---
+name: instabox
+description: Override proyek
+version: 9.9.9
+---
+Override instructions`,
+        'utf8'
+      );
+
+      const skills = discoverSkills({
+        cwd: path.join(tmpDir, 'project'),
+        homeDir: path.join(tmpDir, 'global'),
+      });
+      const ib = skills.get('instabox');
+      assert.equal(ib.scope, 'project');
+      assert.equal(ib.version, '9.9.9');
+
+      // bersihkan
+      fs.rmSync(overridePath, { recursive: true, force: true });
+    });
   });
 
   describe('getSkill & formatSkillsPrompt', () => {

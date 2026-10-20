@@ -39,6 +39,24 @@ describe('Sandbox A5: penjaga perintah terminal', () => {
     }
   });
 
+  it('menolak escape bergaya Windows di host mana pun (konsistensi lintas platform)', () => {
+    // Regresi: di host POSIX (Linux/macOS), backslash bukan separator path,
+    // sehingga `C:\...` dan `..\..\x` terlihat seperti path relatif biasa
+    // yang berada DI DALAM workspace — guard jadi gagal-terbuka (fail-open).
+    // Guard harus menilai ulang path bergaya Windows dengan semantik win32.
+    for (const cmd of [
+      'type C:\\Users\\someone\\secret.txt',
+      'type ..\\..\\secret.txt',
+      'copy ..\\rahasia.txt .',
+      'cat ../../etc/passwd',
+      'git -C .. status',
+    ]) {
+      const v = analyzeCommand(cmd, { workspace: WORKSPACE });
+      assert.equal(v.allowed, false, `seharusnya ditolak: ${cmd}`);
+      assert.equal(v.category, 'workspace-escape');
+    }
+  });
+
   it('tetap mengizinkan path relatif yang tidak keluar workspace', () => {
     for (const cmd of ['ls src/../lib', 'node src/../bin/baiwor.js --help', 'git diff HEAD~1..HEAD']) {
       const v = analyzeCommand(cmd, { workspace: WORKSPACE });

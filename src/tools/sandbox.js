@@ -48,6 +48,14 @@ const SYSTEM_ALLOWED_PREFIXES =
     : ['/usr', '/bin', '/sbin', '/lib', '/lib64', '/opt', '/snap'];
 
 /**
+ * Prefix lokasi sistem versi Windows.
+ *
+ * Dipakai saat mengevaluasi ulang path bergaya Windows di host non-Windows,
+ * supaya `C:\Windows\System32\...` tidak ikut dianggap "keluar workspace".
+ */
+const WIN32_SYSTEM_PREFIXES = ['c:\\windows', 'c:\\program files', 'c:\\program files (x86)'];
+
+/**
  * Pola perintah yang bersifat merusak dan tidak pernah wajar untuk agent coding.
  *
  * Setiap aturan punya `id` stabil. Id ini dipakai oleh mekanisme override sadar
@@ -147,6 +155,78 @@ export function isPathAllowed(targetPath, workspace = process.cwd()) {
 
   const lower = resolved.toLowerCase();
   return SYSTEM_ALLOWED_PREFIXES.some((prefix) => lower === prefix || lower.startsWith(prefix));
+}
+
+/**
+ * Apakah token/path ini terlihat seperti path gaya Windows?
+ *
+ * Latar belakang: di host POSIX, `C:\Users\me\secret.txt` dan `..\..\secret.txt`
+ * diperlakukan sebagai SATU nama berkas biasa (backslash bukan separator).
+ * Akibatnya `path.resolve()` menaruh keduanya DI DALAM workspace dan guard
+ * gagal terbuka (fail-open) — akses di luar workspace lolos tanpa ditolak.
+ *
+ * Deteksi ini membuat guard mengevaluasi ulang path bergaya Windows dengan
+ * semantik `path.win32`, apa pun host yang dipakai. Di Windows (native ==
+ * win32) hasilnya identik dengan sebelumnya, jadi tidak ada perubahan perilaku.
+ *
+ * @param {string} token
+ * @returns {boolean}
+ */
+function looksLikeWindowsPath(token) {
+  if (!token) return false;
+  return /\\/.test(token) || /^[a-zA-Z]:/.test(token);
+}
+
+/**
+ * Apakah kandidat path keluar dari workspace menurut semantik path tertentu?
+ *
+ * Kandidat absolut dipakai apa adanya; kandidat relatif di-resolve relatif
+ * terhadap workspace (bukan terhadap cwd), supaya hasilnya konsisten dengan
+ * tempat perintah dijalankan.
+ *
+ * @param {string} candidate
+ * @param {string} workspace
+ * @param {typeof path} impl - `path` (native) atau `path.win32`
+ * @returns {boolean}
+ */
+function escapesWorkspaceBy(candidate, workspace, impl = path) {
+  const root = impl.resolve(workspace);
+  const target = impl.isAbsolute(candidate) ? impl.resolve(candidate) : impl.resolve(root, candidate);
+  const rel = impl.relative(root, target);
+  if (rel === '') return false;
+  if (impl.isAbsolute(rel)) return true; // root atau drive berbeda
+  return rel === '..' || rel.startsWith('..' + impl.sep);
+}
+
+/**
+ * Apakah kandidat path harus dianggap berada di luar workspace?
+ *
+ * Memakai aturan bawaan (workspace, tmp, lokasi sistem) lalu, sebagai jaring
+ * pengaman kedua, mengevaluasi ulang path bergaya Windows dengan semantik
+ * `path.win32`. Tanpa jaring ini guard gagal-terbuka di host POSIX.
+ *
+ * Evaluasi ulang HANYA dijalankan bila path native-nya terlihat "di dalam
+ * workspace" — di situlah celah fail-open berada. Path tmp/sistem yang sudah
+ * diizinkan aturan bawaan tidak perlu dihitung ulang.
+ *
+ * @param {string} candidate
+ * @param {string} workspace
+ * @returns {boolean}
+ */
+function isOutsideWorkspace(candidate, workspace) {
+  if (!isPathAllowed(candidate, workspace)) return true;
+
+  const resolvedNative = path.resolve(candidate);
+  if (!isSubPath(workspace, resolvedNative)) return false;
+  if (!looksLikeWindowsPath(candidate)) return false;
+
+  const lower = path.win32.resolve(candidate).toLowerCase();
+  const isSystem = WIN32_SYSTEM_PREFIXES.some(
+    (prefix) => lower === prefix || lower.startsWith(prefix)
+  );
+  if (isSystem) return false;
+
+  return escapesWorkspaceBy(candidate, workspace, path.win32);
 }
 
 /**
@@ -309,6 +389,13 @@ function findEscapingRelativePath(command, workspace) {
     if (token !== '..' && !/\.\.[\\/]/.test(token)) continue;
     if (path.isAbsolute(token)) continue;
     if (!isSubPath(workspace, path.resolve(workspace, token))) return token;
+
+    // Fail-open guard: di host POSIX, `..\..\secret.txt` terbaca sebagai satu
+    // nama berkas (backslash bukan separator) sehingga tidak tertangkap di
+    // atas. Ulangi dengan semantik Windows agar konsisten lintas platform.
+    if (looksLikeWindowsPath(token) && escapesWorkspaceBy(token, workspace, path.win32)) {
+      return token;
+    }
   }
   return null;
 }
@@ -459,7 +546,7 @@ export function analyzeCommand(command, options = {}) {
 
   // 5. Path absolut di luar workspace / tmp / sistem
   for (const candidate of extractAbsolutePaths(raw)) {
-    if (!isPathAllowed(candidate, workspace)) {
+    if (isOutsideWorkspace(candidate, workspace)) {
       return deny(
         'workspace-escape',
         `Perintah mengakses '${candidate}' yang berada di luar workspace (${workspace}). Gunakan path relatif di dalam workspace.`

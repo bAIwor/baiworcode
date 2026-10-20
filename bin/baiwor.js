@@ -1342,7 +1342,7 @@ async function startInteractive(opts = {}) {
           } else {
             console.log(chalk.hex('#FBBF24').bold('\n  🧩 Keahlian & Plugin bAIwor Code (.baiwor/skills):'));
             for (const [name, s] of skills.entries()) {
-              const scopeBadge = s.scope === 'project' ? chalk.green('[proyek]') : chalk.cyan('[global]');
+              const scopeBadge = s.scope === 'project' ? chalk.green('[proyek]') : s.scope === 'builtin' ? chalk.yellow('[bawaan]') : chalk.cyan('[global]');
               console.log(`    ${chalk.white.bold(name)} ${scopeBadge} ${chalk.gray(`v${s.version || '1.0.0'}`)}`);
               console.log(`      ${chalk.dim(s.description)}`);
             }
@@ -1694,7 +1694,7 @@ program
       } else {
         console.log(chalk.hex('#FBBF24').bold('\n  🧩 Keahlian & Plugin bAIwor Code (.baiwor/skills):'));
         for (const [name, s] of skills.entries()) {
-          const scopeBadge = s.scope === 'project' ? chalk.green('[proyek]') : chalk.cyan('[global]');
+          const scopeBadge = s.scope === 'project' ? chalk.green('[proyek]') : s.scope === 'builtin' ? chalk.yellow('[bawaan]') : chalk.cyan('[global]');
           console.log(`    ${chalk.white.bold(name)} ${scopeBadge} ${chalk.gray(`v${s.version || '1.0.0'}`)}`);
           console.log(`      ${chalk.dim(s.description)}`);
         }

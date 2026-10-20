@@ -44,7 +44,10 @@ baiworcode/
     ├── rules/
     │   └── ruleManager.js          # Pemuat aturan proyek custom (BAIWORS.md dan .baiwor/rules/*.md)
     ├── skills/
-    │   └── skillManager.js         # Pemuat skill modular (.baiwor/skills/*.md)
+    │   ├── bundled/                # Modul skill bawaan yang dikirim bersama paket (scope 'builtin')
+    │   │   └── instabox/
+    │   │       └── SKILL.md        # Panduan InstaBox Cloud Sandbox bawaan
+    │   └── skillManager.js         # Pemuat skill modular (.baiwor/skills/*.md + bundled/)
     ├── tools/
     │   ├── approval.js             # Dialog interaktif konfirmasi pengguna untuk perintah berisiko
     │   ├── definitions.js          # Skema JSON Schema OpenAI function-calling untuk seluruh tools
@@ -52,6 +55,7 @@ baiworcode/
     │   ├── editUtil.js             # Engine manipulasi teks: EOL normalizer, search-replace, multi-edit, diff patcher
     │   ├── handlers.js             # Handler eksekusi berkas & terminal (read, write, edit, patch, list, run)
     │   ├── index.js                # Indeks tools, registrasi bawaan, dan dispatching
+    │   ├── instaboxTool.js         # Handler tool instabox_exec & kontrol MicroVM cloud InstaBox
     │   ├── questionnaireTool.js    # Handler tool ask_user untuk pertanyaan interaktif pilihan ganda
     │   ├── registry.js             # Registri tool internal, pembatasan output (capToolOutput), dan pengelompokan toolset
     │   ├── sandbox.js              # Analisis keamanan perintah shell, path containment, dan pencegah perintah berbahaya
