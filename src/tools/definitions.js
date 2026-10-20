@@ -345,29 +345,48 @@ export const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'delegate_task',
-      description: 'Mendelegasikan investigasi atau verifikasi ke subagent Punakawan terisolasi (pAItruk untuk eksplorasi/pencarian read-only, gAIreng untuk audit/uji/lint). Subagent berjalan di loop konteks terpisah dan hanya mengembalikan laporan sintesis sehingga konteks utama tetap bersih.',
+      description: 'Mendelegasikan pekerjaan ke subagent Punakawan terisolasi. Mode tunggal memakai role+task; mode PARALEL memakai tasks berisi 2-6 tugas yang dijalankan bersamaan (maksimum 3 sekaligus). Gunakan mode paralel untuk eksplorasi/audit independen yang tidak saling bergantung. Setiap subagent punya konteks sendiri dan hanya mengembalikan laporan sintesis.',
       parameters: {
         type: 'object',
         properties: {
           role: {
             type: 'string',
             enum: ['pAItruk', 'gAIreng', 'bAIwor'],
-            description: 'Peran subagent: "pAItruk" (Scout/Read-only: read_file, search_files, list_directory, webfetch, websearch), "gAIreng" (Auditor: test, lint, diagnostics, read_file), atau "bAIwor" (Worker: sub-tugas kode terarah).',
+            description: 'Peran untuk mode tunggal: "pAItruk" (Scout/Read-only), "gAIreng" (Auditor: test/lint/diagnostics), atau "bAIwor" (Worker kode terarah).',
           },
           task: {
             type: 'string',
-            description: 'Instruksi spesifik yang harus dikerjakan oleh subagent.',
+            description: 'Instruksi spesifik untuk mode tunggal.',
           },
           context: {
             type: 'string',
-            description: 'Informasi atau konteks tambahan yang relevan untuk membantu subagent.',
+            description: 'Konteks tambahan untuk mode tunggal.',
           },
           max_turns: {
             type: 'integer',
-            description: 'Batas maksimum putaran LLM-tool subagent (default: 8, max: 20).',
+            description: 'Batas putaran subagent mode tunggal (default: 8, max: 20).',
+          },
+          tasks: {
+            type: 'array',
+            maxItems: 6,
+            description: 'Mode paralel: daftar tugas independen. Maksimum 6 tugas; 3 dieksekusi bersamaan.',
+            items: {
+              type: 'object',
+              properties: {
+                role: {
+                  type: 'string',
+                  enum: ['pAItruk', 'gAIreng', 'bAIwor'],
+                  description: 'Peran subagent untuk tugas ini.',
+                },
+                task: { type: 'string', description: 'Instruksi spesifik tugas.' },
+                context: { type: 'string', description: 'Konteks tambahan (opsional).' },
+                max_turns: { type: 'integer', description: 'Batas putaran (default: 8, max: 20).' },
+              },
+              required: ['role', 'task'],
+            },
           },
         },
-        required: ['role', 'task'],
+        required: [],
       },
     },
   },

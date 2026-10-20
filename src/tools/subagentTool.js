@@ -57,8 +57,11 @@ Jawab lugas, to-the-point, dan jujur (blakasuta).`,
   },
 };
 
+export const MAX_PARALLEL_TASKS = 6;
+export const PARALLEL_CONCURRENCY = 3;
+
 /**
- * Menjalankan subagent Punakawan dalam loop terisolasi.
+ * Menjalankan SATU subagent Punakawan dalam loop terisolasi.
  *
  * @param {Object} args
  * @param {string} args.role - 'pAItruk' | 'gAIreng' | 'bAIwor'
@@ -68,7 +71,7 @@ Jawab lugas, to-the-point, dan jujur (blakasuta).`,
  * @param {Object} [options] - Opsi runtime & dependency injection ({ completionFn, credentials, signal })
  * @returns {Promise<{ success: boolean, output: string, role?: string, turns?: number }>}
  */
-export async function handleDelegateTask(args = {}, options = {}) {
+async function runSingleDelegate(args = {}, options = {}) {
   const { role, task, context = '', max_turns = 8 } = args || {};
 
   if (!role || !SUBAGENT_ROLES[role]) {
@@ -263,5 +266,111 @@ export async function handleDelegateTask(args = {}, options = {}) {
     output: `${roleConfig.emoji} [Laporan Subagent ${roleConfig.name} - ${roleConfig.title}]:\n\n${finalReport}`,
     role,
     turns: turn,
+  };
+}
+
+/**
+ * Menjalankan fungsi async untuk tiap item dengan batas konkurensi.
+ * Hasil dikembalikan sesuai urutan input.
+ */
+async function runWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(Math.max(1, limit), items.length) },
+    async () => {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= items.length) return;
+        results[index] = await fn(items[index], index);
+      }
+    }
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Titik masuk `delegate_task`: satu tugas, atau beberapa tugas PARALEL dalam
+ * satu panggilan. Setiap subagent tetap terisolasi (histori & tool sendiri);
+ * yang dibagikan hanya sinyal pembatalan dan kredensial model.
+ *
+ * Mode paralel: maksimum 6 tugas, 3 berjalan bersamaan.
+ *
+ * @param {Object} args
+ * @param {string} [args.role] - Peran untuk mode tunggal
+ * @param {string} [args.task] - Tugas untuk mode tunggal
+ * @param {Array<{role:string, task:string, context?:string, max_turns?:number}>} [args.tasks]
+ * @param {Object} [options]
+ * @returns {Promise<Object>}
+ */
+export async function handleDelegateTask(args = {}, options = {}) {
+  const tasks = Array.isArray(args?.tasks) ? args.tasks.filter(Boolean) : null;
+  if (!tasks || tasks.length === 0) {
+    return runSingleDelegate(args, options);
+  }
+
+  if (tasks.length > MAX_PARALLEL_TASKS) {
+    return {
+      success: false,
+      output: `[delegate_task] Terlalu banyak tugas paralel (${tasks.length}). Maksimum ${MAX_PARALLEL_TASKS} tugas.`,
+      results: [],
+    };
+  }
+
+  // Resolve kredensial sekali saja untuk semua subagent paralel. Ini juga
+  // mencegah beberapa refresh OAuth berjalan bersamaan (rotasi token bisa
+  // membuat salah satunya gagal).
+  let sharedOptions = options;
+  if (!options.completionFn && !options.credentials) {
+    try {
+      sharedOptions = { ...options, credentials: await resolveActiveCredentials() };
+    } catch (err) {
+      return {
+        success: false,
+        output: `[delegate_task] Kredensial model tidak tersedia untuk subagent paralel: ${err.message}`,
+        results: [],
+      };
+    }
+  }
+
+  const startedAt = Date.now();
+  const results = await runWithConcurrency(
+    tasks,
+    PARALLEL_CONCURRENCY,
+    async (taskArgs) => {
+      try {
+        return await runSingleDelegate(taskArgs || {}, sharedOptions);
+      } catch (err) {
+        return {
+          success: false,
+          role: taskArgs?.role,
+          turns: 0,
+          output: `[delegate_task] Subagent ${taskArgs?.role || 'unknown'} gagal: ${err.message}`,
+        };
+      }
+    }
+  );
+
+  const sections = results.map((result, index) => {
+    const roleName = result?.role || tasks[index]?.role || 'subagent';
+    const roleConfig = SUBAGENT_ROLES[roleName];
+    const emoji = roleConfig?.emoji || '🤖';
+    return `### ${index + 1}. ${emoji} ${roleName}\n${result?.output || '(tanpa laporan)'}`;
+  });
+
+  const failed = results.filter((result) => !result?.success).length;
+  const summary =
+    `[delegate_task] ${results.length} subagent paralel selesai dalam ` +
+    `${((Date.now() - startedAt) / 1000).toFixed(1)}s — ` +
+    `${results.length - failed} sukses, ${failed} gagal (konkurensi ${PARALLEL_CONCURRENCY}).`;
+
+  return {
+    success: failed === 0,
+    output: `${summary}\n\n${sections.join('\n\n')}`,
+    results,
+    mode: 'parallel',
+    turns: results.reduce((sum, result) => sum + (Number(result?.turns) || 0), 0),
   };
 }

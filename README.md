@@ -175,7 +175,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - `webautomate` — mengemudikan browser headless (Web Agent TinyFish / Mako) untuk menyelesaikan misi interaktif, ekstraksi data dinamis, dan pengisian formulir.
   - `diagnostics` — deteksi & jalankan pemeriksaan mutu proyek (script `lint`/`typecheck`/`check`, atau `tsc`/`eslint`) supaya bAIwor memverifikasi pekerjaannya sebelum menyatakan selesai.
   - `todo_list` — susun rencana tugas untuk pekerjaan besar dan lacak progresnya.
-  - `delegate_task` & `ask_user` — orkestrasi subagent dan konfirmasi interaktif.
+  - `delegate_task` & `ask_user` — orkestrasi subagent (satu tugas atau **mode paralel hingga 6 tugas, 3 berjalan bersamaan**) dan konfirmasi interaktif.
+  - Mode paralel cocok untuk eksplorasi/audit independen: setiap subagent Punakawan punya histori, tool, dan laporan terisolasi; hasilnya disintesis kembali ke agen utama.
 - **🔒 Keamanan Berlapis**:
   - **Sandbox workspace** — akses berkas dibatasi pada folder proyek; area kredensial seperti `.ssh` dan `~/.baiwor` selalu ditolak.
   - **Approval Gate (Y/n)** — perintah berisiko seperti `git push`, `npm publish`, atau penghapusan rekursif akan meminta konfirmasi lebih dulu, dengan default **Tidak**.
@@ -283,7 +284,7 @@ Di dalam mode interaktif, cara pakainya sama — cukup `/model step`, `/model al
 | `webautomate` | Menjalankan otomasi browser headless (**TinyFish Web Agent / Mako**) untuk misi interaktif web |
 | `diagnostics` | Menjalankan pemeriksaan mutu proyek (lint/typecheck/tsc/eslint) |
 | `todo_list` | Menyusun dan memperbarui daftar tugas multi-langkah, ditampilkan sebagai checklist |
-| `delegate_task` | Mendelegasikan sub-tugas ke subagent otonom terspesialisasi |
+| `delegate_task` | Mendelegasikan satu tugas, atau 2-6 tugas **paralel** (maks 3 sekaligus), ke subagent Punakawan terisolasi |
 | `ask_user` | Mengajukan pertanyaan atau mengonfirmasi pilihan interaktif kepada pengguna |
 | `instabox_exec` | Menjalankan perintah di MicroVM Linux InstaBox (aktif bila API key sandbox dikonfigurasi) |
 

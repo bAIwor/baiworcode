@@ -60,7 +60,7 @@ baiworcode/
     │   ├── registry.js             # Registri tool internal, pembatasan output (capToolOutput), dan pengelompokan toolset
     │   ├── sandbox.js              # Analisis keamanan perintah shell, path containment, dan pencegah perintah berbahaya
     │   ├── searchTool.js           # Handler tool search_files (pencarian regex isi berkas dan glob nama berkas)
-    │   ├── subagentTool.js         # Handler tool delegate_task (subagent Punakawan: pAItruk, gAIreng, bAIwor)
+    │   ├── subagentTool.js         # Handler tool delegate_task (subagent tunggal/paralel Punakawan: pAItruk, gAIreng, bAIwor)
     │   ├── todoTool.js             # Handler tool todo_list dan in-memory todo store
     │   └── webTool.js              # Handler tool webfetch, websearch, dan webautomate (didukung TinyFish / DuckDuckGo)
     ├── branding.js                 # Konstanta identitas merek, slogan, dan entitas PT BAIWOR AGENTIC INDONESIA
@@ -96,7 +96,7 @@ bAIwor Code memiliki **15 tools bawaan** yang didaftarkan ke OpenAI Function Cal
 | 10 | `websearch` | `src/tools/webTool.js` | `web` | Melakukan pencarian informasi terkini di internet (TinyFish Search API / DuckDuckGo). |
 | 11 | `webautomate` | `src/tools/webTool.js` | `web` | Otomasi browser interaktif (ekstraksi data dinamis, interaksi halaman) via Web Agent TinyFish. |
 | 12 | `diagnostics` | `src/tools/diagnosticsTool.js` | `quality` | Menjalankan pemeriksaan otomatis mutu proyek (skrip `check`, `typecheck`, `lint` di package.json, `tsc`, atau `eslint`). |
-| 13 | `delegate_task` | `src/tools/subagentTool.js` | `agent` | Mendelegasikan sub-tugas terisolasi ke peran Punakawan (`pAItruk` untuk eksplorasi *read-only*, `gAIreng` untuk audit/test, `bAIwor` untuk coding spesifik). |
+| 13 | `delegate_task` | `src/tools/subagentTool.js` | `agent` | Mendelegasikan satu tugas atau 2-6 tugas paralel (konkurensi 3) ke peran Punakawan (`pAItruk` eksplorasi read-only, `gAIreng` audit/test, `bAIwor` coding). Tiap subagent terisolasi; batas 5 menit/40 tool call per subagent. |
 | 14 | `ask_user` | `src/tools/questionnaireTool.js` | `interactive` | Mengajukan pertanyaan interaktif dengan pilihan jawaban (*single-select* atau *multi-select*) ke pengguna di terminal. |
 | 15 | `instabox_exec` | `src/tools/instaboxTool.js` | `sandbox` | Menjalankan perintah di MicroVM Linux InstaBox (aktif bila API key sandbox dikonfigurasi). |
 

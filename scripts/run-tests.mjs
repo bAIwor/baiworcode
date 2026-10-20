@@ -12,8 +12,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const testDir = path.resolve('test');
+const testDir = fileURLToPath(new URL('../test', import.meta.url));
 const files = fs
   .readdirSync(testDir, { withFileTypes: true })
   .filter((entry) => entry.isFile() && entry.name.endsWith('.test.js'))
@@ -26,6 +27,7 @@ if (files.length === 0) {
 }
 
 const result = spawnSync(process.execPath, ['--test', ...files], {
+  cwd: path.resolve(testDir, '..'),
   stdio: 'inherit',
   windowsHide: true,
 });

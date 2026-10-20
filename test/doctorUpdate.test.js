@@ -51,8 +51,17 @@ describe('Doctor & Update Commands', () => {
   });
 
   it('baiwor update harus memeriksa status git lokal', () => {
-    const out = run(['update'], { color: false });
+    let out = '';
+    try {
+      out = run(['update'], { color: false });
+    } catch (err) {
+      // Paket tanpa .git (mis. hasil tarball) memang keluar non-zero.
+      out = String(err.stdout || '') + String(err.stderr || '');
+    }
     assert.match(out, /Pembaruan bAIwor Code/);
-    assert.match(out, /Menghubungi GitHub|sudah pada versi terbaru|Ditemukan pembaruan/);
+    assert.match(
+      out,
+      /Menghubungi GitHub|sudah pada versi terbaru|Ditemukan pembaruan|tidak dijalankan dari repositori Git/
+    );
   });
 });

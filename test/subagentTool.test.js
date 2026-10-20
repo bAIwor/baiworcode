@@ -151,6 +151,64 @@ describe('Child Subagent Delegation Engine (delegate_task)', () => {
     assert.ok(res.output.includes('melaporkan struktur saja'));
   });
 
+  it('harus menjalankan beberapa subagent secara paralel dengan konteks terisolasi', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const mockCompletionFn = async ({ messages }) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      active -= 1;
+      const userText = messages[1]?.content || '';
+      return { content: `Laporan untuk: ${userText.includes('Eksplor A') ? 'A' : 'B'}` };
+    };
+
+    const res = await handleDelegateTask(
+      {
+        tasks: [
+          { role: 'pAItruk', task: 'Eksplor A' },
+          { role: 'gAIreng', task: 'Audit B' },
+        ],
+      },
+      { completionFn: mockCompletionFn }
+    );
+
+    assert.equal(res.success, true);
+    assert.equal(res.mode, 'parallel');
+    assert.equal(res.results.length, 2);
+    assert.ok(res.output.includes('Laporan untuk: A'));
+    assert.ok(res.output.includes('Laporan untuk: B'));
+    assert.ok(maxActive >= 2, 'dua subagent seharusnya berjalan bersamaan');
+  });
+
+  it('harus menolak lebih dari 6 tugas paralel', async () => {
+    const tasks = Array.from({ length: 7 }, (_, i) => ({
+      role: 'pAItruk',
+      task: `Tugas ${i + 1}`,
+    }));
+    const res = await handleDelegateTask({ tasks }, {
+      completionFn: async () => ({ content: 'x' }),
+    });
+    assert.equal(res.success, false);
+    assert.match(res.output, /maksimum 6/i);
+  });
+
+  it('harus melaporkan kegagalan parsial pada mode paralel', async () => {
+    const res = await handleDelegateTask(
+      {
+        tasks: [
+          { role: 'pAItruk', task: 'Tugas valid' },
+          { role: 'arjuna', task: 'Tugas invalid' },
+        ],
+      },
+      { completionFn: async () => ({ content: 'selesai' }) }
+    );
+    assert.equal(res.success, false);
+    assert.equal(res.results.length, 2);
+    assert.ok(res.output.includes('Peran "arjuna" tidak dikenal'));
+    assert.match(res.output, /1 sukses, 1 gagal/);
+  });
+
   it('harus mengembalikan gagal bila batas putaran tercapai tanpa laporan akhir', async () => {
     const mockCompletionFn = async () => ({
       content: '',

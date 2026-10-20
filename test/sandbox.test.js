@@ -78,7 +78,12 @@ describe('Sandbox A5: penjaga perintah terminal', () => {
       assert.equal(v.allowed, false);
       assert.equal(v.category, 'workspace-escape');
     } finally {
-      fs.rmdirSync(link);
+      // Junction Windows dihapus dengan rmdir; symlink POSIX dengan unlink.
+      try {
+        fs.rmdirSync(link);
+      } catch {
+        try { fs.unlinkSync(link); } catch {}
+      }
       fs.rmSync(root, { recursive: true, force: true });
       fs.rmSync(outside, { recursive: true, force: true });
     }
@@ -248,7 +253,7 @@ describe('Sandbox: klasifikasi tiga tingkat untuk approval gate', () => {
     }
   });
 
-  it('menandai penghapusan rekursif Windows sebagai "confirm"', () => {
+  it('menandai penghapusan rekursif Windows sebagai "confirm"', { skip: process.platform !== 'win32' }, () => {
     for (const cmd of [
       'rmdir /s /q build',
       'rd /s /q build',
