@@ -59,6 +59,13 @@ export const PUNAKAWAN_ROLES = {
   instabox_exec: 'bAIwor',
 };
 
+/** Ikon peran subagent untuk pohon aktivitas paralel (Punakawan Squad). */
+const SQUAD_ROLE_EMOJIS = {
+  pAItruk: '🔍',
+  gAIreng: '⚖️',
+  bAIwor: '🔨',
+};
+
 /**
  * Palet warna representasi karakter Tim Punakawan AI.
  *
@@ -411,6 +418,36 @@ export function renderTimeline(
       preserveNewlines: false,
     });
     if (argsText) out.push(`  ${stem}${childIndent}${c.dim(argsText)}`);
+
+    // Pohon aktivitas paralel delegate_task: digambar HANYA saat tool masih
+    // berjalan; begitu settle, ringkasan hasil biasa yang ditampilkan.
+    if (isRunning && ev.squad && Array.isArray(ev.squad.tasks) && ev.squad.tasks.length > 0) {
+      const runningCount = ev.squad.tasks.filter(
+        (task) =>
+          task.status === 'started' || task.status === 'turn' || task.status === 'queued'
+      ).length;
+      out.push(
+        `  ${stem}${childIndent}${c.hex(palette.primary).bold('🎭 Punakawan Squad')} ${c.dim(`(${runningCount} berjalan)`)}...`
+      );
+
+      ev.squad.tasks.forEach((task, taskIndex) => {
+        const connector = taskIndex === ev.squad.tasks.length - 1 ? '└── ' : '├── ';
+        const status = task.status || 'queued';
+        const mark =
+          status === 'completed'
+            ? c.hex(palette.success)('✓')
+            : status === 'failed' || status === 'aborted'
+              ? c.hex(palette.error)('✗')
+              : c.hex(palette.warning)(spinnerFrame);
+        const emoji = SQUAD_ROLE_EMOJIS[task.role] || '🤖';
+        const label = summarize(String(task.task || ''), Math.max(8, maxSummary - 30));
+        const turn = Number(task.turn) || 0;
+        out.push(
+          `  ${stem}${childIndent}${c.gray(connector)}${mark} ${emoji} ${c.bold(task.role)} : ${label} ${c.dim(`(turn ${turn})`)}`
+        );
+      });
+      return;
+    }
 
     // Saat masih berjalan belum ada keluaran untuk diringkas.
     if (isRunning) return;

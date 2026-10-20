@@ -209,6 +209,89 @@ describe('Child Subagent Delegation Engine (delegate_task)', () => {
     assert.match(res.output, /1 sukses, 1 gagal/);
   });
 
+  it('memanggil onProgress: started → turn → completed pada mode tunggal', async () => {
+    let step = 0;
+    const events = [];
+    const res = await handleDelegateTask(
+      { role: 'pAItruk', task: 'Jelajah src' },
+      {
+        onProgress: (event) => events.push({ ...event }),
+        completionFn: async () => {
+          step += 1;
+          if (step === 1) {
+            return {
+              content: '',
+              tool_calls: [{
+                id: 'call_prog_1',
+                function: { name: 'list_directory', arguments: '{"dir_path":"src"}' },
+              }],
+            };
+          }
+          return { content: 'Laporan akhir' };
+        },
+      }
+    );
+
+    assert.equal(res.success, true);
+    assert.ok(events.every((event) => event.role === 'pAItruk' && event.task === 'Jelajah src'));
+    assert.equal(events[0].status, 'started');
+    assert.equal(events[0].turn, 0);
+    assert.deepEqual(
+      events.filter((event) => event.status === 'turn').map((event) => event.turn),
+      [1, 2]
+    );
+    assert.equal(events[events.length - 1].status, 'completed');
+  });
+
+  it('memanggil onProgress dengan status failed saat batas putaran tercapai', async () => {
+    const events = [];
+    const res = await handleDelegateTask(
+      { role: 'pAItruk', task: 'Tanpa laporan', max_turns: 1 },
+      {
+        onProgress: (event) => events.push(event),
+        completionFn: async () => ({
+          content: '',
+          tool_calls: [{
+            id: 'call_prog_fail',
+            function: { name: 'list_directory', arguments: '{"dir_path":"src"}' },
+          }],
+        }),
+      }
+    );
+
+    assert.equal(res.success, false);
+    assert.equal(events[0].status, 'started');
+    assert.ok(events.some((event) => event.status === 'turn'));
+    assert.equal(events[events.length - 1].status, 'failed');
+  });
+
+  it('memanggil onProgress untuk setiap subagent pada mode paralel', async () => {
+    const events = [];
+    const res = await handleDelegateTask(
+      {
+        tasks: [
+          { role: 'pAItruk', task: 'Tugas A' },
+          { role: 'gAIreng', task: 'Tugas B' },
+        ],
+      },
+      {
+        onProgress: (event) => events.push(event),
+        completionFn: async ({ messages }) => ({
+          content: String(messages[1]?.content).includes('Tugas A') ? 'Laporan A' : 'Laporan B',
+        }),
+      }
+    );
+
+    assert.equal(res.success, true);
+    for (const role of ['pAItruk', 'gAIreng']) {
+      const roleEvents = events.filter((event) => event.role === role);
+      assert.ok(roleEvents.length >= 3, `progress ${role} harus ada`);
+      assert.equal(roleEvents[0].status, 'started');
+      assert.equal(roleEvents[roleEvents.length - 1].status, 'completed');
+      assert.ok(roleEvents.some((event) => event.status === 'turn'));
+    }
+  });
+
   it('harus mengembalikan gagal bila batas putaran tercapai tanpa laporan akhir', async () => {
     const mockCompletionFn = async () => ({
       content: '',

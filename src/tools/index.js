@@ -23,6 +23,14 @@ import {
   resetQuestionnaireHandler,
 } from './questionnaireTool.js';
 import {
+  requestCommandApproval,
+  requestFileChangeApproval,
+  setApprovalHandler,
+  setFileApprovalHandler,
+  resetApprovalHandler,
+  resetFileApprovalHandler,
+} from './approval.js';
+import {
   handleInstaboxExec,
   getInstaboxStatus,
   controlInstabox,
@@ -139,4 +147,10 @@ export {
   canRedo,
   clearSnapshots,
   getSnapshotHistory,
+  requestCommandApproval,
+  requestFileChangeApproval,
+  setApprovalHandler,
+  setFileApprovalHandler,
+  resetApprovalHandler,
+  resetFileApprovalHandler,
 };

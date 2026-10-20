@@ -4,6 +4,31 @@ import { getDefinitions, dispatchTool } from './registry.js';
 import { TOOL_DEFINITIONS } from './definitions.js';
 
 /**
+ * Handler progres global subagent — dipasang oleh integrasi terminal
+ * (LiveActivity) saat tool `delegate_task` paralel berjalan. Handler per
+ * panggilan (`options.onProgress`) diprioritaskan untuk pengujian.
+ */
+let subagentProgressHandler = null;
+
+/**
+ * Memasang handler progres global. Mengembalikan handler sebelumnya agar
+ * bisa dipulihkan (tanpa tumpang tindih antar tool).
+ *
+ * @param {Function|null} fn - (event: {role:string, task:string, turn:number, status:string}) => void
+ * @returns {Function|null}
+ */
+export function setSubagentProgressHandler(fn) {
+  const previous = subagentProgressHandler;
+  subagentProgressHandler = typeof fn === 'function' ? fn : null;
+  return previous;
+}
+
+/** Melepas handler progres global. */
+export function resetSubagentProgressHandler() {
+  subagentProgressHandler = null;
+}
+
+/**
  * Konfigurasi subagent Punakawan terisolasi:
  * - pAItruk : Scout & Penjelajah (Murni read-only: membaca, mencari berkas, webfetch/websearch).
  * - gAIreng : Auditor & Verifikator (Uji mutu: run_command, diagnostics, inspeksi berkas).
@@ -92,6 +117,19 @@ async function runSingleDelegate(args = {}, options = {}) {
   const roleConfig = SUBAGENT_ROLES[role];
   const maxTurns = Math.max(1, Math.min(20, Number(max_turns) || 8));
 
+  // Progres: mulai → tiap turn → selesai/gagal. Kegagalan callback tidak boleh
+  // menggagalkan subagent.
+  const progressFn = options.onProgress || subagentProgressHandler;
+  const emitProgress = (status, turnNumber = 0) => {
+    if (typeof progressFn !== 'function') return;
+    try {
+      progressFn({ role, task: String(task).trim(), turn: turnNumber, status });
+    } catch {
+      // abaikan — progres murni informatif
+    }
+  };
+  emitProgress('started', 0);
+
   // Ambil definisi tool yang diizinkan untuk peran ini
   const rawDefs = getDefinitions();
   const allDefs = rawDefs && rawDefs.length > 0 ? rawDefs : TOOL_DEFINITIONS;
@@ -120,6 +158,7 @@ async function runSingleDelegate(args = {}, options = {}) {
     turn += 1;
 
     if (options.signal?.aborted) {
+      emitProgress('aborted', turn);
       return {
         success: false,
         output: `[delegate_task] Subagent ${roleConfig.name} dibatalkan oleh sinyal pengguna.`,
@@ -129,6 +168,7 @@ async function runSingleDelegate(args = {}, options = {}) {
     }
 
     if (Date.now() - startedAt > MAX_DURATION_MS) {
+      emitProgress('failed', turn);
       return {
         success: false,
         output: `[delegate_task] Subagent ${roleConfig.name} dihentikan: melebihi batas waktu 5 menit tanpa laporan akhir.`,
@@ -136,6 +176,8 @@ async function runSingleDelegate(args = {}, options = {}) {
         turns: turn,
       };
     }
+
+    emitProgress('turn', turn);
 
     let completionResult = null;
 
@@ -148,6 +190,7 @@ async function runSingleDelegate(args = {}, options = {}) {
           turn,
         });
       } catch (err) {
+        emitProgress('failed', turn);
         return {
           success: false,
           output: `[delegate_task] Eksekusi subagent gagal: ${err.message}`,
@@ -163,6 +206,7 @@ async function runSingleDelegate(args = {}, options = {}) {
         !credentials ||
         !(credentials.apiKey || credentials.headers?.Authorization || credentials.type === 'agy')
       ) {
+        emitProgress('failed', turn);
         return {
           success: false,
           output: '[delegate_task] Kredensial model AI tidak ditemukan untuk menjalankan subagent.',
@@ -186,6 +230,7 @@ async function runSingleDelegate(args = {}, options = {}) {
           completionResult.content = contentBuffer;
         }
       } catch (err) {
+        emitProgress('failed', turn);
         return {
           success: false,
           output: `[delegate_task] Komunikasi model untuk subagent ${roleConfig.name} gagal: ${err.message}`,
@@ -200,6 +245,7 @@ async function runSingleDelegate(args = {}, options = {}) {
     // Jika model meminta pemanggilan tool
     if (Array.isArray(tool_calls) && tool_calls.length > 0) {
       if (toolCallCount + tool_calls.length > MAX_TOOL_CALLS) {
+        emitProgress('failed', turn);
         return {
           success: false,
           output: `[delegate_task] Subagent ${roleConfig.name} dihentikan: melebihi batas ${MAX_TOOL_CALLS} panggilan tool tanpa laporan akhir.`,
@@ -253,6 +299,7 @@ async function runSingleDelegate(args = {}, options = {}) {
   }
 
   if (!finalReport) {
+    emitProgress('failed', turn);
     return {
       success: false,
       output: `[delegate_task] Subagent ${roleConfig.name} mencapai batas ${turn} putaran tanpa laporan akhir. Pekerjaan mungkin belum selesai.`,
@@ -261,6 +308,7 @@ async function runSingleDelegate(args = {}, options = {}) {
     };
   }
 
+  emitProgress('completed', turn);
   return {
     success: true,
     output: `${roleConfig.emoji} [Laporan Subagent ${roleConfig.name} - ${roleConfig.title}]:\n\n${finalReport}`,
@@ -321,11 +369,13 @@ export async function handleDelegateTask(args = {}, options = {}) {
 
   // Resolve kredensial sekali saja untuk semua subagent paralel. Ini juga
   // mencegah beberapa refresh OAuth berjalan bersamaan (rotasi token bisa
-  // membuat salah satunya gagal).
-  let sharedOptions = options;
+  // membuat salah satunya gagal). Handler progres (eksplisit atau global)
+  // diteruskan ke setiap subagent.
+  const progressFn = options.onProgress || subagentProgressHandler;
+  let sharedOptions = progressFn ? { ...options, onProgress: progressFn } : options;
   if (!options.completionFn && !options.credentials) {
     try {
-      sharedOptions = { ...options, credentials: await resolveActiveCredentials() };
+      sharedOptions = { ...sharedOptions, credentials: await resolveActiveCredentials() };
     } catch (err) {
       return {
         success: false,

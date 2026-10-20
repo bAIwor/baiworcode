@@ -106,6 +106,24 @@ export class LiveActivity {
   }
 
   /**
+   * Menampilkan/memperbarui pohon subagent paralel (Punakawan Squad) di bawah
+   * node tool pada `index`. Pass `null` untuk menghapus pohon.
+   *
+   * @param {number} index
+   * @param {Array<{role:string, task:string, turn:number, status:string}>|null} tasks
+   */
+  setSquad(index, tasks) {
+    const ev = this.events[index];
+    if (!ev) return;
+    if (tasks === null || tasks === undefined) {
+      delete ev.squad;
+    } else {
+      ev.squad = { tasks: Array.isArray(tasks) ? tasks : [] };
+    }
+    if (this.enabled && !this.paused) this.#draw();
+  }
+
+  /**
    * Menyembunyikan blok agar keluaran lain (prompt persetujuan, dll.) tidak
    * menabraknya. Data event tetap utuh dan digambar lagi oleh {@link resume}.
    */

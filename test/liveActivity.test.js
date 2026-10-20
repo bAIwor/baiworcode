@@ -142,6 +142,46 @@ describe('LiveActivity: Commit', () => {
   });
 });
 
+describe('LiveActivity: Punakawan Squad (delegate_task paralel)', () => {
+  it('harus menggambar pohon subagent hidup lalu menghapusnya', () => {
+    const stream = fakeTTY({ columns: 100 });
+    const live = new LiveActivity({ stream, useColor: false });
+    const idx = live.addTool('delegate_task', {
+      tasks: [
+        { role: 'pAItruk', task: 'Petakan auth' },
+        { role: 'gAIreng', task: 'Audit test' },
+      ],
+    });
+
+    live.setSquad(idx, [
+      { role: 'pAItruk', task: 'Petakan auth', turn: 1, status: 'turn' },
+      { role: 'gAIreng', task: 'Audit test', turn: 2, status: 'turn' },
+    ]);
+
+    let last = stream.last();
+    assert.ok(last.includes('Punakawan Squad'), 'judul squad harus tampil');
+    assert.ok(last.includes('(2 berjalan)'), 'jumlah berjalan harus dihitung');
+    assert.ok(last.includes('├──'), 'cabang pohon pertama');
+    assert.ok(last.includes('└──'), 'cabang pohon terakhir');
+    assert.ok(last.includes('🔍'), 'ikon pAItruk');
+    assert.ok(last.includes('⚖️'), 'ikon gAIreng');
+    assert.ok(last.includes('(turn 1)'), 'turn subagent pertama');
+    assert.ok(last.includes('(turn 2)'), 'turn subagent kedua');
+
+    live.setSquad(idx, [
+      { role: 'pAItruk', task: 'Petakan auth', turn: 1, status: 'completed' },
+      { role: 'gAIreng', task: 'Audit test', turn: 2, status: 'failed' },
+    ]);
+    last = stream.last();
+    assert.ok(last.includes('✓'), 'subagent selesai diberi centang');
+    assert.ok(last.includes('✗'), 'subagent gagal diberi silang');
+
+    live.setSquad(idx, null);
+    assert.ok(!stream.last().includes('Punakawan Squad'), 'pohon dihapus setelah settle');
+    live.stop();
+  });
+});
+
 describe('LiveActivity: Pemangkasan Lebar', () => {
   it('harus memangkas baris agar tidak membungkus melebihi lebar terminal', () => {
     const columns = 30;

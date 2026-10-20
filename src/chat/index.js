@@ -21,6 +21,7 @@ import { sanitizeTerminalText } from './wrapText.js';
 import { createOutputWriter } from './outputWriter.js';
 import { classifyCommand } from '../tools/sandbox.js';
 import { resolveSafePath } from '../tools/handlers.js';
+import { setSubagentProgressHandler, MAX_PARALLEL_TASKS } from '../tools/subagentTool.js';
 import { getContextUsage, formatContextWarning } from './context.js';
 import { autoCompactConversation } from './compact.js';
 import { parseDeliverAssetsContent, renderDeliverableCard } from './deliverables.js';
@@ -594,11 +595,46 @@ export async function handleUserChat(promptText, options = {}) {
           // lama. Eksekusinya ditolak tegas — bukan sekadar diimbau di prompt.
           const blockedInPlan = agentMode === 'plan' && isToolBlockedInPlanMode(fnName);
 
+          // delegate_task paralel: tampilkan pohon aktivitas Punakawan Squad
+          // hidup di bawah node tool selama subagent berjalan.
+          const isParallelDelegate =
+            !blockedInPlan &&
+            fnName === 'delegate_task' &&
+            Array.isArray(parsedArgs.tasks) &&
+            parsedArgs.tasks.length > 0;
+          let restoreProgressHandler = null;
+          if (isParallelDelegate) {
+            const squadTasks = parsedArgs.tasks.slice(0, MAX_PARALLEL_TASKS).map((task) => ({
+              role: String(task?.role || 'subagent'),
+              task: String(task?.task || '').trim(),
+              turn: 0,
+              status: 'queued',
+            }));
+            live.setSquad(liveIndex, squadTasks);
+            restoreProgressHandler = setSubagentProgressHandler((progress) => {
+              const entry = squadTasks.find(
+                (task) => task.role === progress.role && task.task === progress.task
+              );
+              if (!entry) return;
+              entry.status = progress.status;
+              if (Number.isFinite(progress.turn) && progress.turn >= 0) entry.turn = progress.turn;
+              live.setSquad(liveIndex, squadTasks);
+            });
+          }
+
           // Eksekusi tool handler sambil mengukur durasi
           const startedAt = Date.now();
-          const toolResult = blockedInPlan
-            ? { success: false, output: planModeBlockMessage(fnName) }
-            : await executeTool(fnName, rawArgs, { signal: controller.signal });
+          let toolResult;
+          try {
+            toolResult = blockedInPlan
+              ? { success: false, output: planModeBlockMessage(fnName) }
+              : await executeTool(fnName, rawArgs, { signal: controller.signal });
+          } finally {
+            if (restoreProgressHandler !== null) {
+              setSubagentProgressHandler(restoreProgressHandler);
+            }
+            if (isParallelDelegate) live.setSquad(liveIndex, null);
+          }
           const durationMs = Date.now() - startedAt;
           toolCallsThisTurn += 1;
 

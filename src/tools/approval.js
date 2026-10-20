@@ -1,7 +1,9 @@
 import * as p from '@clack/prompts';
+import chalk from 'chalk';
 import { sanitizeTerminalText } from '../chat/wrapText.js';
 
 let customApprovalHandler = null;
+let customFileApprovalHandler = null;
 
 /**
  * Menyimpan custom handler konfirmasi untuk keperluan pengujian otomatis (mock).
@@ -13,10 +15,28 @@ export function setApprovalHandler(handler) {
 }
 
 /**
+ * Menyimpan custom handler konfirmasi modifikasi berkas untuk pengujian otomatis (mock).
+ *
+ * @param {Function|null} handler - (details) => Promise<{ approved: boolean, message?: string }>
+ */
+export function setFileApprovalHandler(handler) {
+  customFileApprovalHandler = handler;
+}
+
+/**
  * Mengembalikan handler konfirmasi ke perilaku standar.
  */
 export function resetApprovalHandler() {
   customApprovalHandler = null;
+  customFileApprovalHandler = null;
+}
+
+export function resetFileApprovalHandler() {
+  customFileApprovalHandler = null;
+}
+
+export function hasFileApprovalHandler() {
+  return Boolean(customFileApprovalHandler);
 }
 
 /**
@@ -67,6 +87,69 @@ export async function requestCommandApproval(command, reason = '') {
     return {
       approved: false,
       message: `Perintah '${command}' dibatalkan (tidak dapat menampilkan prompt persetujuan).`,
+    };
+  }
+}
+
+/**
+ * Meminta persetujuan pengguna (Human-in-the-Loop) sebelum memodifikasi berkas di disk
+ * pada mode akses Safe ('normal').
+ *
+ * @param {Object} details
+ * @param {string} details.filePath - Path berkas yang akan diubah
+ * @param {string} [details.action='edit'] - 'write' | 'edit' | 'patch'
+ * @param {string} [details.diff=''] - Colored unified diff
+ * @param {string} [details.diffStats=''] - '+X -Y' statistik
+ * @returns {Promise<{ approved: boolean, message?: string }>}
+ */
+export async function requestFileChangeApproval({
+  filePath,
+  action = 'edit',
+  diff = '',
+  diffStats = '',
+} = {}) {
+  if (customFileApprovalHandler) {
+    return await customFileApprovalHandler({ filePath, action, diff, diffStats });
+  }
+
+  // Jika bukan TTY, jangan gantung proses pada lingkungan non-interaktif
+  if (!process.stdin.isTTY) {
+    return { approved: true };
+  }
+
+  try {
+    console.log();
+    const actionLabel =
+      action === 'write'
+        ? 'Menulis berkas'
+        : action === 'patch'
+          ? 'Menerapkan patch pada'
+          : 'Mengedit berkas';
+    const statText = diffStats ? ` (${diffStats})` : '';
+
+    if (diff) {
+      console.log(chalk.bold(`  📄 Tinjauan Perubahan: ${chalk.cyan(filePath)}${statText}`));
+      console.log(diff);
+      console.log();
+    }
+
+    const answer = await p.confirm({
+      message: `${actionLabel} "${filePath}"? Izinkan perubahan ini?`,
+      initialValue: true,
+    });
+
+    if (p.isCancel(answer) || !answer) {
+      return {
+        approved: false,
+        message: `Modifikasi berkas '${filePath}' dibatalkan oleh pengguna (Safe Mode).`,
+      };
+    }
+
+    return { approved: true };
+  } catch {
+    return {
+      approved: false,
+      message: `Modifikasi berkas '${filePath}' dibatalkan (gagal menampilkan prompt konfirmasi).`,
     };
   }
 }

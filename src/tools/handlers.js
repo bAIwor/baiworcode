@@ -15,7 +15,11 @@ import {
   parseDestructiveAllowlist,
   isDestructiveAllowed,
 } from './sandbox.js';
-import { requestCommandApproval } from './approval.js';
+import {
+  requestCommandApproval,
+  requestFileChangeApproval,
+  hasFileApprovalHandler,
+} from './approval.js';
 import { getAccessMode, getConfig } from '../config.js';
 import { applyEdit, applyEditList, applyUnifiedDiff } from './editUtil.js';
 import { recordFileBeforeChange } from './snapshot.js';
@@ -212,7 +216,7 @@ export async function handleReadFile({ file_path, offset = 1, limit = 200 }) {
 /**
  * Handler untuk menulis berkas baru atau menimpa berkas
  */
-export async function handleWriteFile({ file_path, content }) {
+export async function handleWriteFile({ file_path, content }, options = {}) {
   let resolved;
   try {
     resolved = resolveSafePath(file_path);
@@ -224,6 +228,28 @@ export async function handleWriteFile({ file_path, content }) {
   }
 
   const oldText = fs.existsSync(resolved) ? fs.readFileSync(resolved, 'utf8') : '';
+  const diffResult = generateVisualDiff(oldText, content || '', { filePath: file_path });
+
+  // Safe Mode Approval Gate:
+  const tty = options?.tty ?? Boolean(process.stdin.isTTY);
+  const isSafeMode = getAccessMode() === 'normal';
+  if (isSafeMode && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+    const approval = await requestFileChangeApproval({
+      filePath: file_path,
+      action: 'write',
+      diff: diffResult.hasChanges ? diffResult.coloredDiff : '',
+      diffStats: diffResult.hasChanges ? diffResult.diffStats : '',
+    });
+    if (!approval.approved) {
+      return {
+        success: false,
+        output: approval.message || `Modifikasi berkas '${file_path}' dibatalkan oleh pengguna (Safe Mode).`,
+        diff: diffResult.hasChanges ? diffResult.coloredDiff : undefined,
+        diffStats: diffResult.hasChanges ? diffResult.diffStats : undefined,
+      };
+    }
+  }
+
   recordFileBeforeChange(resolved);
 
   const dir = path.dirname(resolved);
@@ -235,7 +261,6 @@ export async function handleWriteFile({ file_path, content }) {
   fs.writeFileSync(resolved, content || '', 'utf8');
   const normalized = (content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const linesCount = !normalized ? 0 : normalized.endsWith('\n') ? normalized.slice(0, -1).split('\n').length : normalized.split('\n').length;
-  const diffResult = generateVisualDiff(oldText, content || '', { filePath: file_path });
 
   return {
     success: true,
@@ -282,7 +307,7 @@ export async function handleEditFile({
   new_content,
   replace_all = false,
   edits = null,
-}) {
+}, options = {}) {
   let resolved;
   try {
     resolved = resolveSafePath(file_path);
@@ -308,9 +333,31 @@ export async function handleEditFile({
         output: `Error pada edit ke-${res.index + 1}: ${describeEditFailure(res.reason, file_path, res.count, res.lines)}`,
       };
     }
+
+    const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
+
+    // Safe Mode Approval Gate:
+    const tty = options?.tty ?? Boolean(process.stdin.isTTY);
+    const isSafeMode = getAccessMode() === 'normal';
+    if (isSafeMode && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+      const approval = await requestFileChangeApproval({
+        filePath: file_path,
+        action: 'edit',
+        diff: diffResult.hasChanges ? diffResult.coloredDiff : '',
+        diffStats: diffResult.hasChanges ? diffResult.diffStats : '',
+      });
+      if (!approval.approved) {
+        return {
+          success: false,
+          output: approval.message || `Modifikasi berkas '${file_path}' dibatalkan oleh pengguna (Safe Mode).`,
+          diff: diffResult.hasChanges ? diffResult.coloredDiff : undefined,
+          diffStats: diffResult.hasChanges ? diffResult.diffStats : undefined,
+        };
+      }
+    }
+
     recordFileBeforeChange(resolved);
     fs.writeFileSync(resolved, res.text, 'utf8');
-    const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
     return {
       success: true,
       output: `Berhasil menerapkan ${edits.length} edit pada ${file_path} (${res.count} penggantian).`,
@@ -333,11 +380,32 @@ export async function handleEditFile({
     return { success: false, output: describeEditFailure(res.reason, file_path, res.count, res.lines) };
   }
 
+  const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
+
+  // Safe Mode Approval Gate:
+  const tty = options?.tty ?? Boolean(process.stdin.isTTY);
+  const isSafeMode = getAccessMode() === 'normal';
+  if (isSafeMode && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+    const approval = await requestFileChangeApproval({
+      filePath: file_path,
+      action: 'edit',
+      diff: diffResult.hasChanges ? diffResult.coloredDiff : '',
+      diffStats: diffResult.hasChanges ? diffResult.diffStats : '',
+    });
+    if (!approval.approved) {
+      return {
+        success: false,
+        output: approval.message || `Modifikasi berkas '${file_path}' dibatalkan oleh pengguna (Safe Mode).`,
+        diff: diffResult.hasChanges ? diffResult.coloredDiff : undefined,
+        diffStats: diffResult.hasChanges ? diffResult.diffStats : undefined,
+      };
+    }
+  }
+
   recordFileBeforeChange(resolved);
   fs.writeFileSync(resolved, res.text, 'utf8');
   const countNote = res.count > 1 ? ` — ${res.count} kemunculan diganti` : '';
   const fuzzyNote = res.strategy === 'exact' ? '' : ' (dicocokkan toleran spasi/indentasi)';
-  const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
   return {
     success: true,
     output: `Berhasil mengedit berkas ${file_path}${countNote}${fuzzyNote}.`,
@@ -353,7 +421,7 @@ export async function handleEditFile({
  *
  * @param {{file_path:string, patch:string}} args
  */
-export async function handlePatchFile({ file_path, patch }) {
+export async function handlePatchFile({ file_path, patch }, options = {}) {
   let resolved;
   try {
     resolved = resolveSafePath(file_path);
@@ -385,9 +453,30 @@ export async function handlePatchFile({ file_path, patch }) {
     };
   }
 
+  const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
+
+  // Safe Mode Approval Gate:
+  const tty = options?.tty ?? Boolean(process.stdin.isTTY);
+  const isSafeMode = getAccessMode() === 'normal';
+  if (isSafeMode && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+    const approval = await requestFileChangeApproval({
+      filePath: file_path,
+      action: 'patch',
+      diff: diffResult.hasChanges ? diffResult.coloredDiff : '',
+      diffStats: diffResult.hasChanges ? diffResult.diffStats : '',
+    });
+    if (!approval.approved) {
+      return {
+        success: false,
+        output: approval.message || `Modifikasi berkas '${file_path}' dibatalkan oleh pengguna (Safe Mode).`,
+        diff: diffResult.hasChanges ? diffResult.coloredDiff : undefined,
+        diffStats: diffResult.hasChanges ? diffResult.diffStats : undefined,
+      };
+    }
+  }
+
   recordFileBeforeChange(resolved);
   fs.writeFileSync(resolved, res.text, 'utf8');
-  const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
   return {
     success: true,
     output: `Berhasil menerapkan patch (${res.applied} hunk) pada ${file_path}.`,
