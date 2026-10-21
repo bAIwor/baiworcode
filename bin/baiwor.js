@@ -71,6 +71,9 @@ import { handleWebSearch, handleWebFetch } from '../src/tools/webTool.js';
 import { sanitizeTerminalText } from '../src/chat/wrapText.js';
 import { clearBackgroundTasks } from '../src/tools/handlers.js';
 import { APP_NAME, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE, COMPANY } from '../src/branding.js';
+import { platformManager } from '../src/platforms/platformManager.js';
+import { TelegramBot } from '../src/platforms/telegramBot.js';
+import { WhatsAppBaileys } from '../src/platforms/whatsappBaileys.js';
 
 // Cegah sistem operasi langsung mematikan proses saat Ctrl+C sekali di terminal,
 // namun eskalasikan ke keluar paksa bila ditekan 2 kali dalam 1 detik.
@@ -477,6 +480,7 @@ const HELP_USAGE = {
   '/sandbox': '/sandbox [status|exec|sync|open|screenshot|pause|resume|key]',
   '/doctor': '/doctor',
   '/update': '/update [sandbox]',
+  '/platform': '/platform [start|stop|status|list] [telegram|whatsapp]',
 };
 
 function showHelp() {
@@ -977,6 +981,167 @@ async function handleMcpCommand(arg = '') {
 }
 
 /**
+ * Handle perintah /platform untuk mengelola messaging platform (Telegram & WhatsApp).
+ *
+ * @param {string} arg - Argumen perintah (misal: "start telegram", "stop whatsapp", "status")
+ */
+async function handlePlatformCommand(arg = '') {
+  const parts = String(arg || '').trim().split(/\s+/);
+  const sub = parts[0]?.toLowerCase();
+  const platformName = parts[1]?.toLowerCase();
+
+  // Register platforms jika belum
+  if (!platformManager.platforms.has('telegram')) {
+    platformManager.register('telegram', new TelegramBot());
+  }
+  if (!platformManager.platforms.has('whatsapp')) {
+    platformManager.register('whatsapp', new WhatsAppBaileys());
+  }
+
+  // Setup message handler (forward ke handleUserChat)
+  if (platformManager.listenerCount('message') === 0) {
+    platformManager.on('message', async (msg) => {
+      try {
+        // Show typing indicator
+        const platform = platformManager.platforms.get(msg.platform);
+        if (platform && typeof platform.sendTyping === 'function') {
+          await platform.sendTyping(msg.chatId);
+        }
+
+        // Process message dengan bAIwor
+        const response = await handleUserChat(msg.text);
+
+        // Send response back
+        await platformManager.send(msg.platform, msg.chatId, response);
+      } catch (err) {
+        console.error(`[Platform] Error handling message from ${msg.platform}:`, err.message);
+        try {
+          await platformManager.send(
+            msg.platform,
+            msg.chatId,
+            'Maaf, terjadi kesalahan saat memproses pesan Anda.'
+          );
+        } catch {}
+      }
+    });
+  }
+
+  switch (sub) {
+    case 'list': {
+      console.log(chalk.hex('#FBBF24').bold('\n  💬 Messaging Platforms Tersedia:'));
+      const platforms = platformManager.listPlatforms();
+      if (platforms.length === 0) {
+        console.log(chalk.yellow('    Tidak ada platform yang terdaftar.'));
+      } else {
+        for (const name of platforms) {
+          const running = platformManager.isRunning(name);
+          const status = running ? chalk.green('● Aktif') : chalk.gray('○ Tidak aktif');
+          const icon = name === 'telegram' ? '📱' : name === 'whatsapp' ? '📲' : '📨';
+          console.log(`    ${icon} ${chalk.white.bold(name)} ${status}`);
+        }
+      }
+      console.log(chalk.gray('\n  Gunakan ') + chalk.cyan('/platform start <nama>') + chalk.gray(' untuk menjalankan platform.\n'));
+      break;
+    }
+
+    case 'status': {
+      console.log(chalk.hex('#FBBF24').bold('\n  📊 Status Messaging Platforms:'));
+      const platforms = platformManager.listPlatforms();
+      if (platforms.length === 0) {
+        console.log(chalk.yellow('    Tidak ada platform yang terdaftar.'));
+      } else {
+        for (const name of platforms) {
+          const running = platformManager.isRunning(name);
+          const status = running ? chalk.green('● AKTIF') : chalk.gray('○ Tidak aktif');
+          const icon = name === 'telegram' ? '📱' : name === 'whatsapp' ? '📲' : '📨';
+          console.log(`    ${icon} ${chalk.white.bold(name)}: ${status}`);
+        }
+      }
+      const running = platformManager.listRunning();
+      if (running.length > 0) {
+        console.log(chalk.gray(`\n    Platform berjalan: ${running.join(', ')}`));
+        console.log(chalk.gray('    Gunakan ') + chalk.cyan('/platform stop <nama>') + chalk.gray(' untuk menghentikan.\n'));
+      } else {
+        console.log(chalk.gray('\n    Tidak ada platform yang sedang berjalan.\n'));
+      }
+      break;
+    }
+
+    case 'start': {
+      if (!platformName) {
+        console.log(chalk.yellow('\n  ⚠️  Tentukan platform: ') + chalk.cyan('/platform start <telegram|whatsapp>') + '\n');
+        break;
+      }
+
+      if (platformManager.isRunning(platformName)) {
+        console.log(chalk.yellow(`\n  ⚠️  Platform ${platformName} sudah berjalan.\n`));
+        break;
+      }
+
+      if (!platformManager.platforms.has(platformName)) {
+        console.log(chalk.red(`\n  ✗ Platform '${platformName}' tidak dikenal. Gunakan: telegram atau whatsapp\n`));
+        break;
+      }
+
+      try {
+        if (platformName === 'telegram') {
+          // Prompt for bot token
+          const token = await p.text({
+            message: 'Masukkan Telegram Bot Token (dari @BotFather):',
+            placeholder: '1234567890:ABCdefGHIjklMNOpqrsTUVwxyz',
+          });
+          if (p.isCancel(token) || !token?.trim()) {
+            console.log(chalk.gray('\n  Dibatalkan.\n'));
+            break;
+          }
+
+          console.log(chalk.cyan('\n  🚀 Memulai Telegram Bot...'));
+          await platformManager.start('telegram', { botToken: token.trim() });
+          console.log(chalk.green.bold('  ✔ Telegram Bot aktif!'));
+          console.log(chalk.gray('    Bot akan menerima pesan dan membalas otomatis menggunakan bAIwor.\n'));
+        } else if (platformName === 'whatsapp') {
+          console.log(chalk.cyan('\n  🚀 Memulai WhatsApp Client...'));
+          console.log(chalk.gray('    Scan QR code yang muncul untuk authenticate.\n'));
+          await platformManager.start('whatsapp', {});
+          console.log(chalk.green.bold('  ✔ WhatsApp Client aktif!'));
+          console.log(chalk.gray('    Client akan menerima pesan dan membalas otomatis menggunakan bAIwor.\n'));
+        }
+      } catch (err) {
+        console.log(chalk.red(`\n  ✗ Gagal memulai ${platformName}: ${err.message}\n`));
+      }
+      break;
+    }
+
+    case 'stop': {
+      if (!platformName) {
+        console.log(chalk.yellow('\n  ⚠️  Tentukan platform: ') + chalk.cyan('/platform stop <telegram|whatsapp>') + '\n');
+        break;
+      }
+
+      if (!platformManager.isRunning(platformName)) {
+        console.log(chalk.yellow(`\n  ⚠️  Platform ${platformName} tidak sedang berjalan.\n`));
+        break;
+      }
+
+      try {
+        console.log(chalk.cyan(`\n  🛑 Menghentikan ${platformName}...`));
+        await platformManager.stop(platformName);
+        console.log(chalk.green.bold(`  ✔ Platform ${platformName} telah dihentikan.\n`));
+      } catch (err) {
+        console.log(chalk.red(`\n  ✗ Gagal menghentikan ${platformName}: ${err.message}\n`));
+      }
+      break;
+    }
+
+    default: {
+      // Tanpa subcommand: tampilkan status
+      await handlePlatformCommand('status');
+      break;
+    }
+  }
+}
+
+/**
  * Memperingatkan bila baiworcode dijalankan dari direktori HOME.
  *
  * Home bukan "proyek": seluruh folder pengguna (AppData, Downloads, node_modules
@@ -1456,6 +1621,9 @@ async function startInteractive(opts = {}) {
         break;
       case '/mcp':
         await handleMcpCommand(arg);
+        break;
+      case '/platform':
+        await handlePlatformCommand(arg);
         break;
       case '/model':
       case '/provider': {

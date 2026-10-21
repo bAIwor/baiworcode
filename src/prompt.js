@@ -210,6 +210,7 @@ export const COMMANDS = [
   { name: '/login', desc: 'Login ke Google Gemini OAuth' },
   { name: '/logout', desc: 'Logout dari sesi Google Gemini OAuth' },
   { name: '/image', desc: 'Kirim gambar/screenshot ke AI: /image <path> [pertanyaan]' },
+  { name: '/platform', desc: 'Kelola messaging platform (Telegram & WhatsApp)' },
   { name: '/undo', desc: 'Batalkan seluruh perubahan berkas pada putaran (turn) terakhir' },
   { name: '/clear', desc: 'Bersihkan layar & reset riwayat percakapan' },
   { name: '/reset', desc: 'Reset konteks percakapan AI tanpa clear layar' },
@@ -258,6 +259,12 @@ export const SUBCOMMANDS = {
   ],
   '/update': [
     { name: 'sandbox', desc: 'Perbarui instalasi bAIwor Code di Cloud Sandbox InstaBox' },
+  ],
+  '/platform': [
+    { name: 'start', desc: 'Jalankan platform: /platform start <telegram|whatsapp>' },
+    { name: 'stop', desc: 'Hentikan platform: /platform stop <telegram|whatsapp>' },
+    { name: 'status', desc: 'Cek status semua platform yang terdaftar' },
+    { name: 'list', desc: 'Daftar platform yang tersedia' },
   ],
 };
 

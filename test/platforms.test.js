@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { PlatformManager } from '../src/platforms/platformManager.js';
+import { COMMANDS, SUBCOMMANDS, getPromptContext } from '../src/prompt.js';
 
 describe('Messaging Platforms', () => {
   let manager;
@@ -192,6 +193,39 @@ describe('Messaging Platforms', () => {
       } finally {
         globalThis.import = originalImport;
       }
+    });
+  });
+
+  describe('CLI Integration', () => {
+    it('/platform harus terdaftar di COMMANDS', () => {
+      const cmd = COMMANDS.find((c) => c.name === '/platform');
+      assert.ok(cmd, 'perintah /platform harus ada di COMMANDS');
+      assert.ok(cmd.desc.includes('platform') || cmd.desc.includes('Telegram') || cmd.desc.includes('WhatsApp'));
+    });
+
+    it('/platform harus memiliki subcommands', () => {
+      const subs = SUBCOMMANDS['/platform'];
+      assert.ok(subs, '/platform harus memiliki entri di SUBCOMMANDS');
+      assert.ok(subs.length >= 4, '/platform harus memiliki minimal 4 subcommands');
+
+      const subNames = subs.map((s) => s.name);
+      assert.ok(subNames.includes('start'), 'harus ada subcommand start');
+      assert.ok(subNames.includes('stop'), 'harus ada subcommand stop');
+      assert.ok(subNames.includes('status'), 'harus ada subcommand status');
+      assert.ok(subNames.includes('list'), 'harus ada subcommand list');
+    });
+
+    it('getPromptContext harus mengenali /platform', () => {
+      const ctx = getPromptContext('/platform');
+      assert.equal(ctx.type, 'command');
+      const match = ctx.matches.find((m) => m.name === '/platform');
+      assert.ok(match, '/platform harus muncul di matches');
+    });
+
+    it('getPromptContext harus mengenali /platform start sebagai subcommand', () => {
+      const ctx = getPromptContext('/platform start');
+      assert.equal(ctx.type, 'subcommand');
+      assert.equal(ctx.parentCmd, '/platform');
     });
   });
 });
