@@ -222,22 +222,29 @@ export async function handleUserChat(promptText, options = {}) {
   });
 
   /**
-   * Sebagian `run_command` meminta persetujuan pengguna sebelum dieksekusi.
+   * Sebagian tool meminta persetujuan pengguna sebelum dieksekusi.
    * Prompt itu mencetak ke stdout, jadi blok aktivitas harus disembunyikan
    * dulu agar hitungan baris tidak melenceng dan tampilan tidak rusak.
    */
   const toolMayPrompt = (fnName, args) => {
     if (fnName === 'ask_user') return true;
-    if (fnName !== 'run_command' || !args || !args.command) return false;
-    let ws = process.cwd();
-    if (args.cwd) {
-      try {
-        ws = resolveSafePath(args.cwd);
-      } catch {
-        ws = process.cwd();
+    if (fnName === 'run_command' && args?.command) {
+      let ws = process.cwd();
+      if (args.cwd) {
+        try {
+          ws = resolveSafePath(args.cwd);
+        } catch {
+          ws = process.cwd();
+        }
       }
+      return classifyCommand(String(args.command), { workspace: ws }).decision === 'confirm';
     }
-    return classifyCommand(String(args.command), { workspace: ws }).decision === 'confirm';
+    // File tools di Safe mode juga perlu approval
+    const isFileTool = ['write_file', 'edit_file', 'patch_file'].includes(fnName);
+    if (isFileTool && getAccessMode() === 'normal') {
+      return true;
+    }
+    return false;
   };
 
   // 4. Inisialisasi AbortController & pasang listener SIGINT + ESC
