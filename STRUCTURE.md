@@ -20,7 +20,7 @@ baiworcode/
     │   ├── registry.js             # Registri definisi provider AI (Agentik, Gemini, OpenAI, Groq, Ollama, dll.)
     │   └── resolve.js              # Resolver kredensial aktif dari environment variable atau config tersimpan
     ├── chat/
-    │   ├── accessMode.js           # Mode akses approval eksekusi (Safe Mode vs Full Access Mode)
+    │   ├── permissionMode.js       # Mode izin terpadu 4 level (safe/auto/plan/yolo) + warna pastel Google
     │   ├── answerStyle.js          # Parser dan penata gaya markdown streaming untuk terminal TTY
     │   ├── client.js               # HTTP client SSE streaming OpenAI-compatible dengan auto-retry & error-recovery
     │   ├── compact.js              # Engine perangkuman riwayat cerdas (/compact dan auto-compact)
@@ -115,7 +115,7 @@ Alur kerja agen dari pengetikan input hingga pemanggilan tool berlangsung dalam 
        ▼
 1. CLI REPL & Prompt Parsing (bin/baiwor.js & src/prompt.js)
    • Menangkap prompt dari argumen CLI atau interactive REPL.
-   • Memeriksa apakah input merupakan slash command (/model, /plan, /access, /compact, dll.).
+   • Memeriksa apakah input merupakan slash command (/model, /plan, /permission, /compact, dll.).
    • Jika chat biasa, dialihkan ke handleUserChat() di src/chat/index.js.
        │
        ▼
@@ -132,7 +132,7 @@ Alur kerja agen dari pengetikan input hingga pemanggilan tool berlangsung dalam 
        │
        ▼
 4. Streaming Request ke LLM Provider (src/chat/client.js)
-   • Mengirim payload messages dan daftar tool (difilter berdasarkan mode: Build vs Plan).
+   • Mengirim payload messages dan daftar tool (difilter berdasarkan mode izin: Plan mengirim hanya tool read-only).
    • Menerima respons SSE (Server-Sent Events) secara streaming:
      - onReasoning: Menampilkan blok berpikir ("💭 Thinking") dengan perataan indentasi.
      - onDelta: Menata gaya keluaran markdown secara langsung ke terminal via AnswerStyler dan OutputWriter.
@@ -144,8 +144,8 @@ Alur kerja agen dari pengetikan input hingga pemanggilan tool berlangsung dalam 
    • Jika LLM meminta pemanggilan tool:
      1. Simpan pesan assistant beserta tool_calls dan reasoning ke Conversation.
      2. Validasi Sandbox (src/tools/sandbox.js): Mengklasifikasikan perintah (allow, confirm, deny).
-     3. Mode Akses (src/chat/accessMode.js): Bila mode "Safe" atau perintah berisiko tinggi, tampilkan dialog persetujuan (src/tools/approval.js).
-     4. Mode Plan Guard (src/chat/planMode.js): Menolak keras jika ada tool pengubah berkas terpanggil saat mode /plan aktif.
+     3. Mode Izin (src/chat/permissionMode.js): safe=semua perubahan tanya, auto=hanya perintah berisiko yang tanya, yolo=lewati confirm (deny tetap ditolak). Dialog persetujuan via src/tools/approval.js.
+     4. Mode Plan Guard (src/chat/planMode.js): Menolak keras jika ada tool pengubah berkas terpanggil saat permissionMode "plan" aktif.
        │
        ▼
 6. Eksekusi Tool (src/tools/registry.js -> dispatchTool)

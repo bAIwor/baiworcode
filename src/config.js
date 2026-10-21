@@ -26,13 +26,14 @@ export const DEFAULT_CONFIG = {
   // Tampilan blok aktivitas tool: 'detail' (pohon dua baris) atau
   // 'compact' (satu baris per langkah, gaya CLI modern). Diubah via /timeline.
   timelineMode: 'detail',
-  // Mode akses: 'normal' (perintah berisiko selalu minta persetujuan) atau
-  // 'full' (kelas confirm dilewati di TTY; kelas deny tetap ditolak).
-  // Diubah via perintah /access di prompt.
+  // Mode izin terpadu (satu-satunya sumber kebenaran): 'safe' (semua perubahan
+  // & perintah berisiko bertanya), 'auto' (berkas langsung, perintah bertanya),
+  // 'plan' (read-only), 'yolo' (tanpa bertanya; deny tetap ditolak).
+  // Diubah via /permission atau Shift+Tab.
+  permissionMode: 'safe',
+  // [deprecated] accessMode & agentMode lama dipetakan otomatis ke
+  // permissionMode saat dibaca; jangan ditulis lagi dari kode baru.
   accessMode: 'normal',
-  // Agen utama: 'build' (boleh menulis berkas & menjalankan perintah) atau
-  // 'plan' (arsitek read-only — padanan mode Plan di opencode). Diubah via
-  // Shift+Tab di prompt, perintah /plan, atau /build.
   agentMode: 'build',
   // Override destruktif SADAR (default: tertutup). Berisi daftar id aturan
   // merusak yang boleh dijalankan (mis. ['power'] untuk shutdown/reboot), atau
@@ -203,53 +204,81 @@ export function setTimelineMode(mode) {
 }
 
 /**
- * Mengembalikan mode akses yang valid. Nilai tak dikenal jatuh ke 'normal'
- * sehingga konfigurasi rusak/salah ketik tidak pernah membuka akses penuh.
+ * Mengembalikan mode izin terpadu yang aktif. Nilai tak dikenal jatuh ke
+ * 'safe' sehingga konfigurasi rusak/salah ketik tidak pernah membuka akses penuh.
+ *
+ * @returns {'safe'|'auto'|'plan'|'yolo'}
+ */
+export function getPermissionMode() {
+  const cfg = getConfig();
+  const raw = cfg.permissionMode;
+  if (raw === 'safe' || raw === 'auto' || raw === 'plan' || raw === 'yolo') return raw;
+  // Migrasi sekali dari field lama: plan → 'plan', full → 'yolo', selain itu 'safe'.
+  if (cfg.agentMode === 'plan') return 'plan';
+  if (cfg.accessMode === 'full') return 'yolo';
+  return 'safe';
+}
+
+/**
+ * Menyetel mode izin terpadu dan menyimpannya ke config agar bertahan antar-sesi.
+ *
+ * @param {'safe'|'auto'|'plan'|'yolo'} mode
+ * @returns {'safe'|'auto'|'plan'|'yolo'} mode yang benar-benar aktif
+ */
+export function setPermissionMode(mode) {
+  const next = mode === 'auto' || mode === 'plan' || mode === 'yolo' ? mode : 'safe';
+  if (getConfig().permissionMode !== next) {
+    saveConfig({ permissionMode: next });
+  }
+  return getPermissionMode();
+}
+
+/**
+ * [deprecated] Label akses lama untuk konsumen yang belum bermigrasi.
+ * 'yolo' dipetakan ke 'full', sisanya ke 'normal'.
  *
  * @returns {'normal'|'full'}
  */
 export function getAccessMode() {
-  const raw = getConfig().accessMode;
-  return raw === 'full' ? 'full' : 'normal';
+  return getPermissionMode() === 'yolo' ? 'full' : 'normal';
 }
 
 /**
- * Menyetel mode akses dan menyimpannya ke config agar bertahan antar-sesi.
+ * [deprecated] Setter akses lama; memetakan ke permissionMode.
  *
  * @param {'normal'|'full'} mode
- * @returns {'normal'|'full'} mode yang benar-benar aktif setelah penyimpanan
+ * @returns {'normal'|'full'}
  */
 export function setAccessMode(mode) {
-  const next = mode === 'full' ? 'full' : 'normal';
-  if (next !== getAccessMode()) {
-    saveConfig({ accessMode: next });
+  if (mode === 'full') {
+    setPermissionMode('yolo');
+  } else if (getPermissionMode() !== 'plan') {
+    setPermissionMode('safe');
   }
   return getAccessMode();
 }
 
 /**
- * Mengembalikan agen utama yang aktif.
- *
- * Nilai tak dikenal jatuh ke 'build' supaya config yang rusak/salah ketik tidak
- * pernah mengunci pengguna di mode arsitek (read-only) tanpa disadari.
+ * [deprecated] Mode agen lama; 'plan' kini adalah salah satu permissionMode.
  *
  * @returns {'build'|'plan'}
  */
 export function getAgentMode() {
-  const raw = getConfig().agentMode;
-  return raw === 'plan' ? 'plan' : 'build';
+  return getPermissionMode() === 'plan' ? 'plan' : 'build';
 }
 
 /**
- * Menyetel agen utama dan menyimpannya ke config agar bertahan antar-sesi.
+ * [deprecated] Setter agen lama; memetakan ke permissionMode.
+ * Keluar dari 'plan' kembali ke 'safe' (perilaku default lama).
  *
  * @param {'build'|'plan'} mode
- * @returns {'build'|'plan'} agen yang benar-benar aktif setelah penyimpanan
+ * @returns {'build'|'plan'}
  */
 export function setAgentMode(mode) {
-  const next = mode === 'plan' ? 'plan' : 'build';
-  if (next !== getAgentMode()) {
-    saveConfig({ agentMode: next });
+  if (mode === 'plan') {
+    setPermissionMode('plan');
+  } else if (getPermissionMode() === 'plan') {
+    setPermissionMode('safe');
   }
   return getAgentMode();
 }

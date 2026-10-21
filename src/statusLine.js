@@ -1,13 +1,16 @@
-import chalk from 'chalk';
-import { getConfig, getAccessMode, getAgentMode } from './config.js';
+import { getConfig, getPermissionMode } from './config.js';
 import { theme } from './theme.js';
+import { permissionModeLabel, permissionModeColor } from './chat/permissionMode.js';
 import { conversationSession } from './chat/conversation.js';
 import { getContextUsage, formatContextIndicator } from './chat/context.js';
 
 /**
  * Baris status di bawah area input:
  *
- *   ~ │ Full access │ ✦ <model> · <provider> │ Context 92% left
+ *   ~ │ Safe │ ✦ <model> · <provider> │ Context 92% left
+ *
+ * Label mode izin tunggal (safe/auto/plan/yolo) dengan warna pastel Google —
+ * menggantikan dua label lama (Build/Plan + Safe/Full access) yang membingungkan.
  *
  * Dipakai dua tempat — banner saat start dan area input langsung — karena
  * keduanya harus menampilkan angka yang sama, dan menyalin logikanya di dua
@@ -107,21 +110,14 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
 
   const bar = theme.muted('│');
 
-  const build = ({ detail, withProvider, withAccess, withPrefix, withAgent = true }) => {
+  const build = ({ detail, withProvider, withPermission = true, withPrefix }) => {
     const parts = [theme.info('~')];
-    // Agen aktif selalu tampil (kecuali di bentuk paling ringkas): pengguna
-    // harus langsung tahu kalau dirinya sedang di mode Plan yang read-only.
-    if (withAgent) {
-      parts.push(bar, getAgentMode() === 'plan' ? theme.warning.bold('Plan') : theme.text('Build'));
-    }
-    // Label akses dinamis mengikuti config: 'full' → Full access (agenta bebas
-    // menjalankan kelas confirm tanpa bertanya di TTY), 'normal' → Safe.
-    // Warna: Safe = biru (info), Full access = merah (error) untuk kontras visual.
-    if (withAccess) {
-      const accessMode = getAccessMode();
-      const accessLabel = accessMode === 'full' ? 'Full access' : 'Safe';
-      const accessColor = accessMode === 'full' ? theme.error : theme.info;
-      parts.push(bar, accessColor(accessLabel));
+    // Mode izin tunggal selalu tampil (kecuali di bentuk paling ringkas):
+    // pengguna harus langsung tahu kalau sedang di Plan (read-only) atau
+    // YOLO (tanpa bertanya). Warna pastel: biru/hijau/kuning/merah.
+    if (withPermission) {
+      const mode = getPermissionMode();
+      parts.push(bar, permissionModeColor(mode)(permissionModeLabel(mode)));
     }
     if (withPrefix && prefix) parts.push(bar, theme.info(prefix));
     parts.push(bar, theme.accent('✦'), theme.primary(model));
@@ -133,11 +129,11 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
   const budget = Math.max(20, (maxWidth ?? terminalWidth()) - indent.length);
 
   const levels = [
-    { detail: true, withProvider: true, withAgent: true, withAccess: true, withPrefix: true },
-    { detail: false, withProvider: true, withAgent: true, withAccess: true, withPrefix: true },
-    { detail: false, withProvider: false, withAgent: true, withAccess: true, withPrefix: true },
-    { detail: false, withProvider: false, withAgent: true, withAccess: true, withPrefix: false },
-    { detail: false, withProvider: false, withAgent: false, withAccess: false, withPrefix: false },
+    { detail: true, withProvider: true, withPermission: true, withPrefix: true },
+    { detail: false, withProvider: true, withPermission: true, withPrefix: true },
+    { detail: false, withProvider: false, withPermission: true, withPrefix: true },
+    { detail: false, withProvider: false, withPermission: true, withPrefix: false },
+    { detail: false, withProvider: false, withPermission: false, withPrefix: false },
   ];
 
   for (const level of levels) {

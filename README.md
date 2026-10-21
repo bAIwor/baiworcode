@@ -122,7 +122,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Maskot Wajah Topeng Bawor presisi tinggi (19 kolom × 7 baris, simetris dan anti-menceng).
   - Banner 3D ASCII Shadow Merah-Putih.
   - Kotak informasi terminal dinamis anti-pecah (*visual column aware*).
-  - Area input dibingkai dua garis pemisah, dengan baris status yang ikut bergerak saat kamu mengetik — `~ │ Full access │ ✦ <model> · <provider> │ Context 92% left`.
+  - Area input dibingkai dua garis pemisah, dengan baris status yang ikut bergerak saat kamu mengetik — `~ │ Safe │ ✦ <model> · <provider> │ Context 92% left`. Label mode izin memakai warna pastel Google (Safe biru, Auto hijau, Plan kuning, YOLO merah).
   - Kedua garis memakai jumlah tanda pisah yang sama dan hanya berbeda empat kolom, memberi kesan undakan. Baris status menyesuaikan diri bila terminal sempit: rincian token, nama provider, dan keterangan akses dikorbankan berurutan agar tidak pernah melewati lebar terminal dan merusak kotak layout.
 - **Timeline Aktivitas**:
   - Setiap tool yang dijalankan dicatat sebagai pohon: nama tool, durasi, dan jumlah baris output.
@@ -234,9 +234,9 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 
 ### Di Dalam Mode Interaktif (`baiworcode` / `baiwor`)
 - `/help` — Panduan bantuan & daftar perintah
-- `/plan [instruksi]` — Mode arsitek semAIr: susun rencana & analisis tanpa ubah kode (read-only + checklist)
-- `/build` — Kembali ke agen Build (boleh mengubah kode) dari mode Plan
-- `/access [safe|full]` — Atur gerbang persetujuan perintah: safe (selalu tanya) atau full (lewati konfirmasi perintah berisiko kelas confirm; kelas deny tetap ditolak)
+- `/permission [safe|auto|plan|yolo]` — Mode izin terpadu (satu konsep, empat level): **safe** (biru: semua perubahan tanya), **auto** (hijau: berkas langsung, perintah berisiko tetap tanya), **plan** (kuning: arsitek read-only), **yolo** (merah: tanpa tanya; kelas deny tetap ditolak). Shift+Tab untuk siklus cepat.
+- `/plan [instruksi]` — Jalan pintas mode arsitek read-only (= `/permission plan`)
+- `/build` — Jalan pintas kembali ke mode builder dengan persetujuan (= `/permission safe`)
 - `/compact` — Ringkas konteks percakapan untuk menghemat ruang token
 - `/timeline [compact|detail]` — Ganti mode tampilan timeline: compact (satu baris cepat) atau detail (pohon lengkap)
 - `/session [list|resume|delete|clear]` — Kelola sesi percakapan proyek (daftar sesi, lanjutkan, hapus satu, atau hapus semua)

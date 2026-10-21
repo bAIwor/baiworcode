@@ -154,26 +154,12 @@ export function buildPlanUserPrompt(promptText) {
 }
 
 /* ------------------------------------------------------------------ *
- * Agen utama (Build ⇄ Plan)
+ * Penegakan mode Plan (arsitek read-only)
  *
- * Padanan perpindahan agen `agent.cycle` (Shift+Tab) milik opencode: mode
- * ini MENEMPEL antar-giliran, bukan sekadar pembungkus satu prompt.
+ * Plan kini adalah salah satu permissionMode (lihat chat/permissionMode.js);
+ * modul ini hanya menjaga aturan tool-nya: model bahkan tidak diberi
+ * kemampuan menulis selama mode Plan aktif.
  * ------------------------------------------------------------------ */
-
-/** Agen utama yang dikenal bAIwor Code. */
-export const AGENT_MODES = ['build', 'plan'];
-
-/** Label pendek untuk status line. */
-export function agentModeLabel(mode) {
-  return mode === 'plan' ? 'Plan' : 'Build';
-}
-
-/** Penjelasan singkat untuk pemula. */
-export function describeAgentMode(mode) {
-  return mode === 'plan'
-    ? 'Mode arsitek: hanya membaca, mencari, dan menyusun rencana — tidak boleh menulis berkas.'
-    : 'Mode builder: boleh menulis/mengubah berkas dan menjalankan perintah.';
-}
 
 /** Apakah tool ini dilarang saat agen berada di mode Plan (arsitek read-only). */
 export function isToolBlockedInPlanMode(name) {
@@ -185,8 +171,8 @@ export function planModeBlockMessage(name) {
   return (
     `Error: tool "${name}" tidak tersedia di mode Plan (arsitek read-only). ` +
     `Mode Plan hanya boleh memakai: ${PLAN_ALLOWED_TOOLS.join(', ')}. ` +
-    'Sajikan rencana kepada pengguna, lalu minta ia berpindah ke mode Build ' +
-    'dengan Shift+Tab (atau perintah /build) sebelum berkas diubah.'
+    'Sajikan rencana kepada pengguna, lalu minta ia berpindah ke mode Safe/Auto ' +
+    'dengan /permission (atau Shift+Tab) sebelum berkas diubah.'
   );
 }
 

@@ -17,10 +17,8 @@ import {
   maskSecret,
   getTimelineMode,
   setTimelineMode,
-  getAccessMode,
-  setAccessMode,
-  getAgentMode,
-  setAgentMode,
+  getPermissionMode,
+  setPermissionMode,
   getTinyFishApiKey,
   saveTinyFishApiKey,
   getInstaboxApiKey,
@@ -42,13 +40,14 @@ import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
 import { handleUserChat, resetConversation, conversationSession } from '../src/chat/index.js';
-import { buildPlanUserPrompt, agentModeLabel, describeAgentMode } from '../src/chat/planMode.js';
+import { buildPlanUserPrompt } from '../src/chat/planMode.js';
 import {
-  accessModeLabel,
-  accessModeOptions,
-  describeAccessMode,
-  parseAccessModeArg,
-} from '../src/chat/accessMode.js';
+  permissionModeLabel,
+  permissionModeOptions,
+  describePermissionMode,
+  parsePermissionModeArg,
+  permissionModeColor,
+} from '../src/chat/permissionMode.js';
 import { compactConversation } from '../src/chat/compact.js';
 import { listSessions, listAllProjectsSessions, deleteSession, deleteAllSessions } from '../src/chat/sessionManager.js';
 import { discoverSkills, getSkill } from '../src/skills/skillManager.js';
@@ -473,7 +472,7 @@ function showBanner() {
 const HELP_USAGE = {
   '/login': '/login [provider]',
   '/logout': '/logout [provider]',
-  '/permission': '/permission [safe|full]',
+  '/permission': '/permission [safe|auto|plan|yolo]',
   '/plan': '/plan [instruksi]',
   '/cd': '/cd <folder>',
   '/workspace': '/workspace [folder]',
@@ -521,11 +520,11 @@ function showHelp() {
   console.log(`    ${dim('dan riwayat dipangkas otomatis bila mulai penuh — pakai /compact atau /clear.')}`);
   console.log();
   console.log(gold.bold('  ⌨️  Pintasan Papan Ketik:'));
-  console.log(`    ${chalk.cyan('Shift+Tab')}  ${dim('─ ganti agen: Build (boleh ubah kode) ⇄ Plan (read-only) — sama seperti /plan')}`);
+  console.log(`    ${chalk.cyan('Shift+Tab')}  ${dim('─ siklus mode izin: Safe → Auto → Plan → YOLO (label berwarna pastel)')}`);
   console.log(`    ${chalk.cyan('Ctrl+T')}     ${dim('─ ringkas / bentangkan daftar tugas (Todo list)')}`);
   console.log(`    ${chalk.cyan('Tab')}        ${dim('─ buka daftar perintah "/" saat kotak input masih kosong')}`);
   console.log(`    ${chalk.cyan('↑ / ↓')}      ${dim('─ panggil kembali perintah yang pernah diketik')}`);
-  console.log(`    ${dim('Mode izin perintah (Safe ⇄ Full access) diatur lewat')} ${chalk.cyan('/access')}${dim('.')}`);
+  console.log(`    ${dim('Mode izin detail diatur lewat')} ${chalk.cyan('/permission [safe|auto|plan|yolo]')}${dim('.')}`);
   console.log();
   console.log(chalk.gray('  💡 Ketik langsung pertanyaan atau instruksi coding apa saja untuk chat dengan bAIwor!'));
   console.log();
@@ -534,18 +533,19 @@ function showHelp() {
 }
 
 /**
- * Menampilkan agen yang baru aktif beserta penjelasannya.
+ * Menampilkan mode izin yang baru aktif beserta penjelasannya.
  *
- * @param {'build'|'plan'} mode
+ * @param {'safe'|'auto'|'plan'|'yolo'} mode
  */
-function tampilkanModeAgen(mode) {
-  console.log(chalk.green.bold(`\n  ✔ Agen aktif: ${agentModeLabel(mode)}`));
-  console.log(chalk.gray(`     ${describeAgentMode(mode)}`));
+function tampilkanModeIzin(mode) {
   console.log(
-    chalk.gray('     Ganti kapan saja: Shift+Tab di prompt, atau ') +
-      chalk.cyan('/plan') +
-      chalk.gray(' dan ') +
-      chalk.cyan('/build') +
+    chalk.green.bold(`\n  ✔ Mode izin aktif: `) +
+      permissionModeColor(mode)(permissionModeLabel(mode))
+  );
+  console.log(chalk.gray(`     ${describePermissionMode(mode)}`));
+  console.log(
+    chalk.gray('     Ganti cepat: Shift+Tab di prompt (siklus Safe→Auto→Plan→YOLO), atau ') +
+      chalk.cyan('/permission') +
       chalk.gray('.\n')
   );
 }
@@ -1228,18 +1228,16 @@ async function startInteractive(opts = {}) {
         showHelp();
         break;
       case '/plan': {
-        // Tanpa argumen: mode Plan MENEMPEL dinyalakan/dimatikan — padanan
-        // `agent.cycle` (Shift+Tab) di opencode. Dengan argumen: mode Plan
-        // dinyalakan lalu instruksinya langsung dikerjakan di mode tersebut.
+        // Jalan pintas mode arsitek read-only (= /permission plan).
+        // Dengan argumen: mode dinyalakan lalu instruksinya langsung dikerjakan.
         if (!arg) {
-          const next = getAgentMode() === 'plan' ? 'build' : 'plan';
-          setAgentMode(next);
-          tampilkanModeAgen(next);
+          setPermissionMode('plan');
+          tampilkanModeIzin('plan');
           break;
         }
 
-        setAgentMode('plan');
-        tampilkanModeAgen('plan');
+        setPermissionMode('plan');
+        tampilkanModeIzin('plan');
         await handleUserChat(arg);
         try {
           conversationSession.saveToDisk({
@@ -1250,25 +1248,26 @@ async function startInteractive(opts = {}) {
         break;
       }
       case '/build': {
-        // Jalan pintas keluar dari mode arsitek read-only.
-        setAgentMode('build');
-        tampilkanModeAgen('build');
+        // Jalan pintas keluar dari mode arsitek: kembali ke 'safe' (builder
+        // dengan persetujuan), padanan perilaku lama paling konservatif.
+        setPermissionMode('safe');
+        tampilkanModeIzin('safe');
         break;
       }
       case '/permission':
       case '/access':
+      case '/akses':
       case '/mode': {
-        let requested = parseAccessModeArg(arg);
-        const current = getAccessMode();
+        let requested = parsePermissionModeArg(arg);
+        const current = getPermissionMode();
 
         // Tanpa argumen: tampilkan pilihan interaktif. Pemula tidak perlu
-        // menghafal nama mode; mode izin sengaja tidak diberi pintasan keyboard
-        // supaya Shift+Tab bebas dipakai untuk ganti agen (Build ⇄ Plan).
+        // menghafal nama mode; Shift+Tab tetap tersedia sebagai siklus cepat.
         if (!requested && !arg) {
           const picked = await p.select({
-            message: `Mode izin perintah (aktif: ${accessModeLabel(current)})`,
+            message: `Mode izin (aktif: ${permissionModeLabel(current)})`,
             initialValue: current,
-            options: accessModeOptions(current),
+            options: permissionModeOptions(current),
           });
           if (p.isCancel(picked)) break;
           requested = picked;
@@ -1278,18 +1277,17 @@ async function startInteractive(opts = {}) {
           console.log(
             chalk.yellow(`\n  ⚠️  Mode "${arg}" tidak dikenal.`) +
               chalk.gray(' Pilih ') +
-              chalk.cyan('/permission safe') +
-              chalk.gray(' atau ') +
-              chalk.cyan('/permission full') +
+              chalk.cyan('/permission safe') + chalk.gray(', ') +
+              chalk.cyan('auto') + chalk.gray(', ') +
+              chalk.cyan('plan') + chalk.gray(', atau ') +
+              chalk.cyan('yolo') +
               '\n'
           );
           break;
         }
 
-        setAccessMode(requested);
-        console.log(chalk.green.bold(`\n  ✔ Mode izin perintah: ${accessModeLabel(requested)}`));
-        console.log(chalk.gray(`     ${describeAccessMode(requested)}`));
-        console.log(chalk.gray('     Agen (Build/Plan) diganti dengan Shift+Tab di prompt.\n'));
+        setPermissionMode(requested);
+        tampilkanModeIzin(requested);
         break;
       }
       case '/cd':

@@ -11,20 +11,20 @@ import {
   setFileApprovalHandler,
   resetFileApprovalHandler,
 } from '../src/tools/approval.js';
-import { setAccessMode } from '../src/config.js';
+import { setPermissionMode } from '../src/config.js';
 
 describe('Safe Mode Diff Approval Gate (File Modifications)', () => {
   let tmpDir;
 
   beforeEach(() => {
     resetFileApprovalHandler();
-    setAccessMode('normal'); // Pastikan Safe Mode aktif
+    setPermissionMode('safe'); // Pastikan mode Safe aktif
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'baiwor-approval-test-'));
   });
 
   afterEach(() => {
     resetFileApprovalHandler();
-    setAccessMode('normal');
+    setPermissionMode('safe');
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {}

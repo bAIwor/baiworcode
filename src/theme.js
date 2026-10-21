@@ -27,6 +27,12 @@ export const palette = Object.freeze({
   cliVersion: '#F59E0B', // amber pekat: nomor versi di header help
   cliLink: '#38BDF8', // sky: aksi tautan khusus di menu model
 
+  // ---- permission mode (pastel warna brand Google, 4 nilai) ----
+  permSafe: '#93C5FD', // pastel blue (Google blue) — mode safe, persetujuan ditanya
+  permAuto: '#86EFAC', // pastel green (Google green) — mode auto, edit berkas lancar
+  permPlan: '#FDE68A', // pastel yellow (Google yellow) — mode plan, read-only
+  permYolo: '#FCA5A5', // pastel red (Google red) — mode yolo, full access tanpa tanya
+
   // ---- diff (dipertahankan agar membaca kode tetap nyaman) ----
   diffAdded: '#4fd6be', // latar penanda tambah
   diffRemoved: '#c53b53', // latar penanda hapus
@@ -125,6 +131,12 @@ export const theme = {
   cliTitle: hex(palette.cliTitle).bold,
   cliVersion: hex(palette.cliVersion).bold,
   cliLink: hex(palette.cliLink),
+
+  // permission mode (pastel Google)
+  permSafe: hex(palette.permSafe).bold,
+  permAuto: hex(palette.permAuto).bold,
+  permPlan: hex(palette.permPlan).bold,
+  permYolo: hex(palette.permYolo).bold,
 
   // penalaran AI (thinking)
   thinking: hex(palette.thinking).bold,

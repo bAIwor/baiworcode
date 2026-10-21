@@ -27,7 +27,7 @@ import { setSubagentProgressHandler, MAX_PARALLEL_TASKS } from '../tools/subagen
 import { getContextUsage, formatContextWarning } from './context.js';
 import { autoCompactConversation } from './compact.js';
 import { parseDeliverAssetsContent, renderDeliverableCard } from './deliverables.js';
-import { getTimelineMode, getAgentMode } from '../config.js';
+import { getTimelineMode, getPermissionMode } from '../config.js';
 import {
   PLAN_SYSTEM_INSTRUCTION,
   filterToolsForAgentMode,
@@ -225,9 +225,15 @@ export async function handleUserChat(promptText, options = {}) {
    * Sebagian tool meminta persetujuan pengguna sebelum dieksekusi.
    * Prompt itu mencetak ke stdout, jadi blok aktivitas harus disembunyikan
    * dulu agar hitungan baris tidak melenceng dan tampilan tidak rusak.
+   * Gerbang approval sebenarnya hidup di tools/handlers.js — fungsi ini hanya
+   * memperkirakan apakah prompt itu akan muncul, mengikuti permissionMode:
+   *   safe → file & perintah bertanya; auto → hanya perintah; plan → hanya
+   *   perintah confirm; yolo → tidak pernah (deny ditolak diam-diam).
    */
   const toolMayPrompt = (fnName, args) => {
     if (fnName === 'ask_user') return true;
+    const mode = getPermissionMode();
+    if (mode === 'yolo') return false;
     if (fnName === 'run_command' && args?.command) {
       let ws = process.cwd();
       if (args.cwd) {
@@ -239,12 +245,10 @@ export async function handleUserChat(promptText, options = {}) {
       }
       return classifyCommand(String(args.command), { workspace: ws }).decision === 'confirm';
     }
-    // File tools di Safe mode juga perlu approval
+    // File tools hanya bertanya di mode safe (auto/yolo langsung jalan,
+    // plan diblokir keras oleh penjaga mode — tidak ada prompt).
     const isFileTool = ['write_file', 'edit_file', 'patch_file'].includes(fnName);
-    if (isFileTool && getAccessMode() === 'normal') {
-      return true;
-    }
-    return false;
+    return isFileTool && mode === 'safe';
   };
 
   // 4. Inisialisasi AbortController & pasang listener SIGINT + ESC
@@ -274,14 +278,19 @@ export async function handleUserChat(promptText, options = {}) {
   let stuckLoop = false;
   const toolSignatureCounts = new Map();
 
-  // Agen utama (Build/Plan) dikunci sekali di awal giliran: peralihan yang
-  // terjadi di tengah giliran (lewat prompt) tidak boleh mengubah aturan main
-  // yang sedang berjalan. Pemanggil (mis. `baiworcode plan`) dapat menimpa
-  // mode untuk satu giliran tanpa mengubah konfigurasi permanen.
-  const agentMode =
-    options.agentMode === 'plan' || options.agentMode === 'build'
-      ? options.agentMode
-      : getAgentMode();
+  // Mode izin dikunci sekali di awal giliran: peralihan yang terjadi di tengah
+  // giliran (lewat prompt) tidak boleh mengubah aturan main yang sedang
+  // berjalan. Pemanggil (mis. `baiworcode plan`) dapat menimpa mode untuk satu
+  // giliran tanpa mengubah konfigurasi permanen.
+  const permissionMode =
+    options.agentMode === 'plan'
+      ? 'plan'
+      : options.agentMode === 'build'
+        ? getPermissionMode() === 'plan'
+          ? 'safe'
+          : getPermissionMode()
+        : getPermissionMode();
+  const agentMode = permissionMode === 'plan' ? 'plan' : 'build';
 
   // Penegakan perencanaan (adaptasi aturan `todowrite` mcode): hitung tool yang
   // sudah dijalankan pada giliran ini, lalu tagih model menyusun `todo_list`

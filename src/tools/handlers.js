@@ -20,7 +20,7 @@ import {
   requestFileChangeApproval,
   hasFileApprovalHandler,
 } from './approval.js';
-import { getAccessMode, getConfig } from '../config.js';
+import { getPermissionMode, getConfig } from '../config.js';
 import { applyEdit, applyEditList, applyUnifiedDiff } from './editUtil.js';
 import { recordFileBeforeChange } from './snapshot.js';
 import { generateVisualDiff } from './diffView.js';
@@ -232,8 +232,8 @@ export async function handleWriteFile({ file_path, content }, options = {}) {
 
   // Safe Mode Approval Gate:
   const tty = options?.tty ?? Boolean(process.stdin.isTTY);
-  const isSafeMode = getAccessMode() === 'normal';
-  if (isSafeMode && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+  const asksFileApproval = getPermissionMode() === 'safe';
+  if (asksFileApproval && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
     const approval = await requestFileChangeApproval({
       filePath: file_path,
       action: 'write',
@@ -338,8 +338,8 @@ export async function handleEditFile({
 
     // Safe Mode Approval Gate:
     const tty = options?.tty ?? Boolean(process.stdin.isTTY);
-    const isSafeMode = getAccessMode() === 'normal';
-    if (isSafeMode && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+    const asksFileApproval = getPermissionMode() === 'safe';
+    if (asksFileApproval && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
       const approval = await requestFileChangeApproval({
         filePath: file_path,
         action: 'edit',
@@ -384,8 +384,8 @@ export async function handleEditFile({
 
   // Safe Mode Approval Gate:
   const tty = options?.tty ?? Boolean(process.stdin.isTTY);
-  const isSafeMode = getAccessMode() === 'normal';
-  if (isSafeMode && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+  const asksFileApproval = getPermissionMode() === 'safe';
+  if (asksFileApproval && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
     const approval = await requestFileChangeApproval({
       filePath: file_path,
       action: 'edit',
@@ -457,8 +457,8 @@ export async function handlePatchFile({ file_path, patch }, options = {}) {
 
   // Safe Mode Approval Gate:
   const tty = options?.tty ?? Boolean(process.stdin.isTTY);
-  const isSafeMode = getAccessMode() === 'normal';
-  if (isSafeMode && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+  const asksFileApproval = getPermissionMode() === 'safe';
+  if (asksFileApproval && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
     const approval = await requestFileChangeApproval({
       filePath: file_path,
       action: 'patch',
@@ -742,12 +742,12 @@ export async function handleRunCommand({
   }
 
   if (classification.decision === 'confirm') {
-    // Mode Full access di TTY: kelas confirm dilewati tanpa bertanya (HITL).
-    // Kelas deny TETAP ditolak — Full access tidak pernah membuka pintu bom.
+    // Mode YOLO di TTY: kelas confirm dilewati tanpa bertanya (HITL).
+    // Kelas deny TETAP ditolak — YOLO tidak pernah membuka pintu bom.
     // `options.tty` dipakai sebagai injeksi dalam pengujian; default ke stdin.
     const tty = options?.tty ?? Boolean(process.stdin.isTTY);
-    const fullAccessTty = getAccessMode() === 'full' && Boolean(tty);
-    if (!fullAccessTty) {
+    const yoloTty = getPermissionMode() === 'yolo' && Boolean(tty);
+    if (!yoloTty) {
       const approval = await requestCommandApproval(command, classification.reason);
       if (!approval.approved) {
         return {

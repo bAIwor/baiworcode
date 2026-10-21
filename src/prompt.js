@@ -7,7 +7,8 @@ import { theme } from './theme.js';
 import { renderStatusLine, frameRules, terminalWidth } from './statusLine.js';
 import { todoStore } from './tools/todoTool.js';
 import { renderTodoWidget, toggleTodoCompactMode, getTodoCompactMode } from './chat/planMode.js';
-import { CONFIG_DIR, getAgentMode, setAgentMode, getTimelineMode, setTimelineMode } from './config.js';
+import { CONFIG_DIR, getPermissionMode, setPermissionMode, getTimelineMode, setTimelineMode } from './config.js';
+import { nextPermissionMode } from './chat/permissionMode.js';
 
 // ---------------------------------------------------------------------------
 // Manajemen state stdin untuk seluruh prompt @clack/core (@clack/prompts).
@@ -189,9 +190,9 @@ loadPromptHistory();
 
 export const COMMANDS = [
   { name: '/help', desc: 'Menampilkan panduan perintah & bantuan' },
-  { name: '/plan', desc: 'Nyalakan/matikan mode arsitek semAIr (read-only): rencana tanpa ubah kode' },
-  { name: '/build', desc: 'Kembali ke mode builder: boleh ubah berkas & jalankan perintah' },
-  { name: '/permission', desc: 'Mode izin perintah: Safe (selalu tanya) atau Full access (langsung jalan)' },
+  { name: '/plan', desc: 'Nyalakan mode arsitek read-only: rencana tanpa ubah kode (= /permission plan)' },
+  { name: '/build', desc: 'Kembali ke mode builder: boleh ubah berkas & jalankan perintah (= /permission safe)' },
+  { name: '/permission', desc: 'Mode izin terpadu: safe · auto · plan · yolo (ganti cepat via Shift+Tab)' },
   { name: '/compact', desc: 'Ringkas konteks percakapan untuk menghemat token' },
   { name: '/timeline', desc: 'Ganti tampilan aktivitas: compact (satu baris) / detail (pohon)' },
   { name: '/session', desc: 'Kelola sesi percakapan (list, resume, delete, clear)' },
@@ -220,8 +221,10 @@ export const COMMANDS = [
 
 export const SUBCOMMANDS = {
   '/permission': [
-    { name: 'safe', desc: 'Selalu minta persetujuan sebelum perintah berisiko (disarankan)' },
-    { name: 'full', desc: 'Lewati persetujuan kelas "confirm" — perintah berbahaya tetap ditolak' },
+    { name: 'safe', desc: 'Setiap perubahan berkas & perintah berisiko minta persetujuan (disarankan)' },
+    { name: 'auto', desc: 'Perubahan berkas langsung diterapkan; perintah berisiko tetap bertanya' },
+    { name: 'plan', desc: 'Mode arsitek read-only: hanya membaca & menyusun rencana, tanpa tulis berkas' },
+    { name: 'yolo', desc: 'Semua persetujuan dilewati — perintah berbahaya kelas "deny" tetap ditolak' },
   ],
   '/timeline': [
     { name: 'compact', desc: 'Satu baris per langkah — alur cepat & ringkas (folded)' },
@@ -803,17 +806,14 @@ export class SlashTextPrompt extends TextPrompt {
         return;
       }
 
-      // 3b. Tombol Shift+Tab: siklus agen utama Build <-> Plan — padanan
-      //     `agent.cycle` di opencode. Label di status line ikut berganti via
-      //     renderStatusLine, sehingga mode aktif selalu terlihat pada frame
-      //     yang digambar ulang.
-      //     Mode izin (Safe/Full access) sekarang dikelola lewat perintah
-      //     /access, supaya Shift+Tab dipakai untuk hal yang paling sering
-      //     berganti: menulis kode atau sekadar merencanakan.
+      // 3b. Tombol Shift+Tab: siklus mode izin safe → auto → plan → yolo.
+      //     Satu pintasan untuk satu konsep (dulu dua: agen Build/Plan dan
+      //     akses Safe/Full — membingungkan). Label status line ikut
+      //     berganti warna pastel setiap penekanan.
       const isShiftTab =
         key?.name === 'tab' && key?.shift === true && !key?.ctrl;
       if (isShiftTab) {
-        setAgentMode(getAgentMode() === 'plan' ? 'build' : 'plan');
+        setPermissionMode(nextPermissionMode(getPermissionMode()));
         this.render();
         return;
       }

@@ -45,7 +45,7 @@ describe('StatusLine: Helper', () => {
 
   it('harus menyusun baris status lengkap', () => {
     const line = polos(renderStatusLine());
-    assert.match(line, /^\s+~\s+│\s+(?:Build|Plan)\s+│\s+(?:Full access|Safe)\s+│/);
+    assert.match(line, /^\s+~\s+│\s+(?:Safe|Auto|Plan|YOLO)\s+│/);
     assert.match(line, /✦/);
     assert.match(line, /Context \d+% left/);
   });
@@ -94,7 +94,7 @@ describe('Prompt: Layout Area Input', () => {
   it('harus menyisipkan satu baris kosong sebelum baris status', () => {
     const lines = render().split('\n');
     assert.equal(lines[3], '', 'harus ada baris kosong setelah garis bawah');
-    assert.match(lines[4], /~\s+│\s+(?:Build|Plan)\s+│\s+(?:Full access|Safe)/);
+    assert.match(lines[4], /~\s+│\s+(?:Safe|Auto|Plan|YOLO)/);
   });
 
   it('harus menampilkan baris status sebagai baris terakhir', () => {
@@ -217,7 +217,7 @@ describe('StatusLine: Penyesuaian Lebar Terminal', () => {
   it('harus memakai bentuk paling ringkas saat sangat sempit', () => {
     const sangat = polos(renderStatusLine({ maxWidth: 30 }));
     assert.match(sangat, /Context \d+% left/);
-    assert.ok(!sangat.includes('Full access'));
+    assert.ok(!/Safe|Auto|Plan|YOLO/.test(sangat), 'label mode izin harus dikorbankan di lebar paling sempit');
   });
 
   it('harus memangkas nama model alih-alih meluber di terminal sangat sempit', () => {
@@ -312,7 +312,7 @@ describe('Prompt: Perilaku CLI Saat Dipipe', () => {
 
   it('harus tetap mencetak baris status saat keluaran dialihkan', () => {
     const out = polos(jalankan());
-    assert.match(out, /~\s+│\s+(?:Build|Plan)\s+│\s+(?:Full access|Safe)/);
+    assert.match(out, /~\s+│\s+(?:Safe|Auto|Plan|YOLO)/);
     assert.match(out, /Context \d+% left/);
   });
 
@@ -323,7 +323,7 @@ describe('Prompt: Perilaku CLI Saat Dipipe', () => {
   it('harus tidak menggambar dua baris status di mode pipe', () => {
     const out = polos(jalankan());
     // `split` dengan argumen string tidak mengurai escape, jadi harus pakai regex.
-    const kemunculan = out.match(/~\s+│\s+(?:Build|Plan)\s+│\s+(?:Full access|Safe)/g) || [];
+    const kemunculan = out.match(/~\s+│\s+(?:Safe|Auto|Plan|YOLO)/g) || [];
     assert.equal(kemunculan.length, 1, `baris status muncul ${kemunculan.length} kali`);
   });
 

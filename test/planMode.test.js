@@ -9,8 +9,6 @@ import {
   getPlanAllowedTools,
   buildPlanUserPrompt,
   PLAN_ALLOWED_TOOLS,
-  agentModeLabel,
-  describeAgentMode,
   filterToolsForAgentMode,
   isToolBlockedInPlanMode,
   planModeBlockMessage,
@@ -208,20 +206,7 @@ describe('PlanMode: Mode Perencanaan & Dry-Run (/plan)', () => {
   });
 });
 
-describe('Agen utama: Build ⇄ Plan (mode menempel antar-giliran)', () => {
-  describe('label & penjelasan', () => {
-    it('label pendek untuk status line', () => {
-      assert.equal(agentModeLabel('plan'), 'Plan');
-      assert.equal(agentModeLabel('build'), 'Build');
-      assert.equal(agentModeLabel('apa saja'), 'Build');
-    });
-
-    it('penjelasan menegaskan mode Plan tidak boleh menulis', () => {
-      assert.match(describeAgentMode('plan'), /tidak boleh menulis/);
-      assert.match(describeAgentMode('build'), /boleh menulis/);
-    });
-  });
-
+describe('Mode Plan: read-only sebagai salah satu permission mode', () => {
   describe('kebijakan tool mode Plan', () => {
     it('hanya tool read-only yang diizinkan', () => {
       for (const nama of PLAN_ALLOWED_TOOLS) {
@@ -297,21 +282,24 @@ describe('Agen utama: Build ⇄ Plan (mode menempel antar-giliran)', () => {
       }
     };
 
-    it('/plan menyalakan mode Plan menempel, /build mematikannya', () => {
+    it('/plan menyalakan mode Plan menempel, /build mengembalikan ke safe', () => {
       const nyala = jalankan('/plan');
-      assert.match(nyala.out, /Agen aktif: Plan/);
-      assert.match(nyala.out, /tidak boleh menulis berkas/);
-      assert.equal(nyala.config?.agentMode, 'plan', 'config harus menyimpan agentMode: "plan"');
+      assert.match(nyala.out, /Mode izin aktif: Plan/);
+      assert.match(nyala.out, /menyusun rencana/);
+      assert.equal(nyala.config?.permissionMode, 'plan', 'config harus menyimpan permissionMode: "plan"');
 
       const mati = jalankan('/build');
-      assert.match(mati.out, /Agen aktif: Build/);
-      assert.notEqual(mati.config?.agentMode, 'plan');
+      assert.match(mati.out, /Mode izin aktif: Safe/);
+      assert.equal(mati.config?.permissionMode, 'safe');
     });
 
-    it('baris status menampilkan agen yang sedang aktif', () => {
-      const { out } = jalankan('/exit', { ...DEFAULT_CONFIG, agentMode: 'plan' });
+    it('baris status menampilkan mode izin yang sedang aktif', () => {
+      const { out } = jalankan('/exit', { ...DEFAULT_CONFIG, permissionMode: 'plan' });
       assert.match(out, /~\s+│\s+Plan\s+│/);
-      assert.match(polos(renderStatusLine({ maxWidth: 140 })), /~\s+│\s+Build\s+│/);
+      assert.match(
+        polos(renderStatusLine({ maxWidth: 140 })),
+        /~\s+│\s+(?:Safe|Auto|Plan|YOLO)\s+│/
+      );
     });
   });
 });
