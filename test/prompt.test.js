@@ -47,7 +47,7 @@ describe('StatusLine: Helper', () => {
     const line = polos(renderStatusLine());
     assert.match(line, /^\s+~\s+│\s+(?:Safe|Auto|Plan|YOLO)\s+│/);
     assert.match(line, /✦/);
-    assert.match(line, /Context \d+% left/);
+    assert.match(line, /Konteks \d+% tersisa/);
   });
 
   it('harus menyisipkan prefix tugas bila diberikan', () => {
@@ -55,7 +55,7 @@ describe('StatusLine: Helper', () => {
   });
 
   it('harus tetap menampilkan indikator konteks walau model belum dikonfigurasi', () => {
-    assert.match(polos(renderStatusLine()), /Context \d+% left/);
+    assert.match(polos(renderStatusLine()), /Konteks \d+% tersisa/);
   });
 });
 
@@ -99,7 +99,7 @@ describe('Prompt: Layout Area Input', () => {
 
   it('harus menampilkan baris status sebagai baris terakhir', () => {
     const lines = render().split('\n');
-    assert.match(lines[lines.length - 1], /Context \d+% left/);
+    assert.match(lines[lines.length - 1], /Konteks \d+% tersisa/);
   });
 
   it('harus menampilkan teks yang diketik pengguna di input', () => {
@@ -109,12 +109,12 @@ describe('Prompt: Layout Area Input', () => {
   it('harus menggambar status juga saat state submit', () => {
     const lines = render('sudah selesai', 'submit').split('\n');
     assert.match(lines[1], /sudah selesai/);
-    assert.match(lines[lines.length - 1], /Context \d+% left/);
+    assert.match(lines[lines.length - 1], /Konteks \d+% tersisa/);
   });
 
   it('harus menggambar status juga saat state cancel', () => {
     const lines = render('batal', 'cancel').split('\n');
-    assert.match(lines[lines.length - 1], /Context \d+% left/);
+    assert.match(lines[lines.length - 1], /Konteks \d+% tersisa/);
   });
 
   it('harus menggambar struktur sama saat input kosong maupun terisi', () => {
@@ -148,7 +148,7 @@ describe('Prompt: Dropdown Perintah', () => {
   it('harus tetap menggambar garis bawah dan status di balik dropdown', () => {
     const lines = render('/he', 'initial', { dropdownOpen: true }).split('\n');
     assert.ok(lines.findIndex((l, idx) => idx > 1 && /^─+$/.test(l)) > 0);
-    assert.match(lines[lines.length - 1], /Context \d+% left/);
+    assert.match(lines[lines.length - 1], /Konteks \d+% tersisa/);
   });
 
   it('harus menormalkan indeks di luar jangkauan tanpa melempar error', () => {
@@ -174,7 +174,7 @@ describe('Prompt: Kebersihan Keluaran', () => {
   it('harus tetap valid saat dipanggil tanpa argumen sama sekali', () => {
     const out = polos(buildPromptFrame());
     assert.match(out.split('\n')[0], /^─+$/);
-    assert.match(out, /Context \d+% left/);
+    assert.match(out, /Konteks \d+% tersisa/);
   });
 });
 
@@ -216,7 +216,7 @@ describe('StatusLine: Penyesuaian Lebar Terminal', () => {
 
   it('harus memakai bentuk paling ringkas saat sangat sempit', () => {
     const sangat = polos(renderStatusLine({ maxWidth: 30 }));
-    assert.match(sangat, /Context \d+% left/);
+    assert.match(sangat, /Konteks \d+% tersisa/);
     assert.ok(!/Safe|Auto|Plan|YOLO/.test(sangat), 'label mode izin harus dikorbankan di lebar paling sempit');
   });
 
@@ -228,7 +228,7 @@ describe('StatusLine: Penyesuaian Lebar Terminal', () => {
 
   it('harus tetap memuat indikator konteks di semua lebar', () => {
     for (let w = 30; w <= 160; w += 13) {
-      assert.match(polos(renderStatusLine({ maxWidth: w })), /Context \d+% left/);
+      assert.match(polos(renderStatusLine({ maxWidth: w })), /Konteks \d+% tersisa/);
     }
   });
 
@@ -313,7 +313,7 @@ describe('Prompt: Perilaku CLI Saat Dipipe', () => {
   it('harus tetap mencetak baris status saat keluaran dialihkan', () => {
     const out = polos(jalankan());
     assert.match(out, /~\s+│\s+(?:Safe|Auto|Plan|YOLO)/);
-    assert.match(out, /Context \d+% left/);
+    assert.match(out, /Konteks \d+% tersisa/);
   });
 
   it('harus bebas karakter escape saat dialihkan', () => {

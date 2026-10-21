@@ -123,7 +123,7 @@ describe('Context: Format Label', () => {
   const usage = getContextUsage([{ role: 'user', content: 'x'.repeat(4000) }], { contextWindow: 10_000 });
 
   it('harus menampilkan persentase sisa konteks', () => {
-    assert.match(formatContextIndicator(usage, { useColor: false }), /Context \d+% left/);
+    assert.match(formatContextIndicator(usage, { useColor: false }), /Konteks \d+% tersisa/);
   });
 
   it('harus menandai angka sebagai perkiraan', () => {

@@ -507,14 +507,41 @@ function showHelp() {
 
   // Diturunkan dari COMMANDS supaya daftar bantuan tidak pernah basi
   // ketika perintah baru ditambahkan, dan kolomnya selalu rata.
-  const rows = COMMANDS.map((c) => [HELP_USAGE[c.name] || c.name, c.desc]);
-  const width = Math.max(...rows.map(([usage]) => usage.length));
+  // Perintah lanjutan dipisah agar pemula tidak kewalahan melihat semua
+  // perintah sekaligus — fitur tambahan tetap ada, tapi tidak mendominasi.
+  const ADVANCED_COMMANDS = new Set([
+    '/sandbox',
+    '/tinyfish',
+    '/mcp',
+    '/platform',
+    '/skill',
+    '/rules',
+    '/doctor',
+    '/update',
+    '/image',
+  ]);
+  const allRows = COMMANDS.map((c) => ({
+    name: c.name,
+    usage: HELP_USAGE[c.name] || c.name,
+    desc: c.desc,
+  }));
+  const width = Math.max(...allRows.map((r) => r.usage.length));
+  const coreRows = allRows.filter((r) => !ADVANCED_COMMANDS.has(r.name));
+  const advancedRows = allRows.filter((r) => ADVANCED_COMMANDS.has(r.name));
+
+  const printRows = (rows) => {
+    for (const r of rows) {
+      console.log(`    ${green(r.usage.padEnd(width))}  ${dim('─')}  ${r.desc}`);
+    }
+  };
 
   console.log();
-  console.log(gold.bold('  📖 Panduan Perintah:'));
-  for (const [usage, desc] of rows) {
-    console.log(`    ${green(usage.padEnd(width))}  ${dim('─')}  ${desc}`);
-  }
+  console.log(gold.bold('  📖 Perintah Inti (sehari-hari):'));
+  printRows(coreRows);
+  console.log();
+  console.log(gold.bold('  🔧 Perintah Lanjutan (opsional):'));
+  printRows(advancedRows);
+  console.log(dim('     Tidak perlu dihafal — mulai dari /help, /permission, dan /model.'));
   console.log();
   console.log(gold.bold('  🚀 Mulai dari sini (Contoh untuk Pemula):'));
   console.log(`    ${chalk.cyan('baiworcode "jelaskan struktur proyek ini"')}`);
@@ -534,7 +561,7 @@ function showHelp() {
   console.log(`    ${dim('Daftar tugas dari todo_list (semAIr) tampil sebagai checklist di bawah node-nya.')}`);
   console.log(`    ${dim('Ingin lebih ringkas? Ketik')} ${chalk.cyan('/timeline compact')} ${dim('— satu baris per langkah.')}`);
   console.log(`    ${dim('Kembali ke tampilan penuh kapan saja dengan')} ${chalk.cyan('/timeline detail')}${dim('.')}`);
-  console.log(`    ${dim('Baris "Context X% left" muncul setelah setiap jawaban. Angka itu perkiraan,')}`);
+  console.log(`    ${dim('Baris "Konteks X% tersisa" muncul setelah setiap jawaban. Angka itu perkiraan,')}`);
   console.log(`    ${dim('dan riwayat dipangkas otomatis bila mulai penuh — pakai /compact atau /clear.')}`);
   console.log();
   console.log(gold.bold('  ⌨️  Pintasan Papan Ketik:'));

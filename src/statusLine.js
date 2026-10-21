@@ -7,7 +7,7 @@ import { getContextUsage, formatContextIndicator } from './chat/context.js';
 /**
  * Baris status di bawah area input:
  *
- *   ~ │ Safe │ ✦ <model> · <provider> │ Context 92% left
+ *   ~ │ Safe │ ✦ <model> · <provider> │ Konteks 92% tersisa
  *
  * Label mode izin tunggal (safe/auto/plan/yolo) dengan warna pastel Google —
  * menggantikan dua label lama (Build/Plan + Safe/Full access) yang membingungkan.

@@ -122,7 +122,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Maskot Wajah Topeng Bawor presisi tinggi (19 kolom × 7 baris, simetris dan anti-menceng).
   - Banner 3D ASCII Shadow Merah-Putih.
   - Kotak informasi terminal dinamis anti-pecah (*visual column aware*).
-  - Area input dibingkai dua garis pemisah, dengan baris status yang ikut bergerak saat kamu mengetik — `~ │ Safe │ ✦ <model> · <provider> │ Context 92% left`. Label mode izin memakai warna pastel Google (Safe biru, Auto hijau, Plan kuning, YOLO merah).
+  - Area input dibingkai dua garis pemisah, dengan baris status yang ikut bergerak saat kamu mengetik — `~ │ Safe │ ✦ <model> · <provider> │ Konteks 92% tersisa`. Label mode izin memakai warna pastel Google (Safe biru, Auto hijau, Plan kuning, YOLO merah).
   - Kedua garis memakai jumlah tanda pisah yang sama dan hanya berbeda empat kolom, memberi kesan undakan. Baris status menyesuaikan diri bila terminal sempit: rincian token, nama provider, dan keterangan akses dikorbankan berurutan agar tidak pernah melewati lebar terminal dan merusak kotak layout.
 - **Timeline Aktivitas**:
   - Setiap tool yang dijalankan dicatat sebagai pohon: nama tool, durasi, dan jumlah baris output.
@@ -134,7 +134,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Daftar tugas dari `todo_list` dirender sebagai checklist di bawah node-nya, lengkap dengan progres `3/5 selesai`.
   - Saat keluaran dialihkan (`baiworcode "prompt" > hasil.txt`), animasi dilewati dan pohon dicetak sekali tanpa karakter escape.
 - **Anggun Konteks**:
-  - Indikator `Context 92% left` tampil di banner awal dan sekali lagi setelah setiap jawaban.
+  - Indikator `Konteks 92% tersisa` tampil di banner awal dan sekali lagi setelah setiap jawaban.
   - Riwayat dipangkas otomatis berdasarkan perkiraan **token**, bukan jumlah pesan — hasil `read_file` yang berukuran besar tidak lagi membuat request ditolak provider.
   - Pesan `tool` tidak pernah dilepas dari pesan `assistant` yang memanggilnya, karena pasangan yang terpotong akan membuat provider menolak request.
   - Peringatan muncul dan menyarankan `/clear` saat konteks tinggal sedikit.

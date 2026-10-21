@@ -155,7 +155,7 @@ export function formatContextIndicator(usage, { useColor = true, detail = true }
   else if (percent <= 25) tone = c.yellow;
   else tone = c.green;
 
-  const base = tone(`Context ${percent}% left`);
+  const base = tone(`Konteks ${percent}% tersisa`);
   // Rincian token adalah bagian pertama yang dikorbankan saat terminal sempit.
   if (!detail) return base;
   return `${base} ${c.gray(`≈ ${k(usage.used)}/${k(usage.total)} token`)}`;
