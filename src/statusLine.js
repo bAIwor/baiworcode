@@ -116,7 +116,13 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
     }
     // Label akses dinamis mengikuti config: 'full' → Full access (agenta bebas
     // menjalankan kelas confirm tanpa bertanya di TTY), 'normal' → Safe.
-    if (withAccess) parts.push(bar, theme.text(getAccessMode() === 'full' ? 'Full access' : 'Safe'));
+    // Warna: Safe = biru (info), Full access = merah (error) untuk kontras visual.
+    if (withAccess) {
+      const accessMode = getAccessMode();
+      const accessLabel = accessMode === 'full' ? 'Full access' : 'Safe';
+      const accessColor = accessMode === 'full' ? theme.error : theme.info;
+      parts.push(bar, accessColor(accessLabel));
+    }
     if (withPrefix && prefix) parts.push(bar, theme.info(prefix));
     parts.push(bar, theme.accent('✦'), theme.primary(model));
     if (withProvider) parts.push(theme.muted('·'), theme.info(provider));
