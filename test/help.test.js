@@ -26,10 +26,10 @@ describe('CLI --help berwarna', () => {
   it('menampilkan header, judul bagian, dan daftar perintah', () => {
     const out = run(['--help'], { color: false });
     assert.match(out, /bAIwor Code/);
-    assert.match(out, /USAGE/);
-    assert.match(out, /ARGUMENTS/);
-    assert.match(out, /OPTIONS/);
-    assert.match(out, /COMMANDS/);
+    assert.match(out, /CARA PAKAI/);
+    assert.match(out, /ARGUMEN/);
+    assert.match(out, /OPSI/);
+    assert.match(out, /PERINTAH/);
     assert.match(out, /status/);
     assert.match(out, /login/);
     assert.match(out, /CONTOH CEPAT/);
@@ -47,7 +47,7 @@ describe('CLI --help berwarna', () => {
 
   it('help subcommand bergaya tetapi tanpa header/footer utama', () => {
     const out = run(['status', '--help'], { color: false });
-    assert.match(out, /USAGE/);
+    assert.match(out, /CARA PAKAI/);
     assert.match(out, /status/);
     assert.equal(out.includes('CONTOH CEPAT'), false, 'footer brand tidak boleh muncul di help subcommand');
   });

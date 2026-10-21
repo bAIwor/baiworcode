@@ -14,7 +14,18 @@ import { APP_NAME, APP_SLUG, VERSION, WEBSITE, BONUS_WEBSITE, TAGLINE } from './
  * dihuruf-besarkan agar tampil seperti panduan CLI modern (mis. `USAGE`).
  */
 const HELP_STYLE = {
-  styleTitle: (str) => theme.cliTitle(str.replace(/:\s*$/, '').toUpperCase()),
+  styleTitle: (str) => {
+    // Judul bawaan Commander berbahasa Inggris — diterjemahkan agar pemula
+    // Indonesia tidak perlu menerjemahkan sendiri bagian panduannya.
+    const TITLE_MAP = {
+      'Usage:': 'CARA PAKAI',
+      'Arguments:': 'ARGUMEN',
+      'Options:': 'OPSI',
+      'Global Options:': 'OPSI GLOBAL',
+      'Commands:': 'PERINTAH',
+    };
+    return theme.cliTitle(TITLE_MAP[str] || str.replace(/:\s*$/, '').toUpperCase());
+  },
   styleCommandText: (str) => theme.info.bold(str),
   styleOptionText: (str) => theme.textBright(str),
   styleSubcommandText: (str) => theme.success(str),
@@ -57,7 +68,7 @@ export function helpFooter() {
     '',
     theme.cliTitle('  CONTOH CEPAT'),
     `    ${theme.info(`${APP_SLUG} "jelaskan struktur proyek ini"`)}`,
-    `    ${theme.info(`${APP_SLUG} plan "rancang sistem auth JWT"`)}`,
+    `    ${cmd(`${APP_SLUG} -c`)}${theme.muted('→ lanjutkan sesi percakapan terakhir')}`,
     `    ${theme.info(`${APP_SLUG} ./proyek-lain`)}${theme.muted(' → buka di folder proyek tertentu')}`,
     `    ${theme.info(`${APP_SLUG} -C /path/proyek "perbaiki bug"`)}`,
     `    ${cmd(`${APP_SLUG} model`)}${theme.muted('→ pilih provider & model')}`,

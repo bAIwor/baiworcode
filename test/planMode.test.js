@@ -179,7 +179,7 @@ describe('Mode Plan: read-only sebagai salah satu permission mode', () => {
       assert.equal(isToolBlockedInPlanMode(undefined), true);
     });
 
-    it('pesan penolakan menyebut tool, daftar izin, dan cara pindah ke Build', () => {
+    it('pesan penolakan menyebut tool, daftar izin, dan cara pindah mode', () => {
       const msg = planModeBlockMessage('write_file');
       assert.match(msg, /write_file/);
       assert.match(msg, /read_file/);
@@ -200,7 +200,7 @@ describe('Mode Plan: read-only sebagai salah satu permission mode', () => {
       assert.deepEqual(filterToolsForAgentMode(null, 'plan'), []);
     });
 
-    it('daftar tool nyata tetap utuh di mode Build dan bebas tool tulis di mode Plan', () => {
+    it('daftar tool nyata tetap utuh di mode non-plan dan bebas tool tulis di mode Plan', () => {
       assert.equal(
         filterToolsForAgentMode(TOOL_DEFINITIONS, 'build').length,
         TOOL_DEFINITIONS.length

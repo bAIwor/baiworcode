@@ -430,7 +430,7 @@ function showBanner() {
   console.log(' '.repeat(centerPadInTextLogo(layout, tagline)) + chalk.gray(tagline));
   console.log();
 
-  const readyText = '● Ready';
+  const readyText = '● Siap';
   const readyBadge = chalk.green(readyText);
   // Lebar dalam kotak atas disamakan dengan garis tengah (targetWidth + 2) agar
   // ketiga batang sejajar walau panjang nomor versi berubah.
@@ -441,12 +441,12 @@ function showBanner() {
   const botBar = '  ' + chalk.gray('╰' + '─'.repeat(targetWidth + 2) + '╯');
 
   console.log(topBar);
-  console.log(padBox(chalk.whiteBright('Tips for getting started')));
-  console.log(padBox(chalk.gray('› ') + 'Gunakan ' + chalk.cyan('/help') + ' untuk melihat semua perintah yang tersedia.'));
-  console.log(padBox(chalk.gray('› ') + 'Gunakan ' + chalk.cyan('/clear') + ' untuk menyegarkan layar kerja kapan saja.'));
-  console.log(padBox(chalk.gray('› ') + 'Kunjungi ' + chalk.cyan(WEBSITE) + ' untuk dokumentasi & update resmi.'));
+  console.log(padBox(chalk.whiteBright('Tips Memulai')));
+  console.log(padBox(chalk.gray('› ') + 'Ketik ' + chalk.cyan('/help') + ' untuk melihat semua perintah.'));
+  console.log(padBox(chalk.gray('› ') + 'Baru pertama kali? Ketik ' + chalk.cyan('/model') + ' untuk memilih model AI.'));
+  console.log(padBox(chalk.gray('› ') + 'Shift+Tab mengganti mode izin: Safe → Auto → Plan → YOLO.'));
   console.log(midBar);
-  console.log(padBox(chalk.whiteBright('Workspace & Status')));
+  console.log(padBox(chalk.whiteBright('Ruang Kerja & Status')));
   console.log(padBox(chalk.gray('› ') + 'Folder Aktif : ' + chalk.cyan(process.cwd())));
   const modelInfo = config.activeModel !== 'Not configured'
     ? chalk.hex('#F59E0B')(config.activeModel) + chalk.gray(` (${config.activeProvider})`)
@@ -454,6 +454,26 @@ function showBanner() {
   console.log(padBox(chalk.gray('› ') + 'Model Aktif  : ' + modelInfo));
   console.log(botBar);
   console.log();
+
+  // Onboarding singkat untuk pengguna baru: tanpa model aktif, percakapan
+  // pertama pasti gagal — arahkan ke /model atau /login SEBELUM mereka bingung.
+  if (config.activeModel === 'Not configured') {
+    console.log(chalk.hex('#FBBF24').bold('  👋 Selamat datang di bAIwor Code! Ini langkah pertamamu:'));
+    console.log(
+      chalk.white('     1. Ketik ') +
+        chalk.cyan('/model') +
+        chalk.white(' lalu pilih ') +
+        chalk.hex('#10B981')('Agentik AI') +
+        chalk.white(' — ada bonus token gratis.')
+    );
+    console.log(
+      chalk.white('     2. Atau ketik ') +
+        chalk.cyan('/login') +
+        chalk.white(' untuk masuk dengan akun Google Gemini.')
+    );
+    console.log(chalk.gray('     Setelah model aktif, langsung ketik pertanyaan atau instruksi coding apa saja.'));
+    console.log();
+  }
 
   // Baris status tidak digambar di sini saat terminal sungguhan — `SlashTextPrompt`
   // merender dirinya sendiri, jadi memakainya lagi akan menumpuk dua baris identik.
@@ -1709,7 +1729,8 @@ program.addHelpText('after', helpFooter());
 program
   .name('baiworcode')
   .description(`${APP_NAME} v${VERSION} — ${WEBSITE.replace(/^https?:\/\//, '')}`)
-  .version(VERSION, '-v, --version')
+  .version(VERSION, '-v, --version', 'tampilkan nomor versi')
+  .helpOption('-h, --help', 'tampilkan bantuan ini')
   .option('-C, --cwd <dir>', 'Tentukan folder kerja (workspace) aktif')
   .option('-d, --dir <dir>', 'Alias untuk --cwd')
   .option('-c, --continue', 'Lanjutkan sesi percakapan terakhir')
