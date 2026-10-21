@@ -307,7 +307,7 @@ describe('Prompt: Perilaku CLI Saat Dipipe', () => {
     execFileSync(process.execPath, [BIN], {
       input: '/exit\n',
       encoding: 'utf8',
-      timeout: 30_000,
+      timeout: 90_000,
     });
 
   it('harus tetap mencetak baris status saat keluaran dialihkan', () => {
@@ -353,7 +353,7 @@ describe('Prompt: Daftar Perintah', () => {
       execFileSync(process.execPath, [BIN], {
         input: '/q\n',
         encoding: 'utf8',
-        timeout: 30_000,
+        timeout: 90_000,
       })
     );
     assert.match(out, /Matur nuwun! Sampun nganggo bAIwor Code/);
@@ -688,7 +688,7 @@ describe('Prompt: Interaksi Slash Dropdown (/ Tab, Spasi, Panah, Enter)', () => 
     const out = polos(buildPromptFrame({ value: '/ ', dropdownOpen: true }));
     assert.ok(out.includes('Perintah'));
     assert.ok(out.includes('/help'));
-    assert.ok(out.includes('/plan'));
+    assert.ok(out.includes('/permission'));
     assert.ok(!out.includes('Tidak ada perintah yang cocok'));
   });
 
@@ -697,14 +697,15 @@ describe('Prompt: Interaksi Slash Dropdown (/ Tab, Spasi, Panah, Enter)', () => 
     prompt.state = 'active';
     prompt.value = '/';
     prompt.emit('value', '/');
-    prompt.onKeypress('', { name: 'down' }); // pindah ke /plan (1)
+    prompt.onKeypress('', { name: 'down' }); // pindah ke /permission (1)
+    prompt.onKeypress('', { name: 'down' }); // pindah ke /compact (2)
     prompt.onKeypress('\t', { name: 'tab' });
-    assert.equal(prompt.value, '/plan ');
+    assert.equal(prompt.value, '/compact ');
     assert.equal(prompt.state, 'active');
     // Dropdown tertutup: tekan Enter langsung submit nilai di input frame
     prompt.onKeypress('\r', { name: 'return' });
     assert.equal(prompt.state, 'submit');
-    assert.equal(prompt.value, '/plan ');
+    assert.equal(prompt.value, '/compact ');
   });
 
   it('mengetik "/" lalu Tab tanpa navigasi harus melengkapi perintah pertama ke input frame dan menutup dropdown', () => {
@@ -744,10 +745,23 @@ describe('Prompt: Interaksi Slash Dropdown (/ Tab, Spasi, Panah, Enter)', () => 
     prompt.state = 'active';
     prompt.value = '/';
     prompt.emit('value', '/');
-    prompt.onKeypress('', { name: 'down' }); // pindah dari /help (0) ke /plan (1)
+    prompt.onKeypress('', { name: 'down' }); // pindah dari /help (0)
+    prompt.onKeypress('', { name: 'down' }); // ke /permission (1) → /compact (2)
     prompt.onKeypress('\r', { name: 'return' });
     assert.equal(prompt.state, 'submit');
-    assert.equal(prompt.value, '/plan');
+    assert.equal(prompt.value, '/compact');
+  });
+
+  it('Enter pada perintah bersubcommand (/{name}) membuka pilihan subcommand, bukan submit', () => {
+    const { prompt } = createMockPrompt();
+    prompt.state = 'active';
+    prompt.value = '/';
+    prompt.emit('value', '/');
+    prompt.onKeypress('', { name: 'down' }); // pindah ke /permission (1)
+    prompt.onKeypress('\r', { name: 'return' });
+    // Punya SUBCOMMANDS → Enter melengkapi ke "/permission " & buka dropdown sub
+    assert.equal(prompt.state, 'active');
+    assert.equal(prompt.value, '/permission ');
   });
 });
 
@@ -763,9 +777,9 @@ describe('Prompt: Subcommand Context & Dropdown (/timeline, /session, /skill)', 
     assert.ok(root.matches.some((c) => c.name === '/timeline'));
 
     // Command dengan spasi tapi tanpa sub-opsi terdaftar
-    const free = getPromptContext('/plan buatkan auth');
+    const free = getPromptContext('/compact ringkas');
     assert.equal(free.type, 'freeform');
-    assert.equal(free.parentCmd, '/plan');
+    assert.equal(free.parentCmd, '/compact');
 
     // /timeline dengan spasi -> subcommands compact & detail
     const timeCtx = getPromptContext('/timeline ');

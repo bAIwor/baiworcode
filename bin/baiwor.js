@@ -40,7 +40,6 @@ import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
 import { handleUserChat, resetConversation, conversationSession } from '../src/chat/index.js';
-import { buildPlanUserPrompt } from '../src/chat/planMode.js';
 import {
   permissionModeLabel,
   permissionModeOptions,
@@ -473,7 +472,6 @@ const HELP_USAGE = {
   '/login': '/login [provider]',
   '/logout': '/logout [provider]',
   '/permission': '/permission [safe|auto|plan|yolo]',
-  '/plan': '/plan [instruksi]',
   '/cd': '/cd <folder>',
   '/workspace': '/workspace [folder]',
   '/sandbox': '/sandbox [status|exec|sync|open|screenshot|pause|resume|key]',
@@ -500,7 +498,7 @@ function showHelp() {
   console.log();
   console.log(gold.bold('  🚀 Mulai dari sini (Contoh untuk Pemula):'));
   console.log(`    ${chalk.cyan('baiworcode "jelaskan struktur proyek ini"')}`);
-  console.log(`    ${chalk.cyan('baiworcode plan "rancang fitur baru"')}`);
+  console.log(`    ${chalk.cyan('baiworcode "rancang fitur baru"')}  ${dim('─ lalu tekan Shift+Tab hingga label Plan (kuning)')}`);
   console.log(`    ${chalk.cyan('baiworcode ./proyek-lain')}  ${dim('─ buka bAIwor di folder proyek tertentu')}`);
   console.log(`    ${chalk.cyan('baiworcode -C /path/proyek "perbaiki bug"')}  ${dim('─ jalankan di folder target')}`);
   console.log(`    ${chalk.cyan('baiworcode -c')}  ${dim('atau')}  ${chalk.cyan('baiworcode --resume')}  ${dim('─ lanjutkan sesi terakhir')}`);
@@ -1227,33 +1225,6 @@ async function startInteractive(opts = {}) {
       case '/help':
         showHelp();
         break;
-      case '/plan': {
-        // Jalan pintas mode arsitek read-only (= /permission plan).
-        // Dengan argumen: mode dinyalakan lalu instruksinya langsung dikerjakan.
-        if (!arg) {
-          setPermissionMode('plan');
-          tampilkanModeIzin('plan');
-          break;
-        }
-
-        setPermissionMode('plan');
-        tampilkanModeIzin('plan');
-        await handleUserChat(arg);
-        try {
-          conversationSession.saveToDisk({
-            model: config.activeModel,
-            provider: config.activeProvider,
-          });
-        } catch {}
-        break;
-      }
-      case '/build': {
-        // Jalan pintas keluar dari mode arsitek: kembali ke 'safe' (builder
-        // dengan persetujuan), padanan perilaku lama paling konservatif.
-        setPermissionMode('safe');
-        tampilkanModeIzin('safe');
-        break;
-      }
       case '/permission':
       case '/access':
       case '/akses':
@@ -1792,31 +1763,6 @@ program
     } else {
       await startInteractive();
     }
-  });
-
-program
-  .command('plan [prompt...]')
-  .description('Mode arsitek semAIr: susun rencana & analisis tanpa ubah kode')
-  .action(async (promptParts) => {
-    const prompt = (promptParts || []).join(' ').trim();
-    if (!prompt) {
-      console.log(chalk.cyan.bold('\n  👑 Mode Perencanaan semAIr (/plan)'));
-      console.log(chalk.gray('     Format : ') + chalk.white('baiworcode plan <instruksi atau fitur>'));
-      console.log(chalk.gray('     Contoh : ') + chalk.green('baiworcode plan "buatkan sistem auth JWT"\n'));
-      process.exit(0);
-    }
-    // Subcommand `plan` WAJIB benar-benar read-only: mode plan dikirim untuk
-    // giliran ini saja (tanpa menulis agentMode ke config).
-    const chatResult = await handleUserChat(buildPlanUserPrompt(prompt), { agentMode: 'plan' });
-    try {
-      const config = getConfig();
-      conversationSession.saveToDisk({
-        model: config?.activeModel,
-        provider: config?.activeProvider,
-      });
-    } catch {}
-    finishNonInteractive(chatResult?.ok ? 0 : chatResult?.aborted ? 130 : 1);
-    return;
   });
 
 program

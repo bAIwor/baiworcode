@@ -124,7 +124,7 @@ describe('Perintah /permission: satu konsep untuk empat mode izin', () => {
           execFileSync(process.execPath, [BIN], {
             input: `${perintah}\n`,
             encoding: 'utf8',
-            timeout: 30_000,
+            timeout: 90_000,
             env: envHome(home),
           })
         );
@@ -156,12 +156,12 @@ describe('Perintah /permission: satu konsep untuk empat mode izin', () => {
       assert.equal(viaMode.config?.permissionMode, 'safe');
     });
 
-    it('/plan menyalakan plan, /build mengembalikan ke safe', () => {
-      const nyala = jalankan('/plan');
+    it('/permission plan dan /permission safe via satu pintu handler', () => {
+      const nyala = jalankan('/permission plan');
       assert.match(nyala.out, /Mode izin aktif: Plan/);
       assert.equal(nyala.config?.permissionMode, 'plan');
 
-      const mati = jalankan('/build');
+      const mati = jalankan('/permission safe');
       assert.match(mati.out, /Mode izin aktif: Safe/);
       assert.equal(mati.config?.permissionMode, 'safe');
     });

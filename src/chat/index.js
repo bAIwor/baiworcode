@@ -135,10 +135,9 @@ export function resetConversation() {
  * Mendukung Agentic Execution Loop dengan pemanggilan tools (Tahap 3B).
  *
  * @param {string} promptText
- * @param {{agentMode?: 'build'|'plan'}} [options]
  * @returns {Promise<{ok:boolean, aborted:boolean}>}
  */
-export async function handleUserChat(promptText, options = {}) {
+export async function handleUserChat(promptText) {
   const query = (promptText || '').trim();
   if (!query) return { ok: true, aborted: false };
 
@@ -278,18 +277,9 @@ export async function handleUserChat(promptText, options = {}) {
   let stuckLoop = false;
   const toolSignatureCounts = new Map();
 
-  // Mode izin dikunci sekali di awal giliran: peralihan yang terjadi di tengah
-  // giliran (lewat prompt) tidak boleh mengubah aturan main yang sedang
-  // berjalan. Pemanggil (mis. `baiworcode plan`) dapat menimpa mode untuk satu
-  // giliran tanpa mengubah konfigurasi permanen.
-  const permissionMode =
-    options.agentMode === 'plan'
-      ? 'plan'
-      : options.agentMode === 'build'
-        ? getPermissionMode() === 'plan'
-          ? 'safe'
-          : getPermissionMode()
-        : getPermissionMode();
+  // Mode izin dibaca saat giliran dimulai. Peralihan yang terjadi di tengah
+  // giliran (lewat prompt) tidak mengubah aturan main yang sedang berjalan.
+  const permissionMode = getPermissionMode();
   const agentMode = permissionMode === 'plan' ? 'plan' : 'build';
 
   // Penegakan perencanaan (adaptasi aturan `todowrite` mcode): hitung tool yang

@@ -190,8 +190,6 @@ loadPromptHistory();
 
 export const COMMANDS = [
   { name: '/help', desc: 'Menampilkan panduan perintah & bantuan' },
-  { name: '/plan', desc: 'Nyalakan mode arsitek read-only: rencana tanpa ubah kode (= /permission plan)' },
-  { name: '/build', desc: 'Kembali ke mode builder: boleh ubah berkas & jalankan perintah (= /permission safe)' },
   { name: '/permission', desc: 'Mode izin terpadu: safe · auto · plan · yolo (ganti cepat via Shift+Tab)' },
   { name: '/compact', desc: 'Ringkas konteks percakapan untuk menghemat token' },
   { name: '/timeline', desc: 'Ganti tampilan aktivitas: compact (satu baris) / detail (pohon)' },
@@ -313,7 +311,7 @@ export function getPromptContext(value = '') {
       };
     }
 
-    // Perintah tanpa sub-opsi terdaftar (misal /plan sesuatu)
+    // Perintah tanpa sub-opsi terdaftar (misal /help sesuatu)
     const rest = trimmedStart.slice(spaceIdx).trimStart().toLowerCase();
     return {
       type: 'freeform',
@@ -883,7 +881,7 @@ export class SlashTextPrompt extends TextPrompt {
         const ctx = getPromptContext(val);
         const matches = ctx.matches;
 
-        // Jika perintah free-form (seperti /plan teks): Enter langsung submit
+        // Jika perintah free-form (seperti /help teks): Enter langsung submit
         if (ctx.type === 'freeform') {
           if (key?.name === 'return') {
             showDropdown = false;

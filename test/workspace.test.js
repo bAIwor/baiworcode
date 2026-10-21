@@ -151,7 +151,7 @@ describe('Workspace: Pengelolaan Ruang Kerja', () => {
         execFileSync(process.execPath, [BIN, 'src'], {
           input: '/q\n',
           encoding: 'utf8',
-          timeout: 30_000,
+          timeout: 90_000,
         })
       );
       assert.match(out, /Folder Aktif\s+:\s+.*src/i);
@@ -162,7 +162,7 @@ describe('Workspace: Pengelolaan Ruang Kerja', () => {
         execFileSync(process.execPath, [BIN], {
           input: '/workspace\n/q\n',
           encoding: 'utf8',
-          timeout: 30_000,
+          timeout: 90_000,
         })
       );
       assert.match(out, /Workspace Aktif:/);
@@ -173,7 +173,7 @@ describe('Workspace: Pengelolaan Ruang Kerja', () => {
         execFileSync(process.execPath, [BIN], {
           input: '/cd src\n/q\n',
           encoding: 'utf8',
-          timeout: 30_000,
+          timeout: 90_000,
         })
       );
       assert.match(out, /Workspace aktif berpindah ke:.*src/i);

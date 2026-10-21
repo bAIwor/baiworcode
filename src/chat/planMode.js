@@ -1,5 +1,5 @@
 /**
- * Modul Mode Perencanaan (/plan) untuk bAIwor Code.
+ * Modul Penegakan Mode Plan (permissionMode 'plan') untuk bAIwor Code.
  * Memaksa AI bekerja sebagai arsitek murni (dry-run):
  * - Membatasi tool hanya ke pembacaan & perencanaan (read-only + todo_list).
  * - Mencegah tool write_file dan edit_file dieksekusi sebelum rencana disetujui.
@@ -86,7 +86,7 @@ export function formatPunakawanBadge(roleName) {
 }
 
 export const PLAN_SYSTEM_INSTRUCTION = `
-🚨 [MODE PERENCANAAN AKTIF (/plan) — Kearifan semAIr]
+🚨 [MODE PERENCANAAN AKTIF (/permission plan) — Kearifan semAIr]
 Kamu saat ini bertindak dengan kearifan semAIr — Sang Arsitek & Pamomong Strategi.
 Tugasmu merancang blueprint solusi sebelum bAIwor (Sang Builder) turun tangan mengeksekusi kode dengan Kudi-nya.
 
@@ -105,52 +105,12 @@ Aturan ketat mode perencanaan:
 7. Akhiri selalu dengan meminta konfirmasi: "Ketik 'lanjutkan' atau 'eksekusi' untuk mulai menerapkan rencana ini."`;
 
 /**
- * Mengecek apakah input pengguna merupakan perintah /plan.
- *
- * @param {string} input
- * @returns {boolean}
- */
-export function isPlanCommand(input) {
-  if (!input || typeof input !== 'string') return false;
-  const trimmed = input.trim();
-  return trimmed === '/plan' || trimmed.startsWith('/plan ');
-}
-
-/**
- * Mengekstrak instruksi di belakang perintah /plan.
- * Contoh: "/plan buat sistem auth" -> "buat sistem auth"
- *
- * @param {string} input
- * @returns {string}
- */
-export function extractPlanPrompt(input) {
-  if (!input || typeof input !== 'string') return '';
-  const trimmed = input.trim();
-  if (trimmed === '/plan') return '';
-  if (trimmed.startsWith('/plan ')) {
-    return trimmed.slice(6).trim();
-  }
-  return trimmed;
-}
-
-/**
  * Mengambil daftar nama tool yang diizinkan saat mode perencanaan aktif.
  *
  * @returns {Array<string>}
  */
 export function getPlanAllowedTools() {
   return [...PLAN_ALLOWED_TOOLS];
-}
-
-/**
- * Membentuk pesan prompt user yang diperkaya dengan arahan mode perencanaan.
- *
- * @param {string} promptText
- * @returns {string}
- */
-export function buildPlanUserPrompt(promptText) {
-  const clean = promptText.trim();
-  return `${PLAN_SYSTEM_INSTRUCTION}\n\n[Instruksi Perencanaan]:\n${clean}`;
 }
 
 /* ------------------------------------------------------------------ *

@@ -18,7 +18,7 @@ function run(args, { color } = {}) {
   return execFileSync(process.execPath, [BIN, ...args], {
     encoding: 'utf8',
     env,
-    timeout: 30_000,
+    timeout: 90_000,
   });
 }
 

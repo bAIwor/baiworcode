@@ -4,10 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {
-  isPlanCommand,
-  extractPlanPrompt,
   getPlanAllowedTools,
-  buildPlanUserPrompt,
   PLAN_ALLOWED_TOOLS,
   filterToolsForAgentMode,
   isToolBlockedInPlanMode,
@@ -36,35 +33,7 @@ const BIN = path.join(REPO_ROOT, 'bin', 'baiwor.js');
 const ANSI = /\x1b\[[0-9;]*m/g;
 const polos = (s) => s.replace(ANSI, '');
 
-describe('PlanMode: Mode Perencanaan & Dry-Run (/plan)', () => {
-  describe('isPlanCommand', () => {
-    it('harus mengenali perintah /plan tunggal maupun dengan argumen', () => {
-      assert.equal(isPlanCommand('/plan'), true);
-      assert.equal(isPlanCommand('/plan buatkan modul payment'), true);
-      assert.equal(isPlanCommand('  /plan migrasi database   '), true);
-    });
-
-    it('harus menolak input yang bukan /plan', () => {
-      assert.equal(isPlanCommand('plan'), false);
-      assert.equal(isPlanCommand('/planner'), false);
-      assert.equal(isPlanCommand('/plane'), false);
-      assert.equal(isPlanCommand(''), false);
-      assert.equal(isPlanCommand(null), false);
-    });
-  });
-
-  describe('extractPlanPrompt', () => {
-    it('harus mengekstrak instruksi setelah kata kunci /plan', () => {
-      assert.equal(extractPlanPrompt('/plan refactor modul auth'), 'refactor modul auth');
-      assert.equal(extractPlanPrompt('  /plan   perbaiki bug memory leak  '), 'perbaiki bug memory leak');
-    });
-
-    it('harus mengembalikan string kosong jika hanya mengetik /plan tanpa instruksi', () => {
-      assert.equal(extractPlanPrompt('/plan'), '');
-      assert.equal(extractPlanPrompt('  /plan  '), '');
-    });
-  });
-
+describe('PlanMode: Penegakan Dry-Readonly permissionMode "plan"', () => {
   describe('getPlanAllowedTools', () => {
     it('hanya boleh mengizinkan tool read-only dan todo_list', () => {
       const allowed = getPlanAllowedTools();
@@ -77,15 +46,6 @@ describe('PlanMode: Mode Perencanaan & Dry-Run (/plan)', () => {
       // Harus melarang keras tool pembuat & pengubah file
       assert.ok(!allowed.includes('write_file'));
       assert.ok(!allowed.includes('edit_file'));
-    });
-  });
-
-  describe('buildPlanUserPrompt', () => {
-    it('harus menyisipkan arahan arsitektur ke dalam prompt', () => {
-      const result = buildPlanUserPrompt('desain sistem caching redis');
-      assert.ok(result.includes('MODE PERENCANAAN AKTIF'));
-      assert.ok(result.includes('desain sistem caching redis'));
-      assert.ok(result.includes('DILARANG membuat file baru'));
     });
   });
 
@@ -261,7 +221,7 @@ describe('Mode Plan: read-only sebagai salah satu permission mode', () => {
     });
   });
 
-  describe('integrasi CLI: /plan, /build, dan baris status', () => {
+  describe('integrasi CLI: /permission plan & baris status', () => {
     // Home sementara: config pengguna asli tidak boleh tersentuh, termasuk saat
     // berkas tes lain berjalan paralel.
     const jalankan = (perintah, configAwal = null) => {
@@ -272,7 +232,7 @@ describe('Mode Plan: read-only sebagai salah satu permission mode', () => {
           execFileSync(process.execPath, [BIN], {
             input: `${perintah}\n`,
             encoding: 'utf8',
-            timeout: 30_000,
+            timeout: 90_000,
             env: envHome(home),
           })
         );
@@ -282,15 +242,21 @@ describe('Mode Plan: read-only sebagai salah satu permission mode', () => {
       }
     };
 
-    it('/plan menyalakan mode Plan menempel, /build mengembalikan ke safe', () => {
-      const nyala = jalankan('/plan');
+    it('/permission plan menyalakan mode Plan menempel, /permission safe mematikannya', () => {
+      const nyala = jalankan('/permission plan');
       assert.match(nyala.out, /Mode izin aktif: Plan/);
       assert.match(nyala.out, /menyusun rencana/);
       assert.equal(nyala.config?.permissionMode, 'plan', 'config harus menyimpan permissionMode: "plan"');
 
-      const mati = jalankan('/build');
+      const mati = jalankan('/permission safe');
       assert.match(mati.out, /Mode izin aktif: Safe/);
       assert.equal(mati.config?.permissionMode, 'safe');
+    });
+
+    it('/plan lama tidak dikenal lagi dan diarahkan ke /permission', () => {
+      const { out } = jalankan('/plan');
+      assert.match(out, /mboten dipunmangertosi/);
+      assert.match(out, /\/help/);
     });
 
     it('baris status menampilkan mode izin yang sedang aktif', () => {

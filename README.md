@@ -235,8 +235,6 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 ### Di Dalam Mode Interaktif (`baiworcode` / `baiwor`)
 - `/help` — Panduan bantuan & daftar perintah
 - `/permission [safe|auto|plan|yolo]` — Mode izin terpadu (satu konsep, empat level): **safe** (biru: semua perubahan tanya), **auto** (hijau: berkas langsung, perintah berisiko tetap tanya), **plan** (kuning: arsitek read-only), **yolo** (merah: tanpa tanya; kelas deny tetap ditolak). Shift+Tab untuk siklus cepat.
-- `/plan [instruksi]` — Jalan pintas mode arsitek read-only (= `/permission plan`)
-- `/build` — Jalan pintas kembali ke mode builder dengan persetujuan (= `/permission safe`)
 - `/compact` — Ringkas konteks percakapan untuk menghemat ruang token
 - `/timeline [compact|detail]` — Ganti mode tampilan timeline: compact (satu baris cepat) atau detail (pohon lengkap)
 - `/session [list|resume|delete|clear]` — Kelola sesi percakapan proyek (daftar sesi, lanjutkan, hapus satu, atau hapus semua)
@@ -263,7 +261,6 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 ### Perintah Langsung CLI
 - `baiworcode [folder] [prompt...]` — Buka bAIwor di folder proyek tertentu atau jalankan instruksi coding langsung
 - `baiworcode -C, --cwd <folder>` — Tentukan folder kerja (workspace) aktif (alias: `-d`, `--dir`)
-- `baiworcode plan [prompt...]` — Rancang rencana arsitektur & solusi langsung dari terminal luar
 - `baiworcode session [list|resume|delete|clear]` — Kelola riwayat sesi proyek (lihat, lanjutkan, hapus satu, atau hapus semua)
 - `baiworcode skill [action] [target]` — Kelola modul keahlian & plugin (`.baiwor/skills`)
 - `baiworcode rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)

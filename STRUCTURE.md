@@ -30,7 +30,7 @@ baiworcode/
     │   ├── index.js                # Orkestrator utama Agentic Loop interaksi LLM dan eksekusi tool
     │   ├── liveActivity.js         # Komponen visual status tool interaktif (animasi in-place spinner)
     │   ├── outputWriter.js         # Penulis keluaran terminal sadar kolom dengan hanging-indent
-    │   ├── planMode.js             # Mode perencanaan read-only (/plan) dan widget todo list
+    │   ├── planMode.js             # Penegakan read-only permissionMode "plan" dan widget todo list
     │   ├── reasoningPlaceholder.js # Pengaman kompatibilitas reasoning_content untuk API provider
     │   ├── sessionManager.js       # Manajer persistensi sesi percakapan ke format JSONL di disk
     │   ├── systemPrompt.js         # Generator prompt sistem bAIwor (Punakawan Banyumasan & instruksi kerja)
@@ -115,7 +115,7 @@ Alur kerja agen dari pengetikan input hingga pemanggilan tool berlangsung dalam 
        ▼
 1. CLI REPL & Prompt Parsing (bin/baiwor.js & src/prompt.js)
    • Menangkap prompt dari argumen CLI atau interactive REPL.
-   • Memeriksa apakah input merupakan slash command (/model, /plan, /permission, /compact, dll.).
+   • Memeriksa apakah input merupakan slash command (/model, /permission, /compact, dll.).
    • Jika chat biasa, dialihkan ke handleUserChat() di src/chat/index.js.
        │
        ▼
