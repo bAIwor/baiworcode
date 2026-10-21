@@ -191,7 +191,7 @@ export const COMMANDS = [
   { name: '/help', desc: 'Menampilkan panduan perintah & bantuan' },
   { name: '/plan', desc: 'Nyalakan/matikan mode arsitek semAIr (read-only): rencana tanpa ubah kode' },
   { name: '/build', desc: 'Kembali ke mode builder: boleh ubah berkas & jalankan perintah' },
-  { name: '/access', desc: 'Mode izin perintah: Safe (selalu tanya) atau Full access (langsung jalan)' },
+  { name: '/permission', desc: 'Mode izin perintah: Safe (selalu tanya) atau Full access (langsung jalan)' },
   { name: '/compact', desc: 'Ringkas konteks percakapan untuk menghemat token' },
   { name: '/timeline', desc: 'Ganti tampilan aktivitas: compact (satu baris) / detail (pohon)' },
   { name: '/session', desc: 'Kelola sesi percakapan (list, resume, delete, clear)' },
@@ -219,7 +219,7 @@ export const COMMANDS = [
 ];
 
 export const SUBCOMMANDS = {
-  '/access': [
+  '/permission': [
     { name: 'safe', desc: 'Selalu minta persetujuan sebelum perintah berisiko (disarankan)' },
     { name: 'full', desc: 'Lewati persetujuan kelas "confirm" — perintah berbahaya tetap ditolak' },
   ],

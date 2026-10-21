@@ -473,7 +473,7 @@ function showBanner() {
 const HELP_USAGE = {
   '/login': '/login [provider]',
   '/logout': '/logout [provider]',
-  '/access': '/access [safe|full]',
+  '/permission': '/permission [safe|full]',
   '/plan': '/plan [instruksi]',
   '/cd': '/cd <folder>',
   '/workspace': '/workspace [folder]',
@@ -1255,8 +1255,8 @@ async function startInteractive(opts = {}) {
         tampilkanModeAgen('build');
         break;
       }
+      case '/permission':
       case '/access':
-      case '/akses':
       case '/mode': {
         let requested = parseAccessModeArg(arg);
         const current = getAccessMode();
@@ -1278,9 +1278,9 @@ async function startInteractive(opts = {}) {
           console.log(
             chalk.yellow(`\n  ⚠️  Mode "${arg}" tidak dikenal.`) +
               chalk.gray(' Pilih ') +
-              chalk.cyan('/access safe') +
+              chalk.cyan('/permission safe') +
               chalk.gray(' atau ') +
-              chalk.cyan('/access full') +
+              chalk.cyan('/permission full') +
               '\n'
           );
           break;

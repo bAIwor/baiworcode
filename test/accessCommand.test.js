@@ -23,19 +23,19 @@ const BIN = path.join(REPO_ROOT, 'bin', 'baiwor.js');
 const ANSI = /\x1b\[[0-9;]*m/g;
 const polos = (s) => s.replace(ANSI, '');
 
-describe('Perintah /access: ganti mode izin tanpa hafal Shift+Tab', () => {
+describe('Perintah /permission: ganti mode izin tanpa hafal Shift+Tab', () => {
 
   describe('terdaftar di menu "/" dan panduan', () => {
-    it('/access ada di COMMANDS dengan deskripsi', () => {
-      const entry = COMMANDS.find((c) => c.name === '/access');
-      assert.ok(entry, 'perintah /access harus muncul di menu "/"');
+    it('/permission ada di COMMANDS dengan deskripsi', () => {
+      const entry = COMMANDS.find((c) => c.name === '/permission');
+      assert.ok(entry, 'perintah /permission harus muncul di menu "/"');
       assert.ok(entry.desc && entry.desc.length > 0);
       assert.match(entry.desc, /Safe/);
       assert.match(entry.desc, /Full access/);
     });
 
     it('punya subperintah safe & full supaya bisa dipilih dari menu', () => {
-      const subs = SUBCOMMANDS['/access'];
+      const subs = SUBCOMMANDS['/permission'];
       assert.ok(Array.isArray(subs) && subs.length >= 2);
       const names = subs.map((s) => s.name);
       assert.ok(names.includes('safe'));
@@ -85,7 +85,7 @@ describe('Perintah /access: ganti mode izin tanpa hafal Shift+Tab', () => {
     });
   });
 
-  describe('integrasi CLI: /access, /akses, dan /mode', () => {
+  describe('integrasi CLI: /permission, /access, dan /mode', () => {
     // Satu perintah per pemanggilan: stdin yang dipipe hanya terkirim ke prompt
     // pertama, jadi beberapa perintah dalam satu proses tidak dapat diuji.
     // Setiap proses anak memakai home sementara supaya config pengguna asli
@@ -107,15 +107,15 @@ describe('Perintah /access: ganti mode izin tanpa hafal Shift+Tab', () => {
       }
     };
 
-    it('/access full benar-benar menyetel mode ke full', () => {
-      const { out, config } = jalankan('/access full');
+    it('/permission full benar-benar menyetel mode ke full', () => {
+      const { out, config } = jalankan('/permission full');
       assert.match(out, /Mode izin perintah: Full access/);
       assert.match(out, /Agen \(Build\/Plan\) diganti dengan Shift\+Tab/);
       assert.equal(config?.accessMode, 'full', 'config harus menyimpan accessMode: "full"');
     });
 
-    it('alias /akses dan /mode menuju peralihan yang sama', () => {
-      const viaAlias = jalankan('/akses penuh');
+    it('alias /access dan /mode menuju peralihan yang sama', () => {
+      const viaAlias = jalankan('/access penuh');
       assert.match(viaAlias.out, /Mode izin perintah: Full access/);
       assert.equal(viaAlias.config?.accessMode, 'full');
 
@@ -125,7 +125,7 @@ describe('Perintah /access: ganti mode izin tanpa hafal Shift+Tab', () => {
     });
 
     it('mode tak dikenal ditolak tanpa mengubah apa pun', () => {
-      const { out, config } = jalankan('/access ngawur');
+      const { out, config } = jalankan('/permission ngawur');
       assert.match(out, /Mode "ngawur" tidak dikenal/);
       assert.notEqual(config?.accessMode, 'full');
     });
