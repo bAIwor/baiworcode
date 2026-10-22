@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  # Diperlukan untuk npm Trusted Publishing (OIDC) bila token tidak dipakai.
   id-token: write
 
 jobs:
@@ -15,11 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Node 24 → npm 11.5+ yang mendukung OIDC trusted publishing.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-          registry-url: https://registry.npmjs.org
 
       - name: Verify tag matches package version
         run: |
@@ -48,11 +49,17 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -o pipefail
+          # .npmrc hanya ditulis bila secret token tersedia. Kalau tidak ada,
+          # npm 11 memakai OIDC trusted publishing (butuh konfigurasi di
+          # npmjs.com). Tanpa keduanya, npm akan melaporkan ENEEDAUTH.
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=$NODE_AUTH_TOKEN" > "$HOME/.npmrc"
+          fi
           {
             echo "### Publish diagnostics"
-            echo "- npm registry: $(npm config get registry)"
-            echo "- NODE_AUTH_TOKEN terisi: $([ -n "$NODE_AUTH_TOKEN" ] && echo ya || echo TIDAK)"
-            echo "- npm whoami: $(npm whoami 2>&1 | head -1)"
+            echo "- node: $(node --version)"
+            echo "- npm: $(npm --version)"
+            echo "- token secret: $([ -n "$NODE_AUTH_TOKEN" ] && echo 'ada' || echo 'tidak ada, mengandalkan OIDC trusted publishing')"
           } >> "$GITHUB_STEP_SUMMARY"
           npm publish --provenance --access public --tag ${{ steps.dist.outputs.tag }} 2>&1 | tee /tmp/publish.txt || {
             echo "### ❌ npm publish gagal" >> "$GITHUB_STEP_SUMMARY"
