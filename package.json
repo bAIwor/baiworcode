@@ -30,6 +30,7 @@
   "scripts": {
     "start": "node ./bin/baiwor.js",
     "test": "node scripts/run-tests.mjs",
+    "audit:provider": "node scripts/audit-provider.mjs",
     "check": "npm test",
     "prepublishOnly": "npm test"
   },

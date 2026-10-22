@@ -259,7 +259,13 @@ catat('Config: file belum ada → dibuat & pakai default', adaDefault, out12.tri
 fs.writeFileSync(rusak, JSON.stringify({ activeProvider: 'MockProvider' }, null, 2));
 fs.chmodSync(rusak, 0o600);
 const mode = (fs.statSync(rusak).mode & 0o777).toString(8);
-catat('Keamanan: file config dibatasi permission (0600)', mode === '600', `mode=${mode}`);
+if (process.platform === 'win32') {
+  // Windows tidak punya bit izin POSIX; yang diuji di sana adalah file tetap
+  // ada dan bisa dibaca owner (sudah dipastikan di atas).
+  catat('Keamanan: file config ada & terbaca', fs.existsSync(rusak), `mode-windows=${mode}`);
+} else {
+  catat('Keamanan: file config dibatasi permission (0600)', mode === '600', `mode=${mode}`);
+}
 
 // ---------- 14. Secret tidak bocor ke log ----------
 const { maskSecret } = await import(new URL('../src/config.js', import.meta.url).href);
