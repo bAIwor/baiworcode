@@ -220,6 +220,42 @@ function summarize(items) {
 }
 
 /**
+ * Menormalkan bentuk `todos` yang dikirim model. Model kadang membungkus daftar
+ * (`{ "item": [...] }`), mengirim satu objek tugas, atau memakai peta id→tugas,
+ * dan mengirim `merge` sebagai string. Bentuk-bentuk ini diartikan alih-alih
+ * langsung ditolak, tanpa melonggarkan validasi isi tiap tugas.
+ *
+ * @param {unknown} todos
+ * @returns {Array|null} null bila tidak bisa diartikan sebagai daftar tugas.
+ */
+export function coerceTodosInput(todos) {
+  if (Array.isArray(todos)) return todos;
+  if (!todos || typeof todos !== 'object') return null;
+
+  for (const key of ['item', 'items', 'todos', 'list', 'data', 'tasks']) {
+    if (Array.isArray(todos[key])) return todos[key];
+  }
+
+  if (typeof todos.content === 'string' || typeof todos.id === 'string') return [todos];
+
+  const values = Object.values(todos);
+  if (
+    values.length > 0 &&
+    values.every(
+      (v) => v && typeof v === 'object' && (typeof v.content === 'string' || typeof v.id === 'string')
+    )
+  ) {
+    return values;
+  }
+  return null;
+}
+
+/** `merge` bisa datang sebagai boolean atau string "true"/"1". */
+function coerceMerge(merge) {
+  return merge === true || merge === 'true' || merge === 1 || merge === '1';
+}
+
+/**
  * Handler tool `todo_list`.
  *
  * @param {Object} args
@@ -240,12 +276,16 @@ export async function handleTodoList({ todos, merge = false } = {}) {
     };
   }
 
-  if (!Array.isArray(todos)) {
-    return { success: false, output: `Error: "todos" harus berupa array, diterima ${typeof todos}.` };
+  const daftar = coerceTodosInput(todos);
+  if (!daftar) {
+    return {
+      success: false,
+      output: `Error: "todos" harus berupa array tugas, diterima ${typeof todos}. Kirim daftar seperti [{"id":"1","content":"...","status":"pending"}].`,
+    };
   }
 
   try {
-    const items = todoStore.write(todos, Boolean(merge));
+    const items = todoStore.write(daftar, coerceMerge(merge));
     return {
       success: true,
       output: JSON.stringify(

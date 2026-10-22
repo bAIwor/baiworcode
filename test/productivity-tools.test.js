@@ -206,6 +206,36 @@ describe('Tool todo_list: manajemen daftar tugas', () => {
     assert.match(res.output, /array/i);
   });
 
+  it('menerima daftar yang dibungkus objek { item: [...] } (bentuk dari model)', async () => {
+    const res = await handleTodoList({
+      todos: { item: [{ id: '9', content: 'Dari model', status: 'pending' }] },
+    });
+    assert.equal(res.success, true);
+    const data = JSON.parse(res.output);
+    assert.equal(data.todos.length, 1);
+    assert.equal(data.todos[0].id, '9');
+  });
+
+  it('menerima satu objek tugas tunggal dan membungkusnya jadi array', async () => {
+    const res = await handleTodoList({
+      todos: { id: '10', content: 'Tugas tunggal', status: 'in_progress' },
+    });
+    assert.equal(res.success, true);
+    const data = JSON.parse(res.output);
+    assert.equal(data.todos.length, 1);
+  });
+
+  it('menerima merge berupa string "true"', async () => {
+    await handleTodoList({ todos: [{ id: '11', content: 'Awal', status: 'pending' }] });
+    const res = await handleTodoList({
+      todos: [{ id: '11', status: 'completed' }],
+      merge: 'true',
+    });
+    assert.equal(res.success, true);
+    const data = JSON.parse(res.output);
+    assert.equal(data.todos[0].status, 'completed');
+  });
+
   it('menghapus parent yang menggantung', async () => {
     const res = await handleTodoList({
       todos: [
