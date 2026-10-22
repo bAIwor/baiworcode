@@ -33,7 +33,7 @@ export async function runUpdate(options = {}) {
 
   if (!isGit) {
     console.log(theme.warning('  ⚠️  Instalasi bAIwor Code ini tidak dijalankan dari repositori Git.'));
-    console.log(theme.muted('      Gunakan `npm update -g baiworcode` untuk pembaruan paket npm.\n'));
+    console.log(theme.muted('      Gunakan `npm update -g @baiworcode/baiworcode` untuk pembaruan paket npm.\n'));
     return { updated: false, message: 'Non-git installation' };
   }
 

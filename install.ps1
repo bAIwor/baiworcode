@@ -79,7 +79,7 @@ $isLocalRepo = (Test-Path "package.json") -and (Test-Path "bin\baiwor.js")
 if ($isLocalRepo) {
     $pkgName = $null
     try { $pkgName = (Get-Content "package.json" -Raw | ConvertFrom-Json).name } catch {}
-    if ($pkgName -ne 'baiworcode') {
+    if ($pkgName -ne '@baiworcode/baiworcode' -and $pkgName -ne 'baiworcode') {
         Write-Host "  [!] Folder ini bukan paket baiworcode; 'npm link' dibatalkan." -ForegroundColor Red
         exit 1
     }
@@ -90,19 +90,19 @@ if ($isLocalRepo) {
         exit 1
     }
 } else {
-    # Verifikasi identitas paket npm SEBELUM memasang, agar nama 'baiworcode'
+    # Verifikasi identitas paket npm SEBELUM memasang, agar nama '@baiworcode/baiworcode'
     # yang didaftarkan pihak lain tidak dieksekusi oleh installer resmi.
-    $npmRepo = (& npm view baiworcode repository.url 2>$null) -join ''
+    $npmRepo = (& npm view @baiworcode/baiworcode repository.url 2>$null) -join ''
     $npmInstalled = $false
 
     if ($npmRepo -match 'github\.com[:/]bAIwor/baiworcode') {
         Write-Host "  Memasang paket resmi dari npm..." -ForegroundColor Gray
-        & npm install -g baiworcode --loglevel=error
+        & npm install -g @baiworcode/baiworcode --loglevel=error
         if ($LASTEXITCODE -eq 0) {
             $npmInstalled = $true
         } else {
-            # Selama tahap alpha, paket dirilis dengan dist-tag 'alpha'.
-            & npm install -g baiworcode@alpha --loglevel=error
+            # Selama tahap beta, paket dirilis dengan dist-tag 'beta'.
+            & npm install -g @baiworcode/baiworcode@beta --loglevel=error
             if ($LASTEXITCODE -eq 0) { $npmInstalled = $true }
         }
     }
