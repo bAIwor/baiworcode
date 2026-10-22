@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { resolveSafePath } from '../tools/handlers.js';
 
 /**
  * Hooks System untuk bAIwor Code.

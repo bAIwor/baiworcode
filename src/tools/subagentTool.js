@@ -23,11 +23,6 @@ export function setSubagentProgressHandler(fn) {
   return previous;
 }
 
-/** Melepas handler progres global. */
-export function resetSubagentProgressHandler() {
-  subagentProgressHandler = null;
-}
-
 /**
  * Konfigurasi subagent Punakawan terisolasi:
  * - pAItruk : Scout & Penjelajah (Murni read-only: membaca, mencari berkas, webfetch/websearch).

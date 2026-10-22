@@ -35,12 +35,6 @@ export function terminalWidth(cols = process.stdout.columns) {
 }
 
 /**
- * Lebar undakan antara garis atas dan garis bawah area input.
- * Nilainya 0 agar tepi kiri garis atas dan garis bawah sejajar sempurna di kolom 0.
- */
-export const STAIR_STEP = 0;
-
-/**
  * Dua garis pemisah horizontal yang membingkai area input.
  *
  * Garis atas dan garis bawah memiliki panjang yang sama dan posisi awal yang sama (kolom 0)

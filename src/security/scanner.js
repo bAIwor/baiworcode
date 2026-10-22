@@ -133,13 +133,3 @@ export function quickSecretScan(dir, options = {}) {
   return scanDirectoryForSecrets(dir, options);
 }
 
-/**
- * Quick audit untuk dependencies saja.
- *
- * @param {string} dir
- * @param {{timeout?: number}} [options]
- * @returns {Promise<Object>}
- */
-export async function quickDependencyAudit(dir, options = {}) {
-  return runDependencyAudit(dir, options);
-}

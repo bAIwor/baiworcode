@@ -68,7 +68,6 @@ import { resetTodoStore } from '../src/tools/todoTool.js';
 import { undoLastTurn } from '../src/tools/snapshot.js';
 import { isHomeDirectory } from '../src/tools/searchTool.js';
 import {
-  resolveWorkspace,
   switchWorkspace,
   extractTargetAndPrompt,
   getWorkspaceInfo,

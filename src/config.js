@@ -248,43 +248,12 @@ export function getAccessMode() {
 }
 
 /**
- * [deprecated] Setter akses lama; memetakan ke permissionMode.
- *
- * @param {'normal'|'full'} mode
- * @returns {'normal'|'full'}
- */
-export function setAccessMode(mode) {
-  if (mode === 'full') {
-    setPermissionMode('yolo');
-  } else if (getPermissionMode() !== 'plan') {
-    setPermissionMode('safe');
-  }
-  return getAccessMode();
-}
-
-/**
  * [deprecated] Mode agen lama; 'plan' kini adalah salah satu permissionMode.
  *
  * @returns {'build'|'plan'}
  */
 export function getAgentMode() {
   return getPermissionMode() === 'plan' ? 'plan' : 'build';
-}
-
-/**
- * [deprecated] Setter agen lama; memetakan ke permissionMode.
- * Keluar dari 'plan' kembali ke 'safe' (perilaku default lama).
- *
- * @param {'build'|'plan'} mode
- * @returns {'build'|'plan'}
- */
-export function setAgentMode(mode) {
-  if (mode === 'plan') {
-    setPermissionMode('plan');
-  } else if (getPermissionMode() === 'plan') {
-    setPermissionMode('safe');
-  }
-  return getAgentMode();
 }
 
 /**

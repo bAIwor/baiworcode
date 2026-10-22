@@ -11,11 +11,10 @@ import {
   getInstaboxApiKey,
   getInstaboxMachineId,
 } from './config.js';
-import { authStatus } from './auth/index.js';
 import { listActiveMcpSessions, loadMcpConfig } from './mcp/index.js';
 import { getInstaboxStatus } from './tools/instaboxTool.js';
 import { isHomeDirectory } from './tools/searchTool.js';
-import { APP_NAME, VERSION, WEBSITE } from './branding.js';
+import { APP_NAME, VERSION } from './branding.js';
 
 /**
  * Menjalankan inspeksi kesehatan komprehensif sistem bAIwor Code.

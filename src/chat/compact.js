@@ -1,18 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { estimateMessagesTokens, estimateTokens, getContextUsage } from './context.js';
-
-export const COMPACT_SYSTEM_PROMPT = `Kamu adalah asisten perangkum memori konteks bAIwor Code.
-Tugasmu adalah merangkum riwayat percakapan coding sebelumnya menjadi satu catatan status yang sangat padat, akurat, dan terstruktur.
-
-Format rangkuman:
-1. 🎯 Tujuan Utama & Permintaan Pengguna: (apa target yang sedang dikerjakan)
-2. 📁 Berkas & Modifikasi Kode: (file apa saja yang sudah dibaca, dibuat, atau diubah)
-3. ⚙️ Keputusan Teknis & Arsitektur: (library, format, atau aturan penting yang disepakati)
-4. ⏳ Status Terkini & Langkah Selanjutnya: (apa yang sudah selesai dan apa yang masih tertunda)
-
-Tulis dalam Bahasa Indonesia, to the point, padat informasi, tanpa basa-basi pembuka atau penutup.`;
+import { estimateMessagesTokens, getContextUsage } from './context.js';
 
 /**
  * Membentuk teks riwayat percakapan yang siap dikirimkan ke model untuk dirangkum.

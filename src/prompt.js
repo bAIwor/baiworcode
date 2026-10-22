@@ -28,10 +28,6 @@ import { nextPermissionMode } from './chat/permissionMode.js';
 /** Jumlah prompt @clack/core yang sedang hidup. */
 let activePromptCount = 0;
 
-export function getActivePromptCount() {
-  return activePromptCount;
-}
-
 // Log diagnostik (hanya aktif bila BAIWOR_DEBUG_STDIN=1) untuk memburu freeze.
 const DEBUG_STDIN = Boolean(process.env.BAIWOR_DEBUG_STDIN);
 let debugStdinStream = null;

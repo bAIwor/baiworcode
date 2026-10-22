@@ -1,4 +1,4 @@
-import { exec, execFile } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { theme } from '../theme.js';
 import { spinner } from '../spinner.js';
 import { USER_AGENT } from '../branding.js';

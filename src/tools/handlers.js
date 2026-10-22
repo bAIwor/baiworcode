@@ -10,7 +10,6 @@ import {
   isSensitivePath,
   realpathOrResolved,
   realpathWithMissingTail,
-  analyzeCommand,
   classifyCommand,
   parseDestructiveAllowlist,
   isDestructiveAllowed,
