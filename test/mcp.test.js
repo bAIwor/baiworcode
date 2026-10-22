@@ -137,10 +137,17 @@ describe('MCP Client: Remote HTTP Transport', () => {
 
 describe('MCP Client: Config Loader', () => {
   it('loadMcpConfig menyertakan TinyFish secara otomatis saat key tersedia', () => {
-    const configs = loadMcpConfig();
-    assert.ok(configs.tinyfish);
-    assert.equal(configs.tinyfish.url, 'https://agent.tinyfish.ai/mcp');
-    assert.ok(configs.tinyfish.headers?.['X-API-Key']);
+    const sebelumnya = process.env.TINYFISH_API_KEY;
+    process.env.TINYFISH_API_KEY = 'tf-test-key';
+    try {
+      const configs = loadMcpConfig();
+      assert.ok(configs.tinyfish);
+      assert.equal(configs.tinyfish.url, 'https://agent.tinyfish.ai/mcp');
+      assert.equal(configs.tinyfish.headers?.['X-API-Key'], 'tf-test-key');
+    } finally {
+      if (sebelumnya === undefined) delete process.env.TINYFISH_API_KEY;
+      else process.env.TINYFISH_API_KEY = sebelumnya;
+    }
   });
 
   it('loadMcpConfigDetailed menandai konfigurasi proyek + hash-nya', () => {
@@ -455,15 +462,26 @@ describe('MCP Client: Tavily & Firecrawl Bawaan', () => {
   });
 
   it('tidak didaftarkan saat kunci kosong', () => {
-    const sebelumnya = { ...process.env };
-    delete process.env.TAVILY_API_KEY;
-    delete process.env.FIRECRAWL_API_KEY;
+    const home = buatHomeSementara();
     try {
-      const configs = loadMcpConfig();
-      assert.equal(configs.tavily, undefined, 'tanpa kunci, tavily tidak boleh muncul');
-      assert.equal(configs.firecrawl, undefined, 'tanpa kunci, firecrawl tidak boleh muncul');
+      const script = `
+        import assert from 'node:assert/strict';
+        import { loadMcpConfig } from ${JSON.stringify(
+          pathToFileURL(path.join(REPO_ROOT, 'src', 'mcp', 'client.js')).href
+        )};
+        delete process.env.TAVILY_API_KEY;
+        delete process.env.FIRECRAWL_API_KEY;
+        const configs = loadMcpConfig();
+        assert.equal(configs.tavily, undefined, 'tanpa kunci, tavily tidak boleh muncul');
+        assert.equal(configs.firecrawl, undefined, 'tanpa kunci, firecrawl tidak boleh muncul');
+      `;
+      execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+        encoding: 'utf8',
+        env: envHome(home),
+        timeout: 90_000,
+      });
     } finally {
-      process.env = sebelumnya;
+      hapusHome(home);
     }
   });
 });
