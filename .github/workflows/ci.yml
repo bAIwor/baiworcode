@@ -26,6 +26,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Smoke test provider & config (mock server lokal)
+        run: npm run audit:provider
 
   test-windows:
     name: Unit tests (Windows, Node 22)

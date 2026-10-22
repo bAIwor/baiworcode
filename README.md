@@ -46,16 +46,16 @@ curl -fsSL https://raw.githubusercontent.com/bAIwor/baiworcode/main/install.sh |
 
 Installer di atas otomatis mengecek Node.js (minimal v18), memasang bAIwor Code secara global, dan langsung siap dipakai.
 
-### Cara 2 — Install global via npm (tahap alpha)
+### Cara 2 — Install global via npm (tahap beta)
 ```bash
-npm install -g baiworcode@alpha
+npm install -g baiworcode@beta
 ```
 Setelah itu, perintah `baiworcode` (atau `baiwor`) bisa dipakai di mana saja.
-> Paket npm dirilis dengan dist-tag **alpha** selama status proyek masih Alpha. Setelah stabil, `npm install -g baiworcode` akan menjadi jalur utama.
+> Paket npm dirilis dengan dist-tag **beta** selama proyek masih menuju 1.0.0 stabil. Setelah stabil, `npm install -g baiworcode` akan menjadi jalur utama.
 
 ### Cara 3 — Coba dulu tanpa install
 ```bash
-npx baiworcode@alpha
+npx baiworcode@beta
 ```
 
 ### Cara 4 — Dari sumber (untuk kontributor)

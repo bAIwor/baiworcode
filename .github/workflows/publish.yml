@@ -35,11 +35,13 @@ jobs:
       - name: Determine npm dist-tag
         id: dist
         run: |
-          if [[ "${GITHUB_REF_NAME}" == *"-"* ]]; then
-            echo "tag=alpha" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
-          fi
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          case "$PKG_VERSION" in
+            *-alpha*) echo "tag=alpha" >> "$GITHUB_OUTPUT" ;;
+            *-beta*)  echo "tag=beta"  >> "$GITHUB_OUTPUT" ;;
+            *-rc*)    echo "tag=rc"    >> "$GITHUB_OUTPUT" ;;
+            *)        echo "tag=latest" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Publish
         run: npm publish --provenance --access public --tag ${{ steps.dist.outputs.tag }}
