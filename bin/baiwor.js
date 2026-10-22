@@ -33,7 +33,16 @@ import {
   openInstaboxDesktop,
   captureInstaboxScreenshot,
 } from '../src/tools/instaboxTool.js';
-import { initAllMcpServers, listActiveMcpSessions, startMcpServer } from '../src/mcp/index.js';
+import {
+  initAllMcpServers,
+  listActiveMcpSessions,
+  startMcpServer,
+  connectMcpServer,
+  saveMcpServer,
+  removeMcpServer,
+  isValidMcpServerName,
+  validateMcpUrl,
+} from '../src/mcp/index.js';
 import { runModelMenu } from '../src/modelMenu.js';
 import { handleModelCommand } from '../src/modelAlias.js';
 import { askBaiworInput, COMMANDS } from '../src/prompt.js';
@@ -498,6 +507,7 @@ const HELP_USAGE = {
   '/doctor': '/doctor',
   '/update': '/update [sandbox]',
   '/platform': '/platform [start|stop|status|list] [telegram|whatsapp]',
+  '/mcp': '/mcp [list|add|remove|refresh]',
 };
 
 function showHelp() {
@@ -711,7 +721,7 @@ async function printStatus() {
       console.log(`    ${chalk.green('●')} ${chalk.bold(s.name)} ${chalk.dim(`[${s.type}]`)} ─ ${chalk.cyan(`${s.tools.length} tool aktif`)}`);
     }
   } else {
-    console.log(`    ${chalk.gray('○')} Belum ada MCP server aktif (gunakan /mcp list atau konfigurasi ~/.baiwor/config.json)`);
+    console.log(`    ${chalk.gray('○')} Belum ada MCP server aktif (tambahkan lewat /mcp add)`);
   }
   console.log();
 }
@@ -983,9 +993,302 @@ async function handleSandboxCommand(arg = '') {
   console.log(chalk.gray('    /sandbox key <apiKey>     → perbarui API Key\n'));
 }
 
+/**
+ * Panduan manual untuk lingkungan non-TTY: isi konfigurasi yang sama dengan
+ * hasil wizard, memakai placeholder ${VAR} agar kunci tidak tertulis di berkas.
+ *
+ * @param {string} name
+ */
+function printMcpManualGuide(name = 'agentmail') {
+  console.log(chalk.cyan('\n  📌 Menambah MCP server tanpa wizard (jalankan /mcp add di terminal biasa):\n'));
+  console.log(chalk.gray(`    Tambahkan blok berikut ke ${CONFIG_FILE} di bawah "mcpServers":`));
+  console.log(
+    chalk.white(
+      `\n    "${name}": {\n      "type": "remote",\n      "url": "https://mcp.agentmail.to/mcp",\n      "headers": { "x-api-key": "\${AGENTMAIL_API_KEY}" }\n    }\n`
+    )
+  );
+  console.log(chalk.gray('    Variabel ${NAMA} diambil dari environment saat baiworcode berjalan.'));
+  console.log(chalk.gray('    Simpan lalu jalankan ') + chalk.cyan('/mcp refresh') + chalk.gray(' untuk menghubungkan.\n'));
+}
+
+/**
+ * Wizard interaktif `/mcp add`: mengumpulkan konfigurasi server MCP langkah per
+ * langkah, menyimpannya ke konfigurasi global, lalu langsung mengujinya.
+ *
+ * @param {string} [initialName] nama usulan dari argumen perintah
+ */
+async function runMcpAddWizard(initialName = '') {
+  if (!(process.stdin.isTTY && process.stdout.isTTY)) {
+    console.log(chalk.yellow('\n  ⚠️  Wizard membutuhkan terminal interaktif.\n'));
+    printMcpManualGuide(initialName || undefined);
+    return;
+  }
+
+  const existing = getConfig().mcpServers || {};
+
+  // 1. Nama server (dipakai sebagai prefix nama tool: mcp_<nama>_<tool>)
+  let name = String(initialName || '').trim();
+  if (!isValidMcpServerName(name)) {
+    const answer = await p.text({
+      message: '1. Nama server MCP (mis. agentmail):',
+      placeholder: 'agentmail',
+      validate: (val) =>
+        isValidMcpServerName(val) ? undefined : 'Mulai dengan huruf, tanpa spasi. Boleh huruf/angka/_/-.',
+    });
+    if (p.isCancel(answer)) {
+      console.log(chalk.gray('\n  Dibatalkan.\n'));
+      return;
+    }
+    name = String(answer).trim();
+  }
+
+  if (existing[name]) {
+    const overwrite = await p.confirm({
+      message: `Server '${name}' sudah ada. Timpa konfigurasinya?`,
+      initialValue: false,
+    });
+    if (p.isCancel(overwrite) || overwrite !== true) {
+      console.log(chalk.gray('\n  Dibatalkan.\n'));
+      return;
+    }
+  }
+
+  // 2. Jenis koneksi
+  const kind = await p.select({
+    message: '2. Jenis koneksi:',
+    options: [
+      { value: 'remote', label: 'URL jarak jauh (https)', hint: 'AgentMail, TinyFish, layanan SaaS' },
+      { value: 'stdio', label: 'Perintah lokal', hint: 'npx / uvx / binary di komputer kamu' },
+    ],
+  });
+  if (p.isCancel(kind)) {
+    console.log(chalk.gray('\n  Dibatalkan.\n'));
+    return;
+  }
+
+  let serverConfig;
+  if (kind === 'remote') {
+    const url = await p.text({
+      message: '3. URL server MCP:',
+      placeholder: 'https://mcp.agentmail.to/mcp',
+      validate: (val) => {
+        try {
+          validateMcpUrl(val);
+        } catch (err) {
+          return err.message;
+        }
+      },
+    });
+    if (p.isCancel(url)) {
+      console.log(chalk.gray('\n  Dibatalkan.\n'));
+      return;
+    }
+
+    const authKind = await p.select({
+      message: '4. Server ini minta kunci API?',
+      options: [
+        { value: 'x-api-key', label: 'Header x-api-key', hint: 'dipakai AgentMail dan banyak server lain' },
+        { value: 'bearer', label: 'Header Authorization: Bearer' },
+        { value: 'custom', label: 'Header lain (lanjutan)' },
+        { value: 'none', label: 'Tidak perlu kunci' },
+      ],
+    });
+    if (p.isCancel(authKind)) {
+      console.log(chalk.gray('\n  Dibatalkan.\n'));
+      return;
+    }
+
+    serverConfig = { type: 'remote', url: String(url).trim() };
+
+    if (authKind !== 'none') {
+      let headerName = authKind === 'x-api-key' ? 'x-api-key' : authKind === 'bearer' ? 'Authorization' : '';
+      if (authKind === 'custom') {
+        const custom = await p.text({ message: '4a. Nama header:', placeholder: 'X-API-Key' });
+        if (p.isCancel(custom) || !String(custom).trim()) {
+          console.log(chalk.gray('\n  Dibatalkan.\n'));
+          return;
+        }
+        headerName = String(custom).trim();
+      }
+      // Input tersembunyi: kunci tidak tercetak di layar maupun riwayat terminal.
+      const secret = await p.password({
+        message: `5a. Nilai ${headerName} (kirim \${NAMA_VAR} untuk ambil dari environment):`,
+        mask: '•',
+        validate: (val) => (val && val.trim() ? undefined : 'Kunci tidak boleh kosong.'),
+      });
+      if (p.isCancel(secret)) {
+        console.log(chalk.gray('\n  Dibatalkan.\n'));
+        return;
+      }
+      let headerValue = String(secret).trim();
+      if (authKind === 'bearer' && !/^bearer\s+/i.test(headerValue)) {
+        headerValue = `Bearer ${headerValue}`;
+      }
+      serverConfig.headers = { [headerName]: headerValue };
+    }
+  } else {
+    const command = await p.text({
+      message: '3. Perintah server (executable):',
+      placeholder: 'npx',
+      validate: (val) => (val && val.trim() ? undefined : 'Perintah tidak boleh kosong.'),
+    });
+    if (p.isCancel(command)) {
+      console.log(chalk.gray('\n  Dibatalkan.\n'));
+      return;
+    }
+
+    const argsText = await p.text({
+      message: '4. Argumen (pisah dengan spasi, boleh kosong):',
+      placeholder: '-y @agentmail/mcp',
+    });
+    if (p.isCancel(argsText)) {
+      console.log(chalk.gray('\n  Dibatalkan.\n'));
+      return;
+    }
+
+    serverConfig = {
+      type: 'stdio',
+      command: String(command).trim(),
+      args: String(argsText || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean),
+    };
+
+    const needEnv = await p.confirm({
+      message: '5. Perlu API key / variabel lingkungan untuk server ini?',
+      initialValue: false,
+    });
+    if (p.isCancel(needEnv)) {
+      console.log(chalk.gray('\n  Dibatalkan.\n'));
+      return;
+    }
+
+    if (needEnv === true) {
+      const env = {};
+      let more = true;
+      while (more) {
+        const key = await p.text({
+          message: `Nama variabel ${Object.keys(env).length + 1} (mis. AGENTMAIL_API_KEY):`,
+          validate: (val) =>
+            /^[A-Za-z_][A-Za-z0-9_]*$/.test(String(val || '').trim())
+              ? undefined
+              : 'Gunakan huruf, angka, dan underscore (diawali huruf/underscore).',
+        });
+        if (p.isCancel(key)) {
+          console.log(chalk.gray('\n  Dibatalkan.\n'));
+          return;
+        }
+        const val = await p.password({
+          message: `Nilai ${String(key).trim()} (kirim \${NAMA_VAR} untuk ambil dari environment):`,
+          mask: '•',
+          validate: (v) => (v && v.trim() ? undefined : 'Nilai tidak boleh kosong.'),
+        });
+        if (p.isCancel(val)) {
+          console.log(chalk.gray('\n  Dibatalkan.\n'));
+          return;
+        }
+        env[String(key).trim()] = String(val).trim();
+
+        const again = await p.confirm({ message: 'Tambah variabel lain?', initialValue: false });
+        if (p.isCancel(again) || again !== true) more = false;
+      }
+      if (Object.keys(env).length > 0) serverConfig.env = env;
+    }
+  }
+
+  saveMcpServer(name, serverConfig);
+
+  const s = p.spinner();
+  s.start(`Menghubungkan ke ${name}...`);
+  try {
+    const session = await connectMcpServer(name, serverConfig);
+    s.stop(chalk.green(`Terhubung — ${session.tools.length} tool aktif.`));
+    for (const tool of session.tools.slice(0, 8)) {
+      console.log(chalk.gray(`    🔌 mcp_${name}_${tool.name}`));
+    }
+    if (session.tools.length > 8) {
+      console.log(chalk.gray(`    … ${session.tools.length - 8} tool lainnya (lihat /mcp list)`));
+    }
+    console.log(chalk.gray(`\n  Konfigurasi tersimpan di ${CONFIG_FILE}`));
+    console.log(chalk.gray('  Tinggal minta ke bAIwor, mis. "cek email terbaru di inbox agentmail".\n'));
+  } catch (err) {
+    s.stop(chalk.red(`Gagal terhubung: ${err.message}`));
+    const keep = await p.confirm({ message: 'Simpan konfigurasinya walau gagal terhubung?', initialValue: true });
+    if (p.isCancel(keep) || keep !== true) {
+      removeMcpServer(name);
+      console.log(chalk.gray(`  Entri '${name}' dihapus lagi.\n`));
+      return;
+    }
+    if (serverConfig.type === 'remote') {
+      console.log(chalk.gray('  Cek: kunci benar, server aktif, dan variabel ${VAR} sudah diisi di terminal ini.'));
+    } else {
+      console.log(chalk.gray(`  Cek: perintah '${serverConfig.command}' bisa dijalankan di terminal ini.`));
+    }
+    console.log();
+  }
+}
+
+/**
+ * Menangani `/mcp remove [nama]` — hapus server dari konfigurasi global.
+ *
+ * @param {string[]} rest nama tersisa dari argumen
+ */
+async function handleMcpRemove(rest = []) {
+  const existing = getConfig().mcpServers || {};
+  const names = Object.keys(existing);
+  if (names.length === 0) {
+    console.log(chalk.yellow('\n  Belum ada MCP server di konfigurasi global.\n'));
+    return;
+  }
+
+  let name = String(rest[0] || '').trim().toLowerCase();
+  if (!name) {
+    const answer = await p.select({
+      message: 'Server mana yang mau dilepas?',
+      options: names.map((n) => ({
+        value: n,
+        label: n,
+        hint: existing[n]?.url ? existing[n].url : existing[n]?.command || '',
+      })),
+    });
+    if (p.isCancel(answer)) {
+      console.log(chalk.gray('\n  Dibatalkan.\n'));
+      return;
+    }
+    name = String(answer);
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(existing, name)) {
+    console.log(chalk.red(`\n  ✗ Server '${name}' tidak ada di konfigurasi global.`));
+    console.log(chalk.gray(`    Tersedia: ${names.join(', ')}\n`));
+    return;
+  }
+
+  const sure = await p.confirm({ message: `Lepas server '${name}' dari konfigurasi?`, initialValue: false });
+  if (p.isCancel(sure) || sure !== true) {
+    console.log(chalk.gray('\n  Dibatalkan.\n'));
+    return;
+  }
+
+  removeMcpServer(name);
+  console.log(chalk.green.bold(`\n  ✔ Server '${name}' dilepas.`));
+  console.log(chalk.gray('  Jalankan /mcp refresh agar perubahan koneksi konsisten.\n'));
+}
+
 async function handleMcpCommand(arg = '') {
   const parts = String(arg || '').trim().split(/\s+/);
   const sub = parts[0]?.toLowerCase();
+
+  if (sub === 'add') {
+    await runMcpAddWizard(parts.slice(1).join(' '));
+    return;
+  }
+
+  if (sub === 'remove' || sub === 'hapus') {
+    await handleMcpRemove(parts.slice(1));
+    return;
+  }
 
   if (sub === 'refresh') {
     console.log(chalk.cyan('\n  🔄 Memuat ulang seluruh koneksi MCP Server...'));
@@ -1011,7 +1314,8 @@ async function handleMcpCommand(arg = '') {
   console.log(chalk.hex('#FBBF24').bold('\n  🔌 Model Context Protocol (MCP) Servers:'));
   if (active.length === 0) {
     console.log(chalk.yellow('    Belum ada MCP server yang terhubung.'));
-    console.log(chalk.gray('    Konfigurasikan di: ~/.baiwor/config.json (key "mcpServers") atau .baiwor/mcp.json'));
+    console.log(chalk.gray('    Termudah: jalankan ') + chalk.cyan('/mcp add') + chalk.gray(' lalu ikuti pertanyaan.'));
+    console.log(chalk.gray('    Alternatif: edit ~/.baiwor/config.json (key "mcpServers") atau .baiwor/mcp.json'));
     console.log(chalk.gray('    Gunakan /mcp refresh untuk memindai ulang server yang baru ditambahkan.\n'));
     return;
   }

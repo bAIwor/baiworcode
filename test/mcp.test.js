@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   McpSession,
   loadMcpConfig,
@@ -13,9 +15,24 @@ import {
   disconnectAllMcpServers,
   buildSafeMcpEnv,
   validateMcpUrl,
+  resolveMcpSecrets,
+  isValidMcpServerName,
+  saveMcpServer,
+  removeMcpServer,
 } from '../src/mcp/client.js';
 import { startMcpServer } from '../src/mcp/server.js';
 import { getDefinitions } from '../src/tools/index.js';
+import {
+  buatHomeSementara,
+  envHome,
+  bacaConfig,
+  tulisConfig,
+  hapusHome,
+} from './tempHomeHelper.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const BIN = path.join(REPO_ROOT, 'bin', 'baiwor.js');
+const polos = (teks) => teks.replace(/\x1b\[[0-9;]*m/g, '');
 
 describe('MCP Client: Remote HTTP Transport', () => {
   let server;
@@ -188,5 +205,155 @@ describe('MCP Server: Tools & Definitions', () => {
     assert.ok(mcpTools.some((t) => t.name === 'websearch'));
     assert.ok(mcpTools.some((t) => t.name === 'webautomate'));
     assert.ok(mcpTools.some((t) => t.name === 'instabox_exec'));
+  });
+});
+
+describe('MCP Client: Placeholder Rahasia ${VAR}', () => {
+  it('mengganti ${VAR} di headers, env, dan args dengan isi environment', () => {
+    const resolved = resolveMcpSecrets(
+      {
+        type: 'remote',
+        url: 'https://mcp.agentmail.to/mcp',
+        headers: { 'x-api-key': '${AGENTMAIL_API_KEY}' },
+        env: { TOKEN: '${TOKEN}' },
+        args: ['-y', '${PKG}'],
+      },
+      { AGENTMAIL_API_KEY: 'am_langgeng', TOKEN: 'tkn', PKG: '@acme/mcp' },
+      'agentmail'
+    );
+
+    assert.equal(resolved.headers['x-api-key'], 'am_langgeng');
+    assert.equal(resolved.env.TOKEN, 'tkn');
+    assert.deepEqual(resolved.args, ['-y', '@acme/mcp']);
+    assert.equal(resolved.url, 'https://mcp.agentmail.to/mcp');
+  });
+
+  it('memakai nilai cadangan ${VAR:-cadangan} saat variabel kosong', () => {
+    const resolved = resolveMcpSecrets(
+      { headers: { 'x-api-key': '${TIDAK_ADA:-am_cadangan}' } },
+      { TIDAK_ADA: '' },
+      'demo'
+    );
+    assert.equal(resolved.headers['x-api-key'], 'am_cadangan');
+  });
+
+  it('menyebut nama variabel yang kosong agar pengguna tahu harus mengisi apa', () => {
+    assert.throws(
+      () => resolveMcpSecrets({ headers: { 'x-api-key': '${KEKURANG_KEY}' } }, {}, 'agentmail'),
+      /agentmail.*KEKURANG_KEY/s
+    );
+  });
+
+  it('mengembalikan salinan tanpa mengubah konfigurasi asli', () => {
+    const asli = { headers: { 'x-api-key': '${K}' } };
+    resolveMcpSecrets(asli, { K: 'isi' }, 'demo');
+    assert.equal(asli.headers['x-api-key'], '${K}');
+  });
+
+  it('McpSession menolak konfigurasi saat variabelnya belum diisi', () => {
+    delete process.env.DEMO_KEY_BAIWOR;
+    assert.throws(
+      () =>
+        new McpSession('demo', {
+          type: 'remote',
+          url: 'https://example.com/mcp',
+          headers: { 'x-api-key': '${DEMO_KEY_BAIWOR}' },
+        }),
+      /DEMO_KEY_BAIWOR/
+    );
+  });
+
+  it('McpSession memakai nilai environment ketika tersedia', () => {
+    process.env.DEMO_KEY_BAIWOR = 'am_langgeng';
+    try {
+      const session = new McpSession('demo', {
+        type: 'remote',
+        url: 'https://example.com/mcp',
+        headers: { 'x-api-key': '${DEMO_KEY_BAIWOR}' },
+      });
+      assert.equal(session.config.headers['x-api-key'], 'am_langgeng');
+    } finally {
+      delete process.env.DEMO_KEY_BAIWOR;
+    }
+  });
+});
+
+describe('MCP Client: Wizard Simpan & Lepas Server', () => {
+  it('nama server divalidasi sebelum dipakai sebagai prefix tool', () => {
+    assert.equal(isValidMcpServerName('agentmail'), true);
+    assert.equal(isValidMcpServerName('Agent_Mail-2'), true);
+    assert.equal(isValidMcpServerName('email masuk'), false);
+    assert.equal(isValidMcpServerName('1mail'), false);
+    assert.equal(isValidMcpServerName(''), false);
+  });
+
+  it('saveMcpServer & removeMcpServer menulis konfigurasi global tanpa entri lain hilang', () => {
+    const home = buatHomeSementara();
+    try {
+      tulisConfig(home, { mcpServers: { lama: { type: 'remote', url: 'https://lama.example.com/mcp' } } });
+
+      const script = `
+        import { saveMcpServer, removeMcpServer } from ${JSON.stringify(
+          pathToFileURL(path.join(REPO_ROOT, 'src', 'mcp', 'client.js')).href
+        )};
+        saveMcpServer('agentmail', { type: 'remote', url: 'https://mcp.agentmail.to/mcp', headers: { 'x-api-key': '\${AGENTMAIL_API_KEY}' } });
+        removeMcpServer('lama');
+        saveMcpServer('Nama Salah Satu', {});
+      `;
+      // Nama terakhir invalid → harus berhenti dengan pesan jelas.
+      assert.throws(
+        () =>
+          execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+            encoding: 'utf8',
+            env: envHome(home),
+            timeout: 90_000,
+          }),
+        /tidak valid/
+      );
+
+      const config = bacaConfig(home);
+      assert.deepEqual(config.mcpServers.agentmail, {
+        type: 'remote',
+        url: 'https://mcp.agentmail.to/mcp',
+        headers: { 'x-api-key': '${AGENTMAIL_API_KEY}' },
+      });
+      assert.equal(config.mcpServers.lama, undefined, 'entri lama harus terhapus');
+    } finally {
+      hapusHome(home);
+    }
+  });
+});
+
+describe('CLI: /mcp add & /mcp remove', () => {
+  const jalankan = (perintah, home) =>
+    polos(
+      execFileSync(process.execPath, [BIN], {
+        input: `${perintah}\n`,
+        encoding: 'utf8',
+        timeout: 90_000,
+        env: envHome(home),
+      })
+    );
+
+  it('/mcp add tanpa TTY memberi panduan konfigurasi manual', () => {
+    const home = buatHomeSementara();
+    try {
+      const out = jalankan('/mcp add', home);
+      assert.match(out, /terminal interaktif/);
+      assert.match(out, /mcpServers/);
+      assert.match(out, /\$\{AGENTMAIL_API_KEY\}/);
+    } finally {
+      hapusHome(home);
+    }
+  });
+
+  it('/mcp remove melaporkan bila konfigurasi global masih kosong', () => {
+    const home = buatHomeSementara();
+    try {
+      const out = jalankan('/mcp remove', home);
+      assert.match(out, /Belum ada MCP server di konfigurasi global/);
+    } finally {
+      hapusHome(home);
+    }
   });
 });

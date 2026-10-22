@@ -72,6 +72,63 @@ export function validateMcpUrl(raw) {
 }
 
 /**
+ * Menandai nilai yang masih mengandung placeholder variabel lingkungan.
+ * Bentuknya `${NAMA}` atau `${NAMA:-nilai_cadangan}` — sama seperti yang dipakai
+ * dokumentasi MCP client lain (Cursor, Claude Code) untuk menyembunyikan API key
+ * dari berkas konfigurasi.
+ */
+const ENV_PLACEHOLDER = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g;
+
+/**
+ * Mengganti `${VAR}` di seluruh nilai konfigurasi server MCP dengan isi
+ * environment. Berlaku rekursif (object/array/string), hanya pada nilai — nama
+ * key tidak pernah diganti.
+ *
+ * Placeholder tanpa cadangan yang variabelnya kosong dianggap kesalahan
+ * konfigurasi, bukan dikirim sebagai string kosong: server akan menolak dengan
+ * pesan 401 yang membingungkan bagi pemula.
+ *
+ * @param {any} value konfigurasi mentah
+ * @param {Record<string,string|undefined>} [env]
+ * @param {string} [serverName] dipakai agar pesan kesalahan menyebut servernya
+ * @returns {any} salinan konfigurasi dengan placeholder terselesaikan
+ */
+export function resolveMcpSecrets(value, env = process.env, serverName = '') {
+  const missing = new Set();
+
+  const walk = (v) => {
+    if (typeof v === 'string') {
+      if (!v.includes('${')) return v;
+      return v.replace(ENV_PLACEHOLDER, (_whole, name, fallback) => {
+        const fromEnv = env[name];
+        if (typeof fromEnv === 'string' && fromEnv !== '') return fromEnv;
+        if (fallback !== undefined) return fallback;
+        missing.add(name);
+        return '';
+      });
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') {
+      const out = {};
+      for (const [k, val] of Object.entries(v)) out[k] = walk(val);
+      return out;
+    }
+    return v;
+  };
+
+  const resolved = walk(value);
+  if (missing.size > 0) {
+    const label = serverName ? `'${serverName}' ` : '';
+    throw new Error(
+      `Server MCP ${label}membutuhkan variabel lingkungan yang belum diisi: ` +
+        `${[...missing].map((n) => `\${${n}}`).join(', ')}. ` +
+        `Isi lewat terminal sebelum menjalankan baiworcode, atau tulis kunci langsung di konfigurasi.`
+    );
+  }
+  return resolved;
+}
+
+/**
  * Menyusun environment untuk proses MCP stdio: variabel sistem yang aman +
  * `env` eksplisit dari konfigurasi server.
  *
@@ -106,8 +163,8 @@ function mcpFetch(url, init = {}) {
 export class McpSession {
   constructor(name, config) {
     this.name = name;
-    this.config = config;
-    this.type = config.type || (config.command ? 'stdio' : 'remote');
+    this.config = resolveMcpSecrets(config, process.env, name);
+    this.type = this.config.type || (this.config.command ? 'stdio' : 'remote');
     this.status = 'disconnected';
     this.tools = [];
     this.sessionId = null;
@@ -644,4 +701,59 @@ export function disconnectAllMcpServers() {
     session.close();
   }
   activeSessions.clear();
+}
+
+/**
+ * Nama server dipakai membentuk nama tool (`mcp_<nama>_<tool>`), jadi harus
+ * bebas spasi dan karakter pemisah.
+ *
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function isValidMcpServerName(name) {
+  return /^[a-z][a-z0-9_-]{0,39}$/i.test(String(name || '').trim());
+}
+
+/**
+ * Menyimpan/menimpa satu entri server MCP di konfigurasi global
+ * (~/.baiwor/config.json → `mcpServers`). Entri lain tetap utuh.
+ *
+ * @param {string} name
+ * @param {Object} serverConfig
+ * @returns {string} nama yang tersimpan (sudah dipangkas)
+ */
+export function saveMcpServer(name, serverConfig) {
+  const clean = String(name || '').trim();
+  if (!isValidMcpServerName(clean)) {
+    throw new Error(
+      `Nama server '${clean}' tidak valid. Mulai dengan huruf, lalu huruf/angka/_/- (maks 40 karakter, tanpa spasi).`
+    );
+  }
+  const servers = { ...(getConfig().mcpServers || {}) };
+  servers[clean] = serverConfig;
+  saveConfig({ mcpServers: servers });
+  return clean;
+}
+
+/**
+ * Menghapus server MCP dari konfigurasi global sekaligus memutuskan koneksi dan
+ * melepas tool-nya dari registry.
+ *
+ * @param {string} name
+ * @returns {boolean} true bila entri konfigurasi sebelumnya ada
+ */
+export function removeMcpServer(name) {
+  const clean = String(name || '').trim();
+  const servers = { ...(getConfig().mcpServers || {}) };
+  const existed = Object.prototype.hasOwnProperty.call(servers, clean);
+  if (existed) {
+    delete servers[clean];
+    saveConfig({ mcpServers: servers });
+  }
+  const session = activeSessions.get(clean);
+  if (session) {
+    session.close();
+    activeSessions.delete(clean);
+  }
+  return existed;
 }

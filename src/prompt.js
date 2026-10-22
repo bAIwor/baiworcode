@@ -203,7 +203,7 @@ export const COMMANDS = [
   { name: '/update', desc: 'Periksa & perbarui bAIwor Code ke versi terbaru dari GitHub' },
   { name: '/sandbox', desc: 'Kelola Cloud Sandbox InstaBox (MicroVM 4 vCPU / 8 GiB RAM)' },
   { name: '/tinyfish', desc: 'Kelola integrasi TinyFish (status, wallet, key, search, fetch)' },
-  { name: '/mcp', desc: 'Kelola Model Context Protocol server & tool eksternal' },
+  { name: '/mcp', desc: 'Kelola MCP server & tool eksternal: /mcp [list|add|remove|refresh]' },
   { name: '/model', desc: 'Pilih model: /model (menu) · /model <alias|provider/model>' },
   { name: '/provider', desc: 'Alias untuk perintah /model' },
   { name: '/login', desc: 'Login ke Google Gemini OAuth' },
@@ -256,6 +256,8 @@ export const SUBCOMMANDS = {
   ],
   '/mcp': [
     { name: 'list', desc: 'Tampilkan daftar MCP server & tool aktif' },
+    { name: 'add', desc: 'Tambah server MCP baru lewat wizard (tanpa edit JSON)' },
+    { name: 'remove', desc: 'Lepas server MCP dari konfigurasi: /mcp remove <nama>' },
     { name: 'refresh', desc: 'Muat ulang & sambungkan kembali seluruh MCP server' },
   ],
   '/update': [

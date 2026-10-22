@@ -371,9 +371,14 @@ bAIwor Code dapat terhubung ke berbagai server MCP (baik via **remote HTTP** mau
   }
   ```
 - Integrasi TinyFish MCP otomatis aktif bila `tinyfishApiKey` tersedia di konfigurasi bAIwor.
+- **Nilai `${VAR}` pada konfigurasi** (di `url`, `headers`, `env`, maupun `args`) diambil dari environment saat baiworcode berjalan, jadi API key tidak perlu tertulis di berkas. Dukungan cadangan: `${VAR:-nilai_cadangan}`. Bila `VAR` kosong dan tidak ada cadangannya, server tersebut dilewati dengan pesan yang menyebut nama variabelnya.
 - **Perintah REPL `/mcp`**:
   - `/mcp list` — Tampilkan seluruh server MCP dan daftar tool dinamis yang terhubung.
+  - `/mcp add [nama]` — Wizard tambah server: pilih remote/stdio, isi URL, tempel kunci (input tersembunyi), lalu langsung diuji koneksi. Konfigurasinya ditulis ke `~/.baiwor/config.json`.
+  - `/mcp remove <nama>` — Lepas server dari konfigurasi global sekaligus melepas tool-nya.
   - `/mcp refresh` — Muat ulang dan sambungkan kembali seluruh koneksi server MCP.
+
+Contoh nyata — email untuk agen lewat [AgentMail](https://docs.agentmail.to/integrations/mcp): jalankan `/mcp add agentmail`, pilih *URL jarak jauh*, isi `https://mcp.agentmail.to/mcp`, pilih header `x-api-key`, lalu tempel kunci dari console.agentmail.to. Setelah tersambung, tool seperti `create_inbox` dan `send_email` langsung bisa diminta dengan bahasa sehari-hari.
 
 #### 2. Sebagai MCP Server (Gunakan bAIwor Code di Klien MCP Eksternal)
 bAIwor Code dapat bertindak sebagai server MCP berstandar stdio JSON-RPC 2.0 untuk mengekspos **15 tools bawaan bAIwor Code** ke berbagai aplikasi klien MCP eksternal:
