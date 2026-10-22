@@ -35,6 +35,41 @@ export function findMissingEnvRefs(value) {
 }
 
 /**
+ * Cek sinkron (tanpa jaringan) apakah provider aktif punya kredensial yang
+ * siap dipakai. Dipakai banner agar tidak menampilkan "Siap" pada pengguna
+ * baru yang belum mengisi API key.
+ *
+ * @param {Object} [config]
+ * @returns {boolean}
+ */
+export function hasActiveCredentials(config = getConfig()) {
+  try {
+    if (config.activeType === 'agy' || (config.activeProvider || '').toLowerCase().includes('antigravity')) {
+      // Ketersediaan CLI agy baru bisa dipastikan saat login; jangan blokir.
+      return true;
+    }
+    if (config.activeType === 'oauth') {
+      const prov = Object.values(PROVIDERS).find(
+        (p) => p.name.toLowerCase() === (config.activeProvider || '').toLowerCase()
+      );
+      if (!prov) return false;
+      const token = config.oauth?.[prov.id];
+      return Boolean(token && (token.accessToken || token.apiKey));
+    }
+    if (config.activeType === 'custom') {
+      const cp = (config.customProviders || []).find(
+        (c) => (c?.name || '').toLowerCase() === (config.activeProvider || '').toLowerCase()
+      );
+      if (!cp || typeof cp.apiKey !== 'string' || !cp.apiKey.trim()) return false;
+      return findMissingEnvRefs(cp.apiKey).length === 0;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Menghubungkan kredensial provider aktif (Custom API Key atau OAuth Bearer Token)
  * Disiapkan untuk eksekusi chat streaming pada Tahap 3A.
  */

@@ -51,6 +51,7 @@ import { runModelMenu } from '../src/modelMenu.js';
 import { handleModelCommand } from '../src/modelAlias.js';
 import { askBaiworInput, COMMANDS } from '../src/prompt.js';
 import { login, logout, authStatus } from '../src/auth/index.js';
+import { hasActiveCredentials } from '../src/auth/resolve.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
 import { handleUserChat, resetConversation, conversationSession } from '../src/chat/index.js';
 import {
@@ -442,8 +443,9 @@ function showBanner() {
   console.log(' '.repeat(centerPadInTextLogo(layout, tagline)) + chalk.gray(tagline));
   console.log();
 
-  const readyText = '● Siap';
-  const readyBadge = chalk.green(readyText);
+  const siapDipakai = hasActiveCredentials(config);
+  const readyText = siapDipakai ? '● Siap' : '○ Belum siap';
+  const readyBadge = siapDipakai ? chalk.green(readyText) : chalk.yellow(readyText);
   // Lebar dalam kotak atas disamakan dengan garis tengah (targetWidth + 2) agar
   // ketiga batang sejajar walau panjang nomor versi berubah.
   const verLabel = `─ v${VERSION} `;
@@ -460,16 +462,18 @@ function showBanner() {
   console.log(midBar);
   console.log(padBox(chalk.whiteBright('Ruang Kerja & Status')));
   console.log(padBox(chalk.gray('› ') + 'Folder Aktif : ' + chalk.cyan(process.cwd())));
-  const modelInfo = config.activeModel !== 'Not configured'
-    ? chalk.hex('#F59E0B')(config.activeModel) + chalk.gray(` (${config.activeProvider})`)
-    : chalk.gray('Belum dikonfigurasi (/model)');
+  const modelInfo = !siapDipakai
+    ? chalk.gray('Belum siap — ketik /model')
+    : config.activeModel !== 'Not configured'
+      ? chalk.hex('#F59E0B')(config.activeModel) + chalk.gray(` (${config.activeProvider})`)
+      : chalk.gray('Belum dikonfigurasi (/model)');
   console.log(padBox(chalk.gray('› ') + 'Model Aktif  : ' + modelInfo));
   console.log(botBar);
   console.log();
 
-  // Onboarding singkat untuk pengguna baru: tanpa model aktif, percakapan
+  // Onboarding singkat untuk pengguna baru: tanpa kredensial siap, percakapan
   // pertama pasti gagal — arahkan ke /model atau /login SEBELUM mereka bingung.
-  if (config.activeModel === 'Not configured') {
+  if (!siapDipakai || config.activeModel === 'Not configured') {
     console.log(chalk.hex('#FBBF24').bold('  👋 Selamat datang di bAIwor Code! Ini langkah pertamamu:'));
     console.log(
       chalk.white('     1. Ketik ') +
