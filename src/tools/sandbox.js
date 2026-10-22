@@ -222,8 +222,7 @@ export function isPathAllowed(targetPath, workspace = process.cwd()) {
   if (isSubPath(workspace, resolved)) return true;
   if (isSubPath(os.tmpdir(), resolved)) return true;
 
-  const lower = resolved.toLowerCase();
-  return SYSTEM_ALLOWED_PREFIXES.some((prefix) => lower === prefix || lower.startsWith(prefix));
+  return SYSTEM_ALLOWED_PREFIXES.some((prefix) => isSubPath(prefix, resolved));
 }
 
 /**
@@ -305,7 +304,7 @@ function isOutsideWorkspace(candidate, workspace) {
 
   const lower = path.win32.resolve(candidate).toLowerCase();
   const isSystem = WIN32_SYSTEM_PREFIXES.some(
-    (prefix) => lower === prefix || lower.startsWith(prefix)
+    (prefix) => lower === prefix || lower.startsWith(prefix + '\\')
   );
   if (isSystem) return false;
 

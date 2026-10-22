@@ -313,6 +313,18 @@ describe('Sandbox A6/A7: perbaikan helper path', () => {
     const outsidePath = process.platform === 'win32' ? 'C:\\Users\\someone\\secret.txt' : '/home/user/secret.txt';
     assert.equal(isPathAllowed(outsidePath, WORKSPACE), false);
   });
+
+  it('F-01 — isPathAllowed menolak prefix yang bukan batas direktori sah', () => {
+    // /usr-private, /opt-secrets, atau C:\Windows-secrets tidak boleh lolos
+    if (process.platform === 'win32') {
+      assert.equal(isPathAllowed('C:\\Windows-secrets\\pass.txt', WORKSPACE), false);
+      assert.equal(isPathAllowed('C:\\Program Files-hidden\\data.txt', WORKSPACE), false);
+    } else {
+      assert.equal(isPathAllowed('/usr-private/data.txt', WORKSPACE), false);
+      assert.equal(isPathAllowed('/opt-secrets/pass.txt', WORKSPACE), false);
+      assert.equal(isPathAllowed('/bin-backup/secret', WORKSPACE), false);
+    }
+  });
 });
 
 describe('Sandbox A5: integrasi handleRunCommand', () => {
