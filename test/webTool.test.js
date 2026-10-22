@@ -1,4 +1,4 @@
-import { describe, it, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
@@ -212,6 +212,20 @@ describe('webTool: handleWebSearch', () => {
 });
 
 describe('webTool: Integrasi TinyFish', () => {
+  const prevTinyFishKey = process.env.TINYFISH_API_KEY;
+
+  beforeEach(() => {
+    process.env.TINYFISH_API_KEY = 'tf-mock-key-for-tests';
+  });
+
+  afterEach(() => {
+    if (prevTinyFishKey === undefined) {
+      delete process.env.TINYFISH_API_KEY;
+    } else {
+      process.env.TINYFISH_API_KEY = prevTinyFishKey;
+    }
+  });
+
   it('handleWebSearch menggunakan TinyFish Search API saat key aktif', async () => {
     globalThis.fetch = async (url) => {
       const u = String(url);
