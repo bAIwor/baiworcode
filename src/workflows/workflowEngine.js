@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 /**
  * Workflows System untuk bAIwor Code.
@@ -74,13 +75,18 @@ export class WorkflowEngine {
       return;
     }
 
-    const files = fs.readdirSync(this.workflowsDir).filter(f => f.endsWith('.js'));
+    // Berkas workflow memakai sintaks ESM (`export const meta = ...`). Tanpa
+    // penanda "type": "module", Node 18/20 memperlakukan .js sebagai
+    // CommonJS dan gagal parse ("Unexpected token 'export'"); Node 22+ baru
+    // mendeteksi otomatis. package.json kecil ini menyamakan perilaku di
+    // semua versi Node yang didukung.
+    this._ensureEsmMarker();
+
+    const files = fs.readdirSync(this.workflowsDir).filter((f) => f.endsWith('.js') || f.endsWith('.mjs'));
     for (const file of files) {
       try {
         const filePath = path.join(this.workflowsDir, file);
-        // Convert to file:// URL for Windows compatibility
-        const fileUrl = filePath.startsWith('file://') ? filePath : `file://${filePath.replace(/\\/g, '/')}`;
-        const module = await import(fileUrl);
+        const module = await import(pathToFileURL(filePath).href);
 
         if (!module.meta || !module.meta.name) {
           console.warn(`[Workflows] ${file} tidak memiliki meta.name, dilewati`);
@@ -95,6 +101,22 @@ export class WorkflowEngine {
         console.warn(`[Workflows] Gagal memuat ${file}: ${err.message}`);
       }
     }
+  }
+
+  /**
+   * Menulis package.json penanda ESM di direktori workflow bila belum ada.
+   * Berkas milik pengguna tidak pernah ditimpa.
+   */
+  _ensureEsmMarker() {
+    const marker = path.join(this.workflowsDir, 'package.json');
+    try {
+      if (fs.existsSync(marker)) {
+        const parsed = JSON.parse(fs.readFileSync(marker, 'utf8'));
+        if (parsed && parsed.type === 'module') return;
+        return; // package.json milik pengguna: biarkan apa adanya.
+      }
+      fs.writeFileSync(marker, JSON.stringify({ type: 'module' }, null, 2), { mode: 0o600 });
+    } catch {}
   }
 
   /**
@@ -283,6 +305,7 @@ export class WorkflowEngine {
     if (!fs.existsSync(this.workflowsDir)) {
       fs.mkdirSync(this.workflowsDir, { recursive: true, mode: 0o700 });
     }
+    this._ensureEsmMarker();
 
     const filePath = path.join(this.workflowsDir, `${meta.name}.js`);
     const content = `export const meta = ${JSON.stringify(meta, null, 2)};
