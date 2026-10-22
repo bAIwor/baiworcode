@@ -308,6 +308,7 @@ describe('Prompt: Perilaku CLI Saat Dipipe', () => {
       input: '/exit\n',
       encoding: 'utf8',
       timeout: 90_000,
+      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
     });
 
   it('harus tetap mencetak baris status saat keluaran dialihkan', () => {
