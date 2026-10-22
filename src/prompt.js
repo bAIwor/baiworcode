@@ -258,6 +258,7 @@ export const SUBCOMMANDS = {
     { name: 'list', desc: 'Tampilkan daftar MCP server & tool aktif' },
     { name: 'add', desc: 'Tambah server MCP baru lewat wizard (tanpa edit JSON)' },
     { name: 'remove', desc: 'Lepas server MCP dari konfigurasi: /mcp remove <nama>' },
+    { name: 'key', desc: 'Set API key bawaan: /mcp key <tavily|firecrawl|tinyfish> <key>' },
     { name: 'refresh', desc: 'Muat ulang & sambungkan kembali seluruh MCP server' },
   ],
   '/update': [

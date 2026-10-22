@@ -21,6 +21,10 @@ import {
   setPermissionMode,
   getTinyFishApiKey,
   saveTinyFishApiKey,
+  getTavilyApiKey,
+  saveTavilyApiKey,
+  getFirecrawlApiKey,
+  saveFirecrawlApiKey,
   getInstaboxApiKey,
   saveInstaboxApiKey,
   getInstaboxMachineId,
@@ -507,7 +511,7 @@ const HELP_USAGE = {
   '/doctor': '/doctor',
   '/update': '/update [sandbox]',
   '/platform': '/platform [start|stop|status|list] [telegram|whatsapp]',
-  '/mcp': '/mcp [list|add|remove|refresh]',
+  '/mcp': '/mcp [list|add|remove|key|refresh]',
 };
 
 function showHelp() {
@@ -1290,6 +1294,45 @@ async function handleMcpCommand(arg = '') {
     return;
   }
 
+  // /mcp key <tavily|firecrawl|tinyfish> [apiKey]
+  // Simpan API key penyedia MCP bawaan lalu sambungkan ulang otomatis.
+  if (sub === 'key') {
+    const provider = String(parts[1] || '').toLowerCase();
+    const apiKey = String(parts[2] || '').trim();
+    const penolong = {
+      tavily: { get: getTavilyApiKey, save: saveTavilyApiKey, contoh: 'tvly-...' },
+      firecrawl: { get: getFirecrawlApiKey, save: saveFirecrawlApiKey, contoh: 'fc-...' },
+      tinyfish: { get: getTinyFishApiKey, save: saveTinyFishApiKey, contoh: 'sk-tinyfish-...' },
+    };
+
+    if (!penolong[provider]) {
+      console.log(chalk.yellow('\n  Provider dikenal: tavily, firecrawl, tinyfish.'));
+      console.log(chalk.gray('  Contoh: /mcp key tavily <tvly-...>\n'));
+      return;
+    }
+    if (!apiKey) {
+      const tersimpan = penolong[provider].get();
+      console.log(chalk.cyan(`\n  🔑 API key ${provider}: ${tersimpan ? maskSecret(tersimpan) : chalk.yellow('belum diset')}`));
+      console.log(chalk.gray(`  Set dengan: /mcp key ${provider} <${penolong[provider].contoh}>\n`));
+      return;
+    }
+
+    penolong[provider].save(apiKey);
+    console.log(chalk.green.bold(`\n  ✔ API key ${provider} tersimpan.`));
+
+    // Sambungkan ulang supaya server bawaan langsung terdaftar di sesi ini.
+    const results = await initAllMcpServers();
+    const r = results.find((x) => x.name === provider);
+    if (r && r.status === 'connected') {
+      console.log(chalk.gray(`  ● ${provider} terhubung — ${r.toolCount} tool aktif.\n`));
+    } else if (r) {
+      console.log(chalk.red(`  ✗ ${provider} gagal terhubung: ${r.error || r.status}\n`));
+    } else {
+      console.log(chalk.gray('  Gunakan /mcp refresh untuk mencoba lagi.\n'));
+    }
+    return;
+  }
+
   if (sub === 'refresh') {
     console.log(chalk.cyan('\n  🔄 Memuat ulang seluruh koneksi MCP Server...'));
     const results = await initAllMcpServers();
@@ -1315,6 +1358,7 @@ async function handleMcpCommand(arg = '') {
   if (active.length === 0) {
     console.log(chalk.yellow('    Belum ada MCP server yang terhubung.'));
     console.log(chalk.gray('    Termudah: jalankan ') + chalk.cyan('/mcp add') + chalk.gray(' lalu ikuti pertanyaan.'));
+    console.log(chalk.gray('    Penyedia bawaan: ') + chalk.cyan('/mcp key tavily <tvly-...>') + chalk.gray(' atau ') + chalk.cyan('/mcp key firecrawl <fc-...>') + chalk.gray(' (aktif otomatis setelah kunci diisi).'));
     console.log(chalk.gray('    Alternatif: edit ~/.baiwor/config.json (key "mcpServers") atau .baiwor/mcp.json'));
     console.log(chalk.gray('    Gunakan /mcp refresh untuk memindai ulang server yang baru ditambahkan.\n'));
     return;

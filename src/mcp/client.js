@@ -9,6 +9,8 @@ import {
   getConfig,
   saveConfig,
   getTinyFishApiKey,
+  getTavilyApiKey,
+  getFirecrawlApiKey,
   isMcpProjectTrusted,
   trustMcpProject,
 } from '../config.js';
@@ -158,6 +160,64 @@ function mcpFetch(url, init = {}) {
 }
 
 /**
+ * Mengambil berkas-berkas JSON dari bingkai SSE (`event: …` + `data: …`).
+ * Data satu peristiwa dapat terpecah ke beberapa baris `data:`, jadi disatukan
+ * sebelum diurai.
+ *
+ * @param {string} text
+ * @returns {any[]}
+ */
+function parseSsePayloads(text) {
+  const payloads = [];
+  for (const block of String(text).split(/\r?\n\r?\n/)) {
+    const data = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).replace(/^ /, ''))
+      .join('\n');
+    if (!data || data === '[DONE]') continue;
+    try {
+      payloads.push(JSON.parse(data));
+    } catch {}
+  }
+  return payloads;
+}
+
+/**
+ * Membaca balasan server MCP.
+ *
+ * Spesifikasinya mengizinkan dua wujud: JSON biasa atau aliran SSE. Server
+ * bawaan memakai JSON, tetapi layanan besar seperti Tavily dan Firecrawl selalu
+ * membalas dengan bingkai SSE — tanpa penanganan ini connect akan gagal dengan
+ * kesalahan parse JSON.
+ *
+ * Yang diambil adalah balasan JSON-RPC terakhir, karena server boleh mengirim
+ * notifikasi (mis. progress) mendahului jawaban permintaan.
+ *
+ * @param {Response} res
+ * @returns {Promise<any>}
+ */
+export async function readMcpJson(res) {
+  const text = await res.text();
+  const trimmed = text.trim();
+
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {}
+  }
+
+  const payloads = parseSsePayloads(text);
+  const jawaban = payloads.filter((p) => p && ('result' in p || 'error' in p || 'id' in p));
+  if (jawaban.length > 0) return jawaban[jawaban.length - 1];
+  if (payloads.length > 0) return payloads[payloads.length - 1];
+
+  throw new Error(
+    `Balasan MCP tidak dapat dibaca (content-type: ${res.headers.get('content-type') || 'tidak ada'}): ${trimmed.slice(0, 160)}`
+  );
+}
+
+/**
  * Kelas penanganan koneksi MCP Session (HTTP / Stdio)
  */
 export class McpSession {
@@ -254,7 +314,7 @@ export class McpSession {
       throw new Error(`MCP tools/list gagal (HTTP ${toolsRes.status})`);
     }
 
-    const toolsData = await toolsRes.json();
+    const toolsData = await readMcpJson(toolsRes);
     this.tools = Array.isArray(toolsData.result?.tools) ? toolsData.result.tools : [];
     this.status = 'connected';
   }
@@ -388,7 +448,7 @@ export class McpSession {
         };
       }
 
-      const data = await res.json();
+      const data = await readMcpJson(res);
       if (data.error) {
         return {
           success: false,
@@ -476,6 +536,28 @@ export function loadMcpConfigDetailed(cwd = process.cwd()) {
       headers: {
         'X-API-Key': tinyfishKey,
       },
+    };
+  }
+
+  // 2b. Tavily & Firecrawl: daftarkan otomatis bila usernyanya punya API key,
+  //     selama entri dengan nama itu belum dibuat manual. Kunci dikirim lewat
+  //     header Authorization (bukan query string) agar tidak tersimpan di URL
+  //     maupun log server.
+  const tavilyKey = getTavilyApiKey();
+  if (tavilyKey && !globalConfigs.tavily) {
+    globalConfigs.tavily = {
+      type: 'remote',
+      url: 'https://mcp.tavily.com/mcp/',
+      headers: { Authorization: `Bearer ${tavilyKey}` },
+    };
+  }
+
+  const firecrawlKey = getFirecrawlApiKey();
+  if (firecrawlKey && !globalConfigs.firecrawl) {
+    globalConfigs.firecrawl = {
+      type: 'remote',
+      url: 'https://mcp.firecrawl.dev/v2/mcp',
+      headers: { Authorization: `Bearer ${firecrawlKey}` },
     };
   }
 

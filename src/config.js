@@ -41,6 +41,10 @@ export const DEFAULT_CONFIG = {
   destructiveAllow: [],
   // TinyFish Web Intelligence: API Key untuk Search, Fetch (anti-bot & JS), dan Web Automate
   tinyfishApiKey: '',
+  // Tavily (riset & pencarian web untuk agen): API Key tvly-... untuk MCP server resminya.
+  tavilyApiKey: '',
+  // Firecrawl (scrape/crawl/map situs jadi konten bersih): API Key fc-... untuk MCP server resminya.
+  firecrawlApiKey: '',
   // InstaBox Cloud Sandbox: API Key dan default machine ID/name
   instaboxApiKey: '',
   instaboxMachineId: 'baiwor',
@@ -418,6 +422,58 @@ export function getTinyFishApiKey() {
 export function saveTinyFishApiKey(key) {
   const clean = String(key || '').trim();
   saveConfig({ tinyfishApiKey: clean });
+  return clean;
+}
+
+/**
+ * Mendapatkan API Key Tavily: env TAVILY_API_KEY menang atas konfigurasi.
+ * @returns {string}
+ */
+export function getTavilyApiKey() {
+  if (process.env.TAVILY_API_KEY && process.env.TAVILY_API_KEY.trim()) {
+    return process.env.TAVILY_API_KEY.trim();
+  }
+  const config = getConfig();
+  if (typeof config.tavilyApiKey === 'string' && config.tavilyApiKey.trim()) {
+    return config.tavilyApiKey.trim();
+  }
+  return '';
+}
+
+/**
+ * Menyimpan API Key Tavily ke ~/.baiwor/config.json.
+ * @param {string} key
+ * @returns {string}
+ */
+export function saveTavilyApiKey(key) {
+  const clean = String(key || '').trim();
+  saveConfig({ tavilyApiKey: clean });
+  return clean;
+}
+
+/**
+ * Mendapatkan API Key Firecrawl: env FIRECRAWL_API_KEY menang atas konfigurasi.
+ * @returns {string}
+ */
+export function getFirecrawlApiKey() {
+  if (process.env.FIRECRAWL_API_KEY && process.env.FIRECRAWL_API_KEY.trim()) {
+    return process.env.FIRECRAWL_API_KEY.trim();
+  }
+  const config = getConfig();
+  if (typeof config.firecrawlApiKey === 'string' && config.firecrawlApiKey.trim()) {
+    return config.firecrawlApiKey.trim();
+  }
+  return '';
+}
+
+/**
+ * Menyimpan API Key Firecrawl ke ~/.baiwor/config.json.
+ * @param {string} key
+ * @returns {string}
+ */
+export function saveFirecrawlApiKey(key) {
+  const clean = String(key || '').trim();
+  saveConfig({ firecrawlApiKey: clean });
   return clean;
 }
 

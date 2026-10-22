@@ -19,6 +19,7 @@ import {
   isValidMcpServerName,
   saveMcpServer,
   removeMcpServer,
+  readMcpJson,
 } from '../src/mcp/client.js';
 import { startMcpServer } from '../src/mcp/server.js';
 import { getDefinitions } from '../src/tools/index.js';
@@ -354,6 +355,115 @@ describe('CLI: /mcp add & /mcp remove', () => {
       assert.match(out, /Belum ada MCP server di konfigurasi global/);
     } finally {
       hapusHome(home);
+    }
+  });
+});
+
+describe('MCP Client: Balasan SSE (Tavily & Firecrawl)', () => {
+  const buatResponse = (body, contentType) =>
+    new Response(body, { status: 200, headers: { 'content-type': contentType } });
+
+  it('mengurai balasan bingkai SSE "event: message" + "data: {...}"', async () => {
+    const res = buatResponse(
+      'event: message\ndata: {"jsonrpc":"2.0","id":3,"result":{"tools":[{"name":"tavily_search"}]}}\n\n',
+      'text/event-stream'
+    );
+    const data = await readMcpJson(res);
+    assert.equal(data.result.tools[0].name, 'tavily_search');
+  });
+
+  it('mengabaikan notifikasi dan mengambil jawaban permintaan', async () => {
+    const res = buatResponse(
+      [
+        'event: message',
+        'data: {"jsonrpc":"2.0","method":"notifications/message","params":{}}',
+        '',
+        'event: message',
+        'data: {"jsonrpc":"2.0","id":4,"result":{"tools":[]}}',
+        '',
+        '',
+      ].join('\n'),
+      'text/event-stream; charset=utf-8'
+    );
+    const data = await readMcpJson(res);
+    assert.equal(data.id, 4);
+  });
+
+  it('tetap membaca JSON biasa seperti server lain', async () => {
+    const res = buatResponse('{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}', 'application/json');
+    assert.equal((await readMcpJson(res)).id, 1);
+  });
+
+  it('menggabungkan satu peristiwa yang terpecah ke beberapa baris data', async () => {
+    const res = buatResponse(
+      'event: message\ndata: {"jsonrpc":"2.0",\ndata: "id":9,"result":{"ok":true}}\n\n',
+      'text/event-stream'
+    );
+    assert.equal((await readMcpJson(res)).result.ok, true);
+  });
+
+  it('memberi pesan jelas bila balasan bukan JSON maupun SSE', async () => {
+    const res = buatResponse('<html>login dulu</html>', 'text/html');
+    await assert.rejects(() => readMcpJson(res), /tidak dapat dibaca/);
+  });
+
+  it('server remote yang membalas SSE bisa dihubungi penuh', async () => {
+    const srv = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const json = JSON.parse(body || '{}');
+        res.setHeader('Content-Type', 'text/event-stream');
+        const payload =
+          json.method === 'tools/list'
+            ? { result: { tools: [{ name: 'firecrawl_scrape', description: 'Scrape', inputSchema: { type: 'object' } }] } }
+            : { result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'sse-mock', version: '1' } } };
+        res.end(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: json.id, ...payload })}\n\n`);
+      });
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const port = srv.address().port;
+    try {
+      const session = await connectMcpServer('sse-mock', {
+        type: 'remote',
+        url: `http://127.0.0.1:${port}`,
+        headers: { Authorization: 'Bearer fc-uji' },
+      });
+      assert.equal(session.status, 'connected');
+      assert.deepEqual(session.tools.map((t) => t.name), ['firecrawl_scrape']);
+    } finally {
+      disconnectAllMcpServers();
+      srv.close();
+    }
+  });
+});
+
+describe('MCP Client: Tavily & Firecrawl Bawaan', () => {
+  it('terdaftar otomatis sebagai remote MCP saat API key tersedia', () => {
+    const sebelumnya = { ...process.env };
+    process.env.TAVILY_API_KEY = 'tvly-UJI-123';
+    process.env.FIRECRAWL_API_KEY = 'fc-UJI-456';
+    try {
+      const configs = loadMcpConfig();
+      assert.equal(configs.tavily.url, 'https://mcp.tavily.com/mcp/');
+      assert.equal(configs.tavily.headers.Authorization, 'Bearer tvly-UJI-123');
+      assert.equal(configs.firecrawl.url, 'https://mcp.firecrawl.dev/v2/mcp');
+      assert.equal(configs.firecrawl.headers.Authorization, 'Bearer fc-UJI-456');
+    } finally {
+      process.env = sebelumnya;
+    }
+  });
+
+  it('tidak didaftarkan saat kunci kosong', () => {
+    const sebelumnya = { ...process.env };
+    delete process.env.TAVILY_API_KEY;
+    delete process.env.FIRECRAWL_API_KEY;
+    try {
+      const configs = loadMcpConfig();
+      assert.equal(configs.tavily, undefined, 'tanpa kunci, tavily tidak boleh muncul');
+      assert.equal(configs.firecrawl, undefined, 'tanpa kunci, firecrawl tidak boleh muncul');
+    } finally {
+      process.env = sebelumnya;
     }
   });
 });
