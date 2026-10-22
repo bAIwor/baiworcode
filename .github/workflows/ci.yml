@@ -25,7 +25,21 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Run tests
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/test-output.txt || {
+            echo "### ❌ Test gagal (Node ${{ matrix.node-version }})" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            grep -E "^not ok|^# (tests|pass|fail|skipped)" /tmp/test-output.txt | head -60 >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "<details><summary>60 baris terakhir</summary>" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -60 /tmp/test-output.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "</details>" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
       - name: Smoke test provider & config (mock server lokal)
         run: npm run audit:provider
 
