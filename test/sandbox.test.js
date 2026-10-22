@@ -54,9 +54,17 @@ describe('Sandbox A5: penjaga perintah terminal', () => {
   it('menolak escape melalui junction di dalam workspace', (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'baiwor-link-'));
     const ws = path.join(root, 'ws');
-    const outside = path.join(WORKSPACE, '.sandbox-outside-test');
+    // Gunakan lokasi yang pasti di luar tmp dan workspace
+    const outsideBase = process.platform === 'win32' ? 'C:\\Windows\\Temp' : '/var/tmp';
+    const outside = path.join(outsideBase, `.baiwor-test-${Date.now()}`);
     fs.mkdirSync(ws, { recursive: true });
-    fs.mkdirSync(outside, { recursive: true });
+    try {
+      fs.mkdirSync(outside, { recursive: true });
+    } catch {
+      fs.rmSync(root, { recursive: true, force: true });
+      t.skip('Tidak bisa membuat direktori outside di lingkungan ini');
+      return;
+    }
     fs.writeFileSync(path.join(outside, 'secret.txt'), 'TOPSECRET');
 
     const link = path.join(ws, 'link');
@@ -301,7 +309,9 @@ describe('Sandbox A6/A7: perbaikan helper path', () => {
   it('isPathAllowed mengizinkan workspace, tmp, dan lokasi sistem', () => {
     assert.equal(isPathAllowed(path.join(WORKSPACE, 'a.txt'), WORKSPACE), true);
     assert.equal(isPathAllowed(path.join(os.tmpdir(), 'a.txt'), WORKSPACE), true);
-    assert.equal(isPathAllowed(path.resolve(WORKSPACE, '..', 'other.txt'), WORKSPACE), false);
+    // Gunakan path yang pasti di luar workspace, tmp, DAN system allowed
+    const outsidePath = process.platform === 'win32' ? 'C:\\Users\\someone\\secret.txt' : '/home/user/secret.txt';
+    assert.equal(isPathAllowed(outsidePath, WORKSPACE), false);
   });
 });
 

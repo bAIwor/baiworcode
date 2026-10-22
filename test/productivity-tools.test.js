@@ -71,7 +71,9 @@ describe('Tool search_files: pencarian isi berkas', () => {
   });
 
   it('tetap terikat sandbox: path di luar workspace ditolak', async () => {
-    const res = await handleSearchFiles({ pattern: 'x', path: path.dirname(process.cwd()) });
+    // Gunakan path yang pasti di luar workspace DAN tmp (mis. / atau /etc)
+    const outsidePath = process.platform === 'win32' ? 'C:\\Windows' : '/etc';
+    const res = await handleSearchFiles({ pattern: 'x', path: outsidePath });
     assert.equal(res.success, false);
     assert.match(res.output, /Akses ditolak/);
   });
