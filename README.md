@@ -51,7 +51,7 @@ Installer di atas otomatis mengecek Node.js (minimal v18), memasang bAIwor Code 
 npm install -g @baiworcode/baiworcode@beta
 ```
 Setelah itu, perintah `baiworcode` (atau `baiwor`) bisa dipakai di mana saja.
-> Paket npm dirilis dengan dist-tag **beta** selama proyek masih menuju 1.0.0 stabil. Setelah stabil, `npm install -g baiworcode` akan menjadi jalur utama.
+> Paket npm dirilis dengan dist-tag **beta** selama proyek masih menuju 1.0.0 stabil. Setelah stabil, `npm install -g @baiworcode/baiworcode` (dist-tag **latest**) akan menjadi jalur utama.
 
 ### Cara 3 — Coba dulu tanpa install
 ```bash
