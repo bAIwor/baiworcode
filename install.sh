@@ -64,14 +64,14 @@ else
     # Verifikasi identitas paket npm SEBELUM memasang. Tanpa ini, siapa pun
     # yang lebih dulu mendaftarkan nama 'baiworcode' bisa dieksekusi oleh
     # installer resmi (dependency confusion / typosquatting).
-    NPM_REPO_URL=$(npm view baiworcode repository.url 2>/dev/null || true)
+    NPM_REPO_URL=$(npm view @baiworcode/baiworcode repository.url 2>/dev/null || true)
     NPM_INSTALLED=0
     if printf '%s' "$NPM_REPO_URL" | grep -qiE 'github\.com[:/]bAIwor/baiworcode'; then
         echo -e "${GRAY}  Memasang paket resmi dari npm...${NC}"
-        if npm install -g baiworcode >/dev/null 2>&1; then
+        if npm install -g @baiworcode/baiworcode >/dev/null 2>&1; then
             NPM_INSTALLED=1
-        elif npm install -g baiworcode@alpha >/dev/null 2>&1; then
-            # Selama tahap alpha, paket dirilis dengan dist-tag 'alpha'.
+        elif npm install -g @baiworcode/baiworcode@beta >/dev/null 2>&1; then
+            # Selama tahap alpha, paket dirilis dengan dist-tag 'beta'.
             NPM_INSTALLED=1
         fi
     fi
