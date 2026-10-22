@@ -60,7 +60,14 @@ jobs:
             echo "- node: $(node --version)"
             echo "- npm: $(npm --version)"
             echo "- token secret: $([ -n "$NODE_AUTH_TOKEN" ] && echo 'ada' || echo 'tidak ada, mengandalkan OIDC trusted publishing')"
+            echo "- panjang token: ${#NODE_AUTH_TOKEN}"
+            echo "- akhiran token: ...${NODE_AUTH_TOKEN: -4}"
+            echo "- mengandung '...' (masked?): $(case "$NODE_AUTH_TOKEN" in *...*) echo ya;; *) echo tidak;; esac)"
+            echo "- .npmrc: $(cat "$HOME/.npmrc" 2>/dev/null | sed 's/_authToken=.*/_authToken=****/' | head -2)"
           } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "::error title=token diagnostics::panjang=${#NODE_AUTH_TOKEN} masked=$(case "$NODE_AUTH_TOKEN" in *...*) echo ya;; *) echo tidak;; esac) akhir=...${NODE_AUTH_TOKEN: -4} npmrc=$(test -f "$HOME/.npmrc" && echo ada || echo tidak)"
+          }
           npm publish --provenance --access public --tag ${{ steps.dist.outputs.tag }} 2>&1 | tee /tmp/publish.txt || {
             echo "### ❌ npm publish gagal" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
