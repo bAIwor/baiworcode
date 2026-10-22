@@ -9,7 +9,7 @@
 
 export const APP_NAME = 'bAIwor Code';
 export const APP_SLUG = 'baiworcode';
-export const VERSION = '1.0.0-beta.1';
+export const VERSION = '1.0.0-beta.2';
 
 /** Situs resmi & kanal bonus token/credit. */
 export const WEBSITE = 'https://baiwor.my.id';
