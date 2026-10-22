@@ -71,7 +71,7 @@ else
         if npm install -g @baiworcode/baiworcode >/dev/null 2>&1; then
             NPM_INSTALLED=1
         elif npm install -g @baiworcode/baiworcode@beta >/dev/null 2>&1; then
-            # Selama tahap alpha, paket dirilis dengan dist-tag 'beta'.
+            # Selama tahap beta, paket dirilis dengan dist-tag 'beta'.
             NPM_INSTALLED=1
         fi
     fi

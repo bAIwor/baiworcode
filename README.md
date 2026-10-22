@@ -1,7 +1,8 @@
 # 🎭 bAIwor Code
 
 <p align="left">
-  <a href="https://github.com/bAIwor/baiworcode"><img src="https://img.shields.io/badge/Status-Alpha%20%7C%20Penyempurnaan%20Aktif-orange?style=flat-square" alt="Status: Alpha" /></a>
+  <a href="https://www.npmjs.com/package/@baiworcode/baiworcode"><img src="https://img.shields.io/npm/v/@baiworcode/baiworcode?style=flat-square&color=CB3837" alt="npm version" /></a>
+  <a href="https://github.com/bAIwor/baiworcode/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/bAIwor/baiworcode/ci.yml?branch=main&style=flat-square&label=CI" alt="CI build" /></a>
   <a href="https://baiwor.my.id"><img src="https://img.shields.io/badge/Website-baiwor.my.id-blue?style=flat-square" alt="Website" /></a>
   <a href="https://agentik.my.id"><img src="https://img.shields.io/badge/Bonus%20Token-agentik.my.id-10B981?style=flat-square" alt="Bonus Token" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D18-green?style=flat-square" alt="Node.js" /></a>
@@ -12,8 +13,8 @@
 > **Website Resmi:** [https://baiwor.my.id](https://baiwor.my.id) · **Bonus Token AI:** [https://agentik.my.id](https://agentik.my.id)
 
 > [!NOTE]
-> **Status Proyek: Tahap Alpha (Penyempurnaan Aktif) 🚧**  
-> bAIwor Code saat ini berada dalam tahap **Alpha** dan sedang terus disempurnakan secara aktif. Fitur baru, stabilitas, dan optimasi performa terus diperbarui setiap hari. Dokumentasi resmi, update, dan ekosistem bAIwor dapat diakses di [baiwor.my.id](https://baiwor.my.id). Masukan dan laporan kendala dapat disampaikan melalui [GitHub Issues](https://github.com/bAIwor/baiworcode/issues).
+> **Status Proyek: Tahap Beta (Menuju 1.0 Stabil) 🚧**  
+> bAIwor Code saat ini berada dalam tahap **Beta** dan terus disempurnakan secara aktif. Fitur baru, stabilitas, dan optimasi performa terus diperbarui setiap hari. Dokumentasi resmi, update, dan ekosistem bAIwor dapat diakses di [baiwor.my.id](https://baiwor.my.id). Masukan dan laporan kendala dapat disampaikan melalui [GitHub Issues](https://github.com/bAIwor/baiworcode/issues).
 
 CLI coding agent pintar berbahasa Indonesia — ngobrol santai di terminal, dan bAIwor langsung bekerja di berkas proyekmu.
 
