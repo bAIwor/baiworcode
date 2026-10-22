@@ -12,7 +12,7 @@ import {
   getInstaboxMachineId,
 } from './config.js';
 import { authStatus } from './auth/index.js';
-import { listActiveMcpSessions } from './mcp/index.js';
+import { listActiveMcpSessions, loadMcpConfig } from './mcp/index.js';
 import { getInstaboxStatus } from './tools/instaboxTool.js';
 import { isHomeDirectory } from './tools/searchTool.js';
 import { APP_NAME, VERSION, WEBSITE } from './branding.js';
@@ -157,9 +157,20 @@ export async function runDoctor() {
     check(false, 'TinyFish Web Intelligence', 'Belum dikonfigurasi (fallback ke native fetch & DuckDuckGo)', true);
   }
 
-  // MCP Servers
+  // MCP Servers: sesi aktif hanya ada saat chat berjalan, jadi doctor juga
+  // menghitung yang terkonfigurasi agar tidak tampak "belum ada" padahal siap.
   const mcpList = listActiveMcpSessions();
-  check(mcpList.length > 0, 'MCP Servers', mcpList.length > 0 ? `${mcpList.length} server aktif` : 'Belum ada MCP server terhubung (opsional)', true);
+  let mcpConfigured = 0;
+  try {
+    mcpConfigured = Object.keys(loadMcpConfig()).length;
+  } catch {}
+  if (mcpList.length > 0) {
+    check(true, 'MCP Servers', `${mcpList.length} server aktif`);
+  } else if (mcpConfigured > 0) {
+    check(true, 'MCP Servers', `${mcpConfigured} server terkonfigurasi (tersambung otomatis saat sesi chat)`);
+  } else {
+    check(false, 'MCP Servers', 'Belum ada server (opsional — tambah via /mcp add)', true);
+  }
 
   // 5. Kesimpulan
   console.log(theme.muted('\n  ' + '─'.repeat(60)));
