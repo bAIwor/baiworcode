@@ -265,7 +265,8 @@ catat('Keamanan: file config dibatasi permission (0600)', mode === '600', `mode=
 const { maskSecret } = await import(new URL('../src/config.js', import.meta.url).href);
 catat(
   'Keamanan: maskSecret menyamar kredensial di output',
-  maskSecret('kunci_rahasia_panjang') === '••••panjang',
+  maskSecret('kunci_rahasia_panjang') === '••••jang' &&
+    !maskSecret('kunci_rahasia_panjang').includes('kunci_rahasia'),
   `hasil=${maskSecret('kunci_rahasia_panjang')}`
 );
 
