@@ -78,6 +78,11 @@ jobs:
             echo "::error title=npm publish gagal::$(grep -E '^npm (error|ERR!)|E[A-Z0-9]{4,}' /tmp/publish.txt | sed 's/npm_[A-Za-z0-9]*/npm_****/g' | head -12 | tr '\n' ' ' | cut -c1-1200)"
             exit 1
           }
+          # Verifikasi langsung ke registry, bukan hanya percaya exit code npm.
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TERDAFTAR=$(npm view "$PKG_NAME@$PKG_VERSION" version 2>/dev/null || echo "TIDAK-ADA")
+          echo "::notice title=npm publish::terdaftar=$TERDAFTAR diminta=$PKG_VERSION"
 
       - name: Arahkan dist-tag latest ke rilis ini
         # Selama belum ada rilis stabil, `npm install @baiworcode/baiworcode`
@@ -89,3 +94,4 @@ jobs:
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VERSION=$(node -p "require('./package.json').version")
           npm dist-tag add "$PKG_NAME@$PKG_VERSION" latest
+          echo "::notice title=dist-tag::latest -> $PKG_VERSION"
