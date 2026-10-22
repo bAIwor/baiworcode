@@ -226,6 +226,20 @@ describe('Tool todo_list: manajemen daftar tugas', () => {
     assert.equal(data.todos[0].id, '12');
   });
 
+  it('menerima item yang memakai "title" sebagai deskripsi (bentuk dari model)', async () => {
+    const res = await handleTodoList({
+      todos: [
+        { id: 'audit-1', title: 'Identifikasi repo aktif', status: 'in_progress' },
+        { id: 'audit-2', title: 'Jalankan test', status: 'pending' },
+      ],
+    });
+    assert.equal(res.success, true);
+    const data = JSON.parse(res.output);
+    assert.equal(data.todos[0].content, 'Identifikasi repo aktif');
+    assert.equal(data.todos[0].status, 'in_progress');
+    assert.equal(data.todos.length, 2);
+  });
+
   it('menerima satu objek tugas tunggal dan membungkusnya jadi array', async () => {
     const res = await handleTodoList({
       todos: { id: '10', content: 'Tugas tunggal', status: 'in_progress' },

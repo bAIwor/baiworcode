@@ -220,6 +220,30 @@ function summarize(items) {
 }
 
 /**
+ * Nama field alternatif untuk deskripsi tugas. Model sering memakai `title`
+ * (gaya todo app) alih-alih `content` yang diminta skema.
+ */
+const CONTENT_ALIASES = ['title', 'text', 'task', 'description', 'label', 'name'];
+
+/**
+ * Menyalin deskripsi dari field alternatif ke `content` bila perlu. Field lain
+ * (id, status, parent) dibiarkan; validasi tetap dilakukan setelahnya.
+ *
+ * @param {any} item
+ * @returns {any}
+ */
+function normalizeTodoItem(item) {
+  if (!item || typeof item !== 'object') return item;
+  if (typeof item.content === 'string' && item.content.trim()) return item;
+  for (const key of CONTENT_ALIASES) {
+    if (typeof item[key] === 'string' && item[key].trim()) {
+      return { ...item, content: item[key] };
+    }
+  }
+  return item;
+}
+
+/**
  * Menormalkan bentuk `todos` yang dikirim model. Model kadang membungkus daftar
  * (`{ "item": [...] }`), mengirim satu objek tugas, atau memakai peta id→tugas,
  * dan mengirim `merge` sebagai string. Bentuk-bentuk ini diartikan alih-alih
@@ -229,10 +253,21 @@ function summarize(items) {
  * @returns {Array|null} null bila tidak bisa diartikan sebagai daftar tugas.
  */
 export function coerceTodosInput(todos, depth = 0) {
+  const hasil = cariDaftarTodo(todos, depth);
+  return hasil ? hasil.map(normalizeTodoItem) : null;
+}
+
+function cariDaftarTodo(todos, depth) {
   if (Array.isArray(todos)) return todos;
   if (!todos || typeof todos !== 'object' || depth > 3) return null;
 
-  if (typeof todos.content === 'string' || typeof todos.id === 'string') return [todos];
+  if (
+    typeof todos.content === 'string' ||
+    typeof todos.id === 'string' ||
+    CONTENT_ALIASES.some((key) => typeof todos[key] === 'string')
+  ) {
+    return [todos];
+  }
 
   for (const key of ['item', 'items', 'todos', 'list', 'data', 'tasks']) {
     const nilai = todos[key];
@@ -240,7 +275,7 @@ export function coerceTodosInput(todos, depth = 0) {
     if (Array.isArray(nilai)) return nilai;
     // Model kadang membungkus dua lapis: { item: { item: [...] } }.
     if (typeof nilai === 'object') {
-      const dalam = coerceTodosInput(nilai, depth + 1);
+      const dalam = cariDaftarTodo(nilai, depth + 1);
       if (dalam) return dalam;
     }
   }
@@ -249,7 +284,12 @@ export function coerceTodosInput(todos, depth = 0) {
   if (
     values.length > 0 &&
     values.every(
-      (v) => v && typeof v === 'object' && (typeof v.content === 'string' || typeof v.id === 'string')
+      (v) =>
+        v &&
+        typeof v === 'object' &&
+        (typeof v.content === 'string' ||
+          typeof v.id === 'string' ||
+          CONTENT_ALIASES.some((key) => typeof v[key] === 'string'))
     )
   ) {
     return values;
