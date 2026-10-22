@@ -172,9 +172,15 @@ export function savePromptHistory(entry) {
 
   try {
     if (!fs.existsSync(CONFIG_DIR)) {
-      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
     }
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(promptHistory, null, 2), 'utf8');
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(promptHistory, null, 2), {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
+    try {
+      fs.chmodSync(HISTORY_FILE, 0o600);
+    } catch {}
   } catch {}
 }
 
