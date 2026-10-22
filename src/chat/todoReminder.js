@@ -140,3 +140,25 @@ export function buildTodoReminder(stats) {
     '</task-completion-reminder>',
   ].join(' ');
 }
+
+/**
+ * Teguran sekali saat model hendak menutup giliran dengan todo yang masih aktif.
+ *
+ * Berbeda dari {@link buildTodoReminder} yang berkala tiap beberapa giliran, ini
+ * menargetkan momen "jawaban akhir": model harus memilih melanjutkan pekerjaan
+ * atau menurunkan `in_progress` menjadi `pending` bila benar-benar menunggu
+ * keputusan pengguna — supaya daftar tidak tampak menggantung.
+ *
+ * @param {{total:number, active:number}} stats
+ * @returns {string}
+ */
+export function buildTodoTurnEndReminder(stats) {
+  const { total = 0, active = 0 } = stats || {};
+  return [
+    '<todo-turn-end-reminder>',
+    `Kamu hendak menutup giliran, tetapi masih ada ${active} dari ${total} item todo_list yang aktif.`,
+    'Jangan mengakhiri giliran dengan item berstatus `in_progress` yang tidak sedang dikerjakan.',
+    'Pilih salah satu: (a) lanjutkan pekerjaan yang tersisa sekarang, atau (b) bila menunggu keputusan pengguna, ubah item `in_progress` menjadi `pending` melalui todo_list lalu jawab singkat apa yang kamu tunggu.',
+    '</todo-turn-end-reminder>',
+  ].join(' ');
+}

@@ -15,6 +15,7 @@ import {
   shouldInjectPlanningNudge,
   getPlanNudgeThreshold,
   buildPlanningReminder,
+  buildTodoTurnEndReminder,
 } from './todoReminder.js';
 import { renderTimelineByMode, renderTodoChecklist, formatTodoProgress } from './timeline.js';
 import { LiveActivity } from './liveActivity.js';
@@ -288,6 +289,8 @@ export async function handleUserChat(promptText) {
   const planningNudgeThreshold = getPlanNudgeThreshold();
   let toolCallsThisTurn = 0;
   let lastPlanNudgeAt = 0;
+  // Sekali per giliran pengguna: cegah model menutup giliran dengan todo aktif.
+  let todoTurnEndNudgeUsed = false;
 
   // Self-Healing Diagnostics: lacak berkas yang dimodifikasi dan jumlah retry
   const FILE_MODIFYING_TOOLS = ['write_file', 'edit_file', 'patch_file'];
@@ -783,7 +786,22 @@ export async function handleUserChat(promptText) {
         continue;
       }
 
-      // Jika tidak ada tool calls, berarti respons akhir (final answer) sudah selesai
+      // Jika tidak ada tool calls, berarti respons akhir (final answer) sudah selesai.
+      // Namun bila todo masih aktif, beri SATU teguran per giliran: model harus
+      // melanjutkan pekerjaan atau menurunkan `in_progress` menjadi `pending`
+      // bila menunggu keputusan pengguna — agar daftar tidak menggantung.
+      const sisaTodo = summarizeTodos(todoStore.read());
+      if (sisaTodo.active > 0 && !todoTurnEndNudgeUsed) {
+        todoTurnEndNudgeUsed = true;
+        conversationSession.addAssistantMessage(
+          result.content || '',
+          null,
+          result.reasoning || undefined
+        );
+        conversationSession.addUserMessage(buildTodoTurnEndReminder(sisaTodo));
+        continue;
+      }
+
       conversationSession.addAssistantMessage(
         result.content || '',
         null,

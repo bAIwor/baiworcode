@@ -5,6 +5,7 @@ import {
   shouldInjectTodoReminder,
   getTodoReminderInterval,
   buildTodoReminder,
+  buildTodoTurnEndReminder,
   DEFAULT_TODO_REMINDER_INTERVAL,
   shouldInjectPlanningNudge,
   getPlanNudgeThreshold,
@@ -56,6 +57,16 @@ describe('todoReminder: pengingat penyelesaian tugas (adaptasi mcode)', () => {
     assert.ok(text.includes('2 selesai'));
     assert.ok(text.includes('1 dibatalkan'));
     assert.ok(/jangan menyatakan tugas tuntas/i.test(text));
+  });
+
+  it('buildTodoTurnEndReminder menegur in_progress yang menggantung', () => {
+    const text = buildTodoTurnEndReminder({ total: 2, active: 2 });
+    assert.ok(text.startsWith('<todo-turn-end-reminder>'));
+    assert.ok(text.endsWith('</todo-turn-end-reminder>'));
+    assert.ok(text.includes('2 dari 2'));
+    assert.ok(/in_progress/.test(text));
+    assert.ok(/pending/.test(text));
+    assert.ok(/menunggu keputusan pengguna/i.test(text));
   });
 });
 
