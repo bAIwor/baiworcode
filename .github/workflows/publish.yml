@@ -66,5 +66,8 @@ jobs:
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             tail -40 /tmp/publish.txt >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
+            # Annotation (terbaca lewat API tanpa perlu hak admin) + ringkas
+            # di summary. Token disamarkan agar tidak ikut tersebar.
+            echo "::error title=npm publish gagal::$(tail -25 /tmp/publish.txt | sed 's/npm_[A-Za-z0-9]*/npm_****/g' | tr '\n' ' ' | cut -c1-900)"
             exit 1
           }
