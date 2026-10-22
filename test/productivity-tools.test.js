@@ -216,6 +216,16 @@ describe('Tool todo_list: manajemen daftar tugas', () => {
     assert.equal(data.todos[0].id, '9');
   });
 
+  it('menerima pembungkusan ganda { item: { item: [...] } }', async () => {
+    const res = await handleTodoList({
+      todos: { item: { item: [{ id: '12', content: 'Nested ganda', status: 'pending' }] } },
+    });
+    assert.equal(res.success, true);
+    const data = JSON.parse(res.output);
+    assert.equal(data.todos.length, 1);
+    assert.equal(data.todos[0].id, '12');
+  });
+
   it('menerima satu objek tugas tunggal dan membungkusnya jadi array', async () => {
     const res = await handleTodoList({
       todos: { id: '10', content: 'Tugas tunggal', status: 'in_progress' },

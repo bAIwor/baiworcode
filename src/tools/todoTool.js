@@ -228,15 +228,22 @@ function summarize(items) {
  * @param {unknown} todos
  * @returns {Array|null} null bila tidak bisa diartikan sebagai daftar tugas.
  */
-export function coerceTodosInput(todos) {
+export function coerceTodosInput(todos, depth = 0) {
   if (Array.isArray(todos)) return todos;
-  if (!todos || typeof todos !== 'object') return null;
-
-  for (const key of ['item', 'items', 'todos', 'list', 'data', 'tasks']) {
-    if (Array.isArray(todos[key])) return todos[key];
-  }
+  if (!todos || typeof todos !== 'object' || depth > 3) return null;
 
   if (typeof todos.content === 'string' || typeof todos.id === 'string') return [todos];
+
+  for (const key of ['item', 'items', 'todos', 'list', 'data', 'tasks']) {
+    const nilai = todos[key];
+    if (nilai === undefined || nilai === null) continue;
+    if (Array.isArray(nilai)) return nilai;
+    // Model kadang membungkus dua lapis: { item: { item: [...] } }.
+    if (typeof nilai === 'object') {
+      const dalam = coerceTodosInput(nilai, depth + 1);
+      if (dalam) return dalam;
+    }
+  }
 
   const values = Object.values(todos);
   if (
