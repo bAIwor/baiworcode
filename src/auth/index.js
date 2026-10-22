@@ -133,9 +133,11 @@ export async function login(providerId) {
     const agyExe = process.env.ANTIGRAVITY_AGENTAPI_EXE || 'agy';
     let isAvailable = false;
     try {
-      const { exec } = await import('node:child_process');
+      const { execFile } = await import('node:child_process');
       isAvailable = await new Promise((resolve) => {
-        exec(`"${agyExe}" --version`, { timeout: 3000 }, (err) => {
+        // execFile (bukan exec) agar nilai dari environment tidak diperlakukan
+        // sebagai perintah shell.
+        execFile(agyExe, ['--version'], { timeout: 3000 }, (err) => {
           resolve(!err);
         });
       });

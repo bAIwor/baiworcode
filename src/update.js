@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import * as p from '@clack/prompts';
 import chalk from 'chalk';
 import { theme } from './theme.js';
@@ -97,7 +97,7 @@ export async function runUpdate(options = {}) {
   // 4. Ada pembaruan: tampilkan ringkasan commit baru
   console.log(theme.success(`\n  ✦ Ditemukan pembaruan baru dari GitHub! (${localHead.slice(0, 7)} → ${remoteHead.slice(0, 7)})`));
   try {
-    const changelog = execSync(`git log ${localHead}..${remoteHead} --oneline`, {
+    const changelog = execFileSync('git', ['log', `${localHead}..${remoteHead}`, '--oneline'], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
     }).trim();
