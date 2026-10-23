@@ -250,6 +250,15 @@ async function runSingleDelegate(args = {}, options = {}) {
       }
       toolCallCount += tool_calls.length;
 
+      // Normalisasi ID tool call SEBELUM pesan assistant disimpan, supaya
+      // pasangan assistant.tool_calls ↔ role:'tool' selalu konsisten.
+      // Fallback lama (`call_${Date.now()}`) bisa bentrok antar tool call
+      // yang selesai pada milidetik yang sama, dan tidak cocok dengan ID
+      // yang tersimpan di pesan assistant.
+      tool_calls.forEach((tc, idx) => {
+        if (!tc.id) tc.id = `call_${turn}_${idx}`;
+      });
+
       messages.push({
         role: 'assistant',
         content: content || '',
@@ -264,7 +273,7 @@ async function runSingleDelegate(args = {}, options = {}) {
         if (!roleConfig.allowedTools.includes(fnName)) {
           messages.push({
             role: 'tool',
-            tool_call_id: tc.id || `call_${Date.now()}`,
+            tool_call_id: tc.id,
             name: fnName,
             content: `Error: Tool "${fnName}" dilarang untuk peran ${roleConfig.name}. Tool yang diizinkan: ${roleConfig.allowedTools.join(', ')}.`,
           });
@@ -274,7 +283,7 @@ async function runSingleDelegate(args = {}, options = {}) {
         const res = await dispatchTool(fnName, rawArgs, { signal: options.signal });
         messages.push({
           role: 'tool',
-          tool_call_id: tc.id || `call_${Date.now()}`,
+          tool_call_id: tc.id,
           name: fnName,
           content: res.output,
         });

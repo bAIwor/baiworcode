@@ -49,7 +49,9 @@ const HOME_ENV_REFS = [
   /\$env:/i,
   /\$\{env:/i,
   // Semua bentuk tilde (~, ~/, ~user) menunjuk ke home / home pengguna lain.
-  /(?:^|[\s"'`(=])~/,
+  // Kelas batas token harus menyertakan operator shell (<, >, ;, |, &) —
+  // tanpa itu cat <~/secret.txt lolos dari deteksi.
+  /(?:^|[\s"'`(=,;|&<>])~/,
 ];
 
 /** Lokasi binary sistem yang tetap diizinkan agar perintah wajar tidak ikut terblokir. */
@@ -332,8 +334,12 @@ function extractAbsolutePaths(command) {
   while ((m = uncRe.exec(command)) !== null) found.push(m[1]);
 
   // Pola POSIX hanya relevan di luar Windows; di Windows `/b` adalah flag, bukan path.
+  // Kelas batas token harus sama dengan winRe di atas. Kalau `<`, `>`, `;`, `|`,
+  // `&` tidak ikut menjadi batas, perintah seperti `cat </etc/shadow` atau
+  // `echo x >/etc/cron.d/job` tidak menghasilkan path absolut sama sekali —
+  // sehingga guard workspace-escape lolos.
   if (process.platform !== 'win32') {
-    const posixRe = /(?:^|[\s"'`=(])(\/[^\s"'`|&;<>()]*)/g;
+    const posixRe = /(?:^|[\s"'`=(,;|&<>])(\/[^\s"'`|&;<>()]*)/g;
     while ((m = posixRe.exec(command)) !== null) found.push(m[1]);
   }
 

@@ -112,9 +112,19 @@ export async function requestFileChangeApproval({
     return await customFileApprovalHandler({ filePath, action, diff, diffStats });
   }
 
-  // Jika bukan TTY, jangan gantung proses pada lingkungan non-interaktif
+  // Terminal non-interaktif (pipe, CI, `baiworcode "prompt"`): tidak ada
+  // manusia yang bisa meninjau dan menyetujui perubahan. Mode Safe
+  // Interactive BERJALAN TANPA TINJAUAN, jadi perubahan harus DITOLAK —
+  // persis seperti requestCommandApproval() yang sudah fail-closed.
+  // Untuk jalan unattended, pakai mode 'auto' (`--permission auto`).
   if (!process.stdin.isTTY) {
-    return { approved: true };
+    return {
+      approved: false,
+      message:
+        `Modifikasi berkas '${filePath}' ditolak otomatis: mode Safe Interactive memerlukan ` +
+        `tinjauan manusia, namun sesi berjalan dalam mode non-TTY. ` +
+        `Gunakan '--permission auto' (atau mode 'auto') untuk menjalankan tanpa prompt.`,
+    };
   }
 
   try {

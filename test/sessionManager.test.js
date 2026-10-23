@@ -342,6 +342,54 @@ describe('SessionManager: Manajemen Sesi Persisten', () => {
     });
   });
 
+  describe('Penjaga resume lintas proyek', () => {
+    it('TIDAK boleh mengambil sesi proyek lain saat resumeLatest dipanggil tanpa izin', () => {
+      const otherProject = path.join(tempBaseDir, 'proyek-lain');
+      const idLain = generateSessionId();
+      saveSession(
+        { id: idLain, messages: [{ role: 'user', content: 'Konteks proyek lain' }] },
+        { projectPath: otherProject, baseConfigDir: tempBaseDir }
+      );
+
+      // Folder ini belum punya sesi sendiri → resumeLatest harus TIDAK
+      // mengambil sesi proyek lain secara diam-diam.
+      const emptyProject = path.join(tempBaseDir, 'proyek-kosong');
+      const latest = getLatestSession({
+        projectPath: emptyProject,
+        baseConfigDir: tempBaseDir,
+      });
+      assert.equal(latest, null);
+
+      // Gullible: sesi proyek lain hanya bisa diambil bila diizinkan eksplisit.
+      const latestExplicit = getLatestSession({
+        projectPath: emptyProject,
+        baseConfigDir: tempBaseDir,
+        allowCrossProject: true,
+      });
+      assert.ok(latestExplicit);
+      assert.equal(latestExplicit.id, idLain);
+    });
+
+    it('loadSession tidak mencari lintas proyek tanpa allowCrossProject', () => {
+      const otherProject = path.join(tempBaseDir, 'proyek-lain-2');
+      const idLain = generateSessionId();
+      saveSession(
+        { id: idLain, messages: [{ role: 'user', content: 'Konteks proyek lain 2' }] },
+        { projectPath: otherProject, baseConfigDir: tempBaseDir }
+      );
+
+      const emptyProject = path.join(tempBaseDir, 'proyek-kosong-2');
+      assert.equal(loadSession(idLain, { projectPath: emptyProject, baseConfigDir: tempBaseDir }), null);
+      assert.ok(
+        loadSession(idLain, {
+          projectPath: emptyProject,
+          baseConfigDir: tempBaseDir,
+          allowCrossProject: true,
+        })
+      );
+    });
+  });
+
   describe('Integrasi Conversation: saveToDisk & loadFromDisk', () => {
     it('harus menyimpan sesi otomatis dari instance Conversation', async () => {
       const { Conversation } = await import('../src/chat/conversation.js');

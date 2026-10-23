@@ -2,6 +2,109 @@ import { spawn } from 'node:child_process';
 import { REASONING_CONTENT_PLACEHOLDER } from './reasoningPlaceholder.js';
 
 /**
+ * Mengubah content multimodal (array of parts) menjadi teks biasa.
+ *
+ * Bridge "agy" hanya menerima prompt teks-murni. Sebelumnya content array
+ * dirender dengan String(m.content) sehingga hasilnya "[object Object]" —
+ * prompt pengguna beserta gambar sama-sama hilang. Sekarang part bertipe
+ * 'text' diambil apa adanya, sedangkan part gambar dideskripsikan.
+ *
+ * @param {any} content
+ * @returns {string}
+ */
+export function flattenContentForText(content) {
+  if (content == null) return '';
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return String(content);
+
+  const parts = [];
+  for (const part of content) {
+    if (part == null) continue;
+    if (typeof part === 'string') {
+      parts.push(part);
+      continue;
+    }
+    if (part.type === 'text' || typeof part.text === 'string') {
+      parts.push(String(part.text ?? ''));
+      continue;
+    }
+    if (part.type === 'image_url' || part.image_url) {
+      parts.push('[gambar dilampirkan]');
+      continue;
+    }
+    const text = part.text;
+    if (typeof text === 'string' && text) {
+      parts.push(text);
+      continue;
+    }
+    parts.push('[bagian konten multimodal yang tidak dapat ditampilkan sebagai teks]');
+  }
+  return parts.filter(Boolean).join('\n');
+}
+
+/**
+ * Rakit satu prompt teks-murni untuk jembatan Antigravity CLI (agy).
+ *
+ * Fungsi ini diekspor agar bisa diuji tanpa menjalankan proses `agy`.
+ *
+ * @param {Array<{role: string, content: any, name?: string}>} messages
+ * @returns {string}
+ */
+export function buildAgyPrompt(messages = []) {
+  const systemMsg = String(messages.find((m) => m.role === 'system')?.content || '');
+  const conversationMsgs = messages.filter(
+    (m) => m.role === 'user' || m.role === 'assistant' || m.role === 'tool'
+  );
+
+  // Jembatan "agy" bersifat teks-murni: seluruh riwayat dirakit menjadi satu
+  // prompt. Instruksi pengguna harus menunjuk pesan user TERAKHIR, sedangkan
+  // history adalah SEMUA pesan lain (sebelum maupun sesudah pesan user
+  // terakhir) yang tetap berurutan kronologis.
+  //
+  // Memotong dengan slice(0, -1) mengasumsikan pesan terakhir selalu
+  // ber-role 'user' — asumsi yang salah saat giliran terakhir adalah balasan
+  // assistant atau hasil tool: pesan user terakhir jadi terduplikasi dan
+  // balasan assistant hilang dari konteks.
+  let lastUserIdx = -1;
+  for (let i = conversationMsgs.length - 1; i >= 0; i -= 1) {
+    if (conversationMsgs[i].role === 'user') {
+      lastUserIdx = i;
+      break;
+    }
+  }
+
+  const priorHistory = conversationMsgs.filter((_, i) => i !== lastUserIdx);
+  const lastUserMsg = flattenContentForText(
+    lastUserIdx >= 0
+      ? conversationMsgs[lastUserIdx].content
+      : conversationMsgs[conversationMsgs.length - 1]?.content
+  );
+
+  // Hasil tool bisa sangat panjang; batasi agar prompt tidak meledak.
+  const TOOL_CONTENT_LIMIT = 2000;
+  const renderHistory = (m) => {
+    if (m.role === 'tool') {
+      const raw = String(m.content || '');
+      const clipped =
+        raw.length > TOOL_CONTENT_LIMIT ? `${raw.slice(0, TOOL_CONTENT_LIMIT)}… [dipotong]` : raw;
+      return `[TOOL ${m.name || 'result'}]: ${clipped}`;
+    }
+    return `[${m.role.toUpperCase()}]: ${flattenContentForText(m.content)}`;
+  };
+
+  let fullPrompt = '';
+  if (systemMsg) {
+    fullPrompt += `[PETUNJUK SISTEM]:\n${systemMsg}\n\n`;
+  }
+  if (priorHistory.length > 0) {
+    const historyText = priorHistory.map(renderHistory).join('\n\n');
+    fullPrompt += `[KONTEKS PERCAKAPAN SEBELUMNYA]:\n${historyText}\n\n`;
+  }
+  fullPrompt += `[INSTRUKSI PENGGUNA]:\n${lastUserMsg}`;
+  return fullPrompt;
+}
+
+/**
  * Melakukan streaming chat completion melalui Antigravity CLI (agy)
  * ditenagai oleh sesi Google AI Pro (Gemini 3.8 Flash, Claude Sonnet 4.6, Opus 4.6, dll.)
  */
@@ -14,19 +117,7 @@ export async function streamAgyCompletion({
   onReasoning,
 }) {
   const agyExe = process.env.ANTIGRAVITY_AGENTAPI_EXE || 'agy';
-  const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
-  const contextHistory = messages.slice(0, -1);
-
-  let fullPrompt = '';
-  if (contextHistory.length > 0) {
-    const historyText = contextHistory
-      .filter((m) => m.content && (m.role === 'user' || m.role === 'assistant'))
-      .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
-      .join('\n\n');
-    fullPrompt = `Konteks percakapan sebelumnya:\n${historyText}\n\nInstruksi pengguna sekarang:\n${lastUserMsg}`;
-  } else {
-    fullPrompt = lastUserMsg;
-  }
+  const fullPrompt = buildAgyPrompt(messages);
 
   return new Promise((resolve, reject) => {
     let child;
@@ -762,7 +853,11 @@ export async function streamChatCompletion({
         const idx = tc.index ?? 0;
         if (!accumulatedToolCalls[idx]) {
           accumulatedToolCalls[idx] = {
-            id: tc.id || '',
+            // Beberapa provider tidak mengirim `id`. ID kosong membuat hasil
+            // tool tidak bisa dipasangkan dengan assistant.tool_calls →
+            // permintaan berikutnya ditolak 400 dan output tool hilang.
+            // Karena itu ID disintesis dari indeks yang stabil.
+            id: tc.id || `call_${idx}`,
             type: tc.type || 'function',
             function: {
               name: tc.function?.name || '',

@@ -166,14 +166,42 @@ export function getConfig() {
     return config;
   } catch (err) {
     clearConfigCache();
-    // File rusak: JANGAN timpa! Cadangkan dulu
+
+    // Bedakan dua jenis kegagalan:
+    //  - JSON rusak (SyntaxError): file bisa dicadangkan lalu ditulis ulang
+    //    dengan default.
+    //  - Error I/O (EACCES/EPERM/EBUSY): file TIDAK boleh disentuh sama
+    //    sekali. Menimpanya dengan default akan menghapus seluruh token
+    //    OAuth, API key, dan MCP server milik pengguna.
+    const isParseError = err instanceof SyntaxError;
+
+    if (!isParseError) {
+      console.error(
+        `\n⚠️  Gagal membaca config.json (${err.message}).\n` +
+          `    File asli TIDAK ditimpa. Periksa izin akses atau perbaiki manual: ${CONFIG_FILE}`
+      );
+      return { ...DEFAULT_CONFIG };
+    }
+
+    // File rusak: JANGAN timpa! Cadangkan dulu — dan HANYA tulis default
+    // bila pencadangan benar-benar berhasil. Kalau rename gagal, file asli
+    // masih utuh dan tidak boleh dihapus.
     const timestamp = Date.now();
     const backupFile = path.join(CONFIG_DIR, `config.json.bak-${timestamp}`);
+    let backedUp = false;
     try {
       fs.renameSync(CONFIG_FILE, backupFile);
+      backedUp = true;
+    } catch (backupErr) {
+      console.error(
+        `\n⚠️  File config.json rusak dan pencadangan GAGAL (${backupErr.message}).\n` +
+          `    File asli TIDAK ditimpa. Perbaiki manual: ${CONFIG_FILE}`
+      );
+    }
+    if (backedUp) {
       console.warn(`\n⚠️  File config.json rusak. File lama dicadangkan ke: ${backupFile}`);
-    } catch {}
-    writeAtomicConfig(DEFAULT_CONFIG);
+      writeAtomicConfig(DEFAULT_CONFIG);
+    }
     return { ...DEFAULT_CONFIG };
   }
 }
@@ -320,38 +348,54 @@ export function trustMcpProject(projectPath, configHash) {
   });
 }
 
-export function saveConfig(partialConfig) {  try {
-    const current = getConfig();
-    const merged = { ...current, ...partialConfig };
-
-    // Merge khusus key oauth: digabung PER provider id, bukan diganti utuh.
-    // Patch parsial (mis. hanya { clientId }) tidak boleh menghapus accessToken
-    // atau apiKey yang sudah tersimpan. Patch yang membawa `method` dianggap
-    // sesi baru (login ulang / refresh token) sehingga diganti utuh, supaya
-    // kredensial lama tidak tercampur — mis. apiKey lama tertinggal saat
-    // pengguna beralih ke login OAuth.
-    if (partialConfig && typeof partialConfig.oauth === 'object' && partialConfig.oauth !== null) {
-      merged.oauth = { ...(current.oauth || {}) };
-      for (const [id, patch] of Object.entries(partialConfig.oauth)) {
-        if (patch === null || patch === undefined) {
-          delete merged.oauth[id];
-          continue;
-        }
-        if (typeof patch !== 'object') {
-          continue;
-        }
-        merged.oauth[id] = 'method' in patch
-          ? { ...patch }
-          : { ...(merged.oauth[id] || {}), ...patch };
-      }
-    }
-
-    writeAtomicConfig(merged);
-    return merged;
+export function saveConfig(partialConfig) {
+  try {
+    return saveConfigStrict(partialConfig);
   } catch (err) {
     console.error('Gagal menyimpan konfigurasi:', err.message);
     return getConfig();
   }
+}
+
+/**
+ * Menyimpan konfigurasi dan MEMUNCINGKAN kegagalan.
+ *
+ * Pakai varian ini di jalur yang menampilkan pesan "tersimpan" ke pengguna:
+ * bila penulisan gagal, pemanggil harus tahu dan tidak boleh mengira
+ * kunci/API key baru sudah aktif.
+ *
+ * @param {Object} partialConfig
+ * @returns {Object} konfigurasi tersimpan
+ * @throws {Error} bila file config tidak bisa ditulis
+ */
+export function saveConfigStrict(partialConfig) {
+  const current = getConfig();
+  const merged = { ...current, ...partialConfig };
+
+  // Merge khusus key oauth: digabung PER provider id, bukan diganti utuh.
+  // Patch parsial (mis. hanya { clientId }) tidak boleh menghapus accessToken
+  // atau apiKey yang sudah tersimpan. Patch yang membawa `method` dianggap
+  // sesi baru (login ulang / refresh token) sehingga diganti utuh, supaya
+  // kredensial lama tidak tercampur — mis. apiKey lama tertinggal saat
+  // pengguna beralih ke login OAuth.
+  if (partialConfig && typeof partialConfig.oauth === 'object' && partialConfig.oauth !== null) {
+    merged.oauth = { ...(current.oauth || {}) };
+    for (const [id, patch] of Object.entries(partialConfig.oauth)) {
+      if (patch === null || patch === undefined) {
+        delete merged.oauth[id];
+        continue;
+      }
+      if (typeof patch !== 'object') {
+        continue;
+      }
+      merged.oauth[id] = 'method' in patch
+        ? { ...patch }
+        : { ...(merged.oauth[id] || {}), ...patch };
+    }
+  }
+
+  writeAtomicConfig(merged);
+  return merged;
 }
 
 /**
@@ -390,7 +434,7 @@ export function getTinyFishApiKey() {
  */
 export function saveTinyFishApiKey(key) {
   const clean = String(key || '').trim();
-  saveConfig({ tinyfishApiKey: clean });
+  saveConfigStrict({ tinyfishApiKey: clean });
   return clean;
 }
 
@@ -416,7 +460,7 @@ export function getTavilyApiKey() {
  */
 export function saveTavilyApiKey(key) {
   const clean = String(key || '').trim();
-  saveConfig({ tavilyApiKey: clean });
+  saveConfigStrict({ tavilyApiKey: clean });
   return clean;
 }
 
@@ -442,7 +486,7 @@ export function getFirecrawlApiKey() {
  */
 export function saveFirecrawlApiKey(key) {
   const clean = String(key || '').trim();
-  saveConfig({ firecrawlApiKey: clean });
+  saveConfigStrict({ firecrawlApiKey: clean });
   return clean;
 }
 

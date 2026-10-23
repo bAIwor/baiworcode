@@ -595,6 +595,53 @@ export function loadMcpConfigDetailed(cwd = process.cwd()) {
 }
 
 /**
+ * Membersihkan deskripsi tool yang berasal dari server MCP eksternal.
+ *
+ * Deskripsi tool MCP masuk ke system prompt bAIwor Code apa adanya. Server
+ * luar adalah pihak ketiga yang tidak dipercaya, sehingga deskripsi yang
+ * berisi "ignore previous instructions" atau blok instruksi sejenis bisa
+ * menyuntik perintah ke prompt sistem.
+ *
+ * Yang dilakukan:
+ *   - membuang karakter kontrol/ANSI,
+ *   - memotong panjang deskripsi,
+ *   - menandai blok instruksi yang menyerupai perintah sistem.
+ *
+ * @param {string} serverName
+ * @param {string} description
+ * @returns {string}
+ */
+export function sanitizeMcpToolDescription(serverName, description) {
+  const MAX_LEN = 400;
+  const raw = String(description ?? '');
+
+  // Buang karakter kontrol (ESC, BEL, dll) except newline & tab.
+  let text = raw.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, ' ');
+
+  // Ratakan baris baru agar deskripsi tetap satu baris di system prompt.
+  text = text.replace(/\s+/g, ' ').trim();
+
+  // Tandai pola injeksi yang lazim dipakai prompt-injection.
+  const INJECTION_PATTERNS = [
+    /ignore\s+(all\s+)?(previous|prior|above)\s+instructions?/gi,
+    /disregard\s+(all\s+)?(previous|prior|above)/gi,
+    /you\s+are\s+now\s+/gi,
+    /system\s*:\s*/gi,
+    /<\s*\/?\s*(system|assistant|instructions?)\s*>/gi,
+    /override\s+(your\s+)?(system\s+)?(prompt|rules?|instructions?)/gi,
+  ];
+  for (const pattern of INJECTION_PATTERNS) {
+    text = text.replace(pattern, (match) => `[ditandai: ${match}]`);
+  }
+
+  if (text.length > MAX_LEN) {
+    text = `${text.slice(0, MAX_LEN).trimEnd()}…`;
+  }
+
+  return `[MCP: ${serverName}] ${text || '(tanpa deskripsi)'}`;
+}
+
+/**
  * Membaca konfigurasi server MCP dari file konfigurasi global dan proyek.
  *
  * @param {string} [cwd]
@@ -655,7 +702,7 @@ export async function connectMcpServer(name, serverConfig) {
       toolset: 'mcp',
       emoji: '🔌',
       schema: {
-        description: `[MCP: ${name}] ${tool.description || tool.name}`,
+        description: sanitizeMcpToolDescription(name, tool.description || tool.name),
         parameters: tool.inputSchema || { type: 'object', properties: {} },
       },
       handler: async (args) => {
@@ -769,6 +816,8 @@ export function listActiveMcpSessions() {
       name: session.name,
       type: session.type,
       status: session.status,
+      url: session.config?.url,
+      command: session.config?.command,
       tools: session.tools.map((t) => ({ name: t.name, description: t.description })),
     });
   }

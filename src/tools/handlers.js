@@ -17,7 +17,6 @@ import {
 import {
   requestCommandApproval,
   requestFileChangeApproval,
-  hasFileApprovalHandler,
 } from './approval.js';
 import { getPermissionMode, getConfig } from '../config.js';
 import { applyEdit, applyEditList, applyUnifiedDiff } from './editUtil.js';
@@ -230,9 +229,12 @@ export async function handleWriteFile({ file_path, content }, options = {}) {
   const diffResult = generateVisualDiff(oldText, content || '', { filePath: file_path });
 
   // Safe Mode Approval Gate:
-  const tty = options?.tty ?? Boolean(process.stdin.isTTY);
   const asksFileApproval = getPermissionMode() === 'safe';
-  if (asksFileApproval && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+  // Gate SELALU dijalankan pada mode safe — termasuk di non-TTY. Sebelumnya
+  // sesi non-TTY (pipe/CI) melewati gate sama sekali sehingga mode safe
+  // diam-diam turun menjadi mode auto, sementara perintah berisiko tetap
+  // ditolak. Sekarang non-TTY ditolak eksplisit oleh requestFileChangeApproval().
+  if (asksFileApproval && !options?.skipApproval) {
     const approval = await requestFileChangeApproval({
       filePath: file_path,
       action: 'write',
@@ -336,9 +338,12 @@ export async function handleEditFile({
     const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
 
     // Safe Mode Approval Gate:
-    const tty = options?.tty ?? Boolean(process.stdin.isTTY);
     const asksFileApproval = getPermissionMode() === 'safe';
-    if (asksFileApproval && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+    // Gate SELALU dijalankan pada mode safe — termasuk di non-TTY. Sebelumnya
+    // sesi non-TTY (pipe/CI) melewati gate sama sekali sehingga mode safe
+    // diam-diam turun menjadi mode auto. Sekarang non-TTY ditolak eksplisit
+    // oleh requestFileChangeApproval().
+    if (asksFileApproval && !options?.skipApproval) {
       const approval = await requestFileChangeApproval({
         filePath: file_path,
         action: 'edit',
@@ -382,9 +387,12 @@ export async function handleEditFile({
   const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
 
   // Safe Mode Approval Gate:
-  const tty = options?.tty ?? Boolean(process.stdin.isTTY);
   const asksFileApproval = getPermissionMode() === 'safe';
-  if (asksFileApproval && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+  // Gate SELALU dijalankan pada mode safe — termasuk di non-TTY. Sebelumnya
+  // sesi non-TTY (pipe/CI) melewati gate sama sekali sehingga mode safe
+  // diam-diam turun menjadi mode auto, sementara perintah berisiko tetap
+  // ditolak. Sekarang non-TTY ditolak eksplisit oleh requestFileChangeApproval().
+  if (asksFileApproval && !options?.skipApproval) {
     const approval = await requestFileChangeApproval({
       filePath: file_path,
       action: 'edit',
@@ -445,6 +453,7 @@ export async function handlePatchFile({ file_path, patch }, options = {}) {
       'no-hunks': 'tidak ada hunk yang dikenali — pastikan format unified diff (baris "@@ ... @@").',
       'insert-only-hunk': 'hunk tanpa baris konteks/tanda "-" belum didukung; sertakan minimal satu baris konteks.',
       'hunk-not-found': 'blok konteks salah satu hunk tidak ditemukan (isi berkas mungkin sudah berbeda).',
+      'hunk-header-unparseable': 'header hunk tidak bisa dibaca (mis. "@@ -1 +1 @@" tanpa nomor baris) sehingga lokasi sisipan tidak diketahui.',
     };
     return {
       success: false,
@@ -455,9 +464,12 @@ export async function handlePatchFile({ file_path, patch }, options = {}) {
   const diffResult = generateVisualDiff(fileText, res.text, { filePath: file_path });
 
   // Safe Mode Approval Gate:
-  const tty = options?.tty ?? Boolean(process.stdin.isTTY);
   const asksFileApproval = getPermissionMode() === 'safe';
-  if (asksFileApproval && (tty || hasFileApprovalHandler()) && !options?.skipApproval) {
+  // Gate SELALU dijalankan pada mode safe — termasuk di non-TTY. Sebelumnya
+  // sesi non-TTY (pipe/CI) melewati gate sama sekali sehingga mode safe
+  // diam-diam turun menjadi mode auto, sementara perintah berisiko tetap
+  // ditolak. Sekarang non-TTY ditolak eksplisit oleh requestFileChangeApproval().
+  if (asksFileApproval && !options?.skipApproval) {
     const approval = await requestFileChangeApproval({
       filePath: file_path,
       action: 'patch',
@@ -488,6 +500,13 @@ export async function handlePatchFile({ file_path, patch }, options = {}) {
  * Handler untuk melihat daftar isi direktori
  */
 export async function handleListDirectory({ dir_path = '.', recursive = false, max_depth = 2 }) {
+  // Batasi kedalaman & jumlah entri. Nilai max_depth datang dari argumen
+  // model, jadi tanpa batas satu panggilan bisa membangun string keluaran
+  // berukuran multi-megabyte dan membanjiri konteks model.
+  const MAX_LIST_DEPTH = 10;
+  const MAX_LIST_ENTRIES = 5000;
+  const depthLimit = Math.max(1, Math.min(Number(max_depth) || 2, MAX_LIST_DEPTH));
+
   let resolved;
   try {
     resolved = resolveSafePath(dir_path);
@@ -516,9 +535,14 @@ export async function handleListDirectory({ dir_path = '.', recursive = false, m
     const IGNORE_PATTERNS = IGNORE_DIRS;
 
   const results = [];
+  let truncated = false;
 
   function scan(currentDir, currentDepth) {
-    if (currentDepth > max_depth) return;
+    if (currentDepth > depthLimit) return;
+    if (results.length >= MAX_LIST_ENTRIES) {
+      truncated = true;
+      return;
+    }
 
     let entries = [];
     try {
@@ -529,13 +553,17 @@ export async function handleListDirectory({ dir_path = '.', recursive = false, m
 
     for (const entry of entries) {
       if (IGNORE_PATTERNS.has(entry.name)) continue;
+      if (results.length >= MAX_LIST_ENTRIES) {
+        truncated = true;
+        return;
+      }
 
       const fullPath = path.join(currentDir, entry.name);
       const relPath = path.relative(resolved, fullPath);
 
       if (entry.isDirectory()) {
         results.push(`📁 ${relPath}/`);
-        if (recursive && currentDepth < max_depth) {
+        if (recursive && currentDepth < depthLimit) {
           scan(fullPath, currentDepth + 1);
         }
       } else if (entry.isFile()) {
@@ -550,6 +578,10 @@ export async function handleListDirectory({ dir_path = '.', recursive = false, m
   }
 
   scan(resolved, 1);
+
+  if (truncated) {
+    results.push(`… (hasil dipotong pada ${MAX_LIST_ENTRIES} entri)`);
+  }
 
   if (results.length === 0) {
     return {

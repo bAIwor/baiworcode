@@ -26,6 +26,34 @@ describe('Context: Estimasi Token', () => {
     assert.equal(estimateTokens(undefined), 0);
   });
 
+  it('harus memperkirakan gambar dari ukuran base64, bukan flat 500 token', () => {
+    // Gambar kecil: biaya wajar, tidak nol.
+    const kecil = estimateTokens([
+      { type: 'text', text: 'lihat' },
+      { type: 'image_url', image_url: { url: `data:image/png;base64,${'A'.repeat(1000)}` } },
+    ]);
+
+    // Gambar besar (≈5 MB): harus jauh melampaui 500 token agar trim/compact
+    // terpicu sebelum request menembus batas konteks.
+    const besar = estimateTokens([
+      { type: 'text', text: 'lihat' },
+      { type: 'image_url', image_url: { url: `data:image/png;base64,${'A'.repeat(5 * 1024 * 1024)}` } },
+    ]);
+
+    assert.ok(kecil > 0);
+    // 5 MB base64 ≈ 3,9 MB data gambar ≈ 5.245 token pada rasio 750 byte/token.
+    // Yang penting: JAUH di atas 500 token flat, sehingga trim/compact terpicu.
+    assert.ok(besar > 5000, `gambar besar harus diestimasi jauh di atas 500 token, dapat ${besar}`);
+    assert.ok(besar > kecil);
+  });
+
+  it('harus memakai biaya konservatif untuk URL gambar eksternal', () => {
+    const tokens = estimateTokens([
+      { type: 'image_url', image_url: { url: 'https://contoh.com/gambar.png' } },
+    ]);
+    assert.ok(tokens > 500);
+  });
+
   it('harus menghitung tool_calls sebagai bagian dari ukuran pesan', () => {
     const kecil = { role: 'assistant', content: 'ok' };
     const besar = {

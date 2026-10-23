@@ -325,14 +325,19 @@ export class Conversation {
   /**
    * Memuat sesi dari disk berdasarkan ID sesi.
    *
+   * `allowCrossProject` dipakai oleh alur `session resume <id>` di mana
+   * pengguna menunjuk sesi secara spesifik; `--continue`/resumeLatest TIDAK
+   * memakai opsi ini sehingga tidak pernah menarik konteks proyek lain.
+   *
    * @param {string} sessionId
    * @param {object} [options]
    * @param {string} [options.projectPath]
    * @param {string} [options.baseConfigDir]
+   * @param {boolean} [options.allowCrossProject=false]
    * @returns {boolean}
    */
-  loadFromDisk(sessionId, { projectPath = process.cwd(), baseConfigDir } = {}) {
-    const data = loadSession(sessionId, { projectPath, baseConfigDir });
+  loadFromDisk(sessionId, { projectPath = process.cwd(), baseConfigDir, allowCrossProject = false } = {}) {
+    const data = loadSession(sessionId, { projectPath, baseConfigDir, allowCrossProject });
     if (!data || !Array.isArray(data.messages)) return false;
     this.sessionId = data.id;
     this.sessionTitle = data.title || null;
@@ -346,6 +351,10 @@ export class Conversation {
 
   /**
    * Melanjutkan sesi terakhir yang paling baru diupdate untuk proyek ini.
+   *
+   * Hanya sesi milik workspace aktif yang diambil. Fallback lintas proyek
+   * sengaja TIDAK ada di sini: mengambil percakapan proyek lain diam-diam
+   * membuat agen lanjut bekerja di konteks workspace yang salah.
    *
    * @param {object} [options]
    * @param {string} [options.projectPath]

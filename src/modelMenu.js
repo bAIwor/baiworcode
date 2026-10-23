@@ -3,7 +3,6 @@ import * as p from '@clack/prompts';
 import { theme } from './theme.js';
 import { spinner } from './spinner.js';
 import { getConfig, saveConfig, maskSecret } from './config.js';
-import { login, logout, PROVIDERS } from './auth/index.js';
 import { CLI_USER_AGENT } from './branding.js';
 import { listAliases, activeAliasName, switchToModel } from './modelAlias.js';
 
@@ -166,156 +165,10 @@ async function configureAgentikFlow(existingCp, customList, config) {
   p.outro(chalk.green(`✓ Agentik AI (${finalModel}) sekarang aktif! Siap nggarap kodingan, Lur!`));
 }
 
-async function handleGoogleSubmenu() {
-  while (true) {
-    // Catatan: jangan mengelola pause/resume process.stdin di sini. Siklus hidup
-    // stdin ditangani oleh @clack/core + patch di src/prompt.js; mengutak-atiknya
-    // dari luar memicu race ConPTY yang membekukan terminal.
-    const config = getConfig();
-    const googleOptions = Object.values(PROVIDERS).map((prov, idx) => {
-      const isAgy = prov.method === 'agy';
-      const isActive = isAgy
-        ? (config.activeType === 'agy' && config.activeProvider === prov.name)
-        : (config.activeType === 'oauth' && config.activeProvider === prov.name);
-      const authData = config.oauth?.[prov.id];
-      const isLoggedIn = isAgy
-        ? Boolean(authData && (authData.active || authData.connectedAt))
-        : Boolean(authData && (authData.accessToken || authData.apiKey));
-      const badge = isLoggedIn ? theme.info.dim(' [Logged In]') : '';
-      const activeSuffix = isActive ? theme.success.bold(` ← currently active (${config.activeModel})`) : '';
-      const descText = prov.desc ? ` ▸ (${prov.desc})` : '';
-      return {
-        value: `oauth_${prov.id}`,
-        label: `${idx + 1}. ${prov.name}${descText}${badge}${activeSuffix}`,
-      };
-    });
-
-    googleOptions.push({
-      value: 'back',
-      label: theme.muted('← Kembali'),
-    });
-
-    const pickedGoogle = await p.select({
-      message: 'Pilih varian Google (OAuth):',
-      options: googleOptions,
-    });
-
-    if (p.isCancel(pickedGoogle) || pickedGoogle === 'back') {
-      return false;
-    }
-
-    const provId = pickedGoogle.replace('oauth_', '');
-    const provObj = PROVIDERS[provId];
-    if (!provObj) continue;
-
-    const isAgy = provObj.method === 'agy';
-    const authData = config.oauth?.[provId];
-    const isLoggedIn = isAgy
-      ? Boolean(authData && (authData.active || authData.connectedAt))
-      : Boolean(authData && (authData.accessToken || authData.apiKey));
-
-    if (!isLoggedIn) {
-      const res = await login(provId);
-      if (res && res.success) {
-        return true;
-      }
-      continue;
-    }
-
-    const activeModelForProv =
-      config.activeProvider === provObj.name ? config.activeModel : provObj.defaultModel;
-
-    const subChoice = await p.select({
-      message: `Kelola ${chalk.bold(provObj.name)} (${chalk.green('Logged In')}):`,
-      options: [
-        {
-          value: 'activate',
-          label: `Aktifkan ${provObj.name} (${activeModelForProv})`,
-        },
-        {
-          value: 'switch_model',
-          label: 'Ganti model aktif',
-        },
-        {
-          value: 'logout',
-          label: chalk.redBright(`Logout dari ${provObj.name}`),
-        },
-        {
-          value: 'back',
-          label: '← Kembali',
-        },
-      ],
-    });
-
-    if (p.isCancel(subChoice) || subChoice === 'back') {
-      continue;
-    }
-
-    if (subChoice === 'activate') {
-      saveConfig({
-        activeProvider: provObj.name,
-        activeModel: activeModelForProv,
-        activeType: isAgy ? 'agy' : 'oauth',
-      });
-      p.outro(chalk.green(`✓ ${provObj.name} (${activeModelForProv}) sekarang aktif!`));
-      return true;
-    }
-
-    if (subChoice === 'switch_model') {
-      let modelOptions = [];
-      if (isAgy) {
-        modelOptions = [
-          { value: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High)' },
-          { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Thinking)' },
-          { value: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' },
-          { value: 'gpt-oss-120b-medium', label: 'GPT-OSS 120B (Medium)' },
-          { value: 'gemini-3.8-flash-medium', label: 'Gemini 3.8 Flash (Medium)' },
-          { value: 'gemini-3.8-flash-low', label: 'Gemini 3.8 Flash (Low)' },
-        ];
-      } else {
-        modelOptions = [
-          ...provObj.models.map((m) => ({ value: m, label: m })),
-          { value: '__custom__', label: '✎ Ketik model lain...' },
-        ];
-      }
-
-      const picked = await p.select({
-        message: `Pilih model untuk ${provObj.name}:`,
-        options: modelOptions,
-      });
-
-      if (p.isCancel(picked)) continue;
-
-      let finalModel = picked;
-      if (picked === '__custom__') {
-        const typed = await p.text({
-          message: 'Ketik nama model:',
-          defaultValue: provObj.defaultModel,
-        });
-        if (p.isCancel(typed) || !typed.trim()) continue;
-        finalModel = typed.trim();
-      }
-
-      saveConfig({
-        activeProvider: provObj.name,
-        activeModel: finalModel,
-        activeType: isAgy ? 'agy' : 'oauth',
-      });
-      p.outro(chalk.green(`✓ Model ${provObj.name} diubah menjadi: ${finalModel}`));
-      return true;
-    }
-
-    if (subChoice === 'logout') {
-      await logout(provId);
-      continue;
-    }
-  }
-}
-
 export async function runModelMenu() {
   while (true) {
-    // Catatan: jangan mengelola pause/resume process.stdin di sini (lihat
-    // handleGoogleSubmenu di atas). Biarkan @clack/core menjaga stdin.
+    // Catatan: jangan mengelola pause/resume process.stdin di sini.
+    // Biarkan @clack/core menjaga stdin.
     const config = getConfig();
 
     console.log();
@@ -338,36 +191,12 @@ export async function runModelMenu() {
       const displayUrl = cleanUrl(agentikCp.baseUrl);
       selectOptions.push({
         value: 'custom_Agentik',
-        label: `${optionNumber}. 👑 ${theme.warning.bold('Agentik AI')} ⭐ ${theme.muted(`(${displayUrl})`)} — ${theme.info(agentikCp.model)}${suffix}`,
+        label: `${optionNumber}. 👑 ${theme.warning.bold('Agentik AI')} ${theme.muted(`(${displayUrl})`)} — ${theme.info(agentikCp.model)}${suffix}`,
       });
       optionNumber++;
     }
 
-    // 2. Google OAuth (Google Antigravity & Google Gemini)
-    const googleActiveProv = Object.values(PROVIDERS).find((prov) => {
-      const isAgy = prov.method === 'agy';
-      return isAgy
-        ? (config.activeType === 'agy' && config.activeProvider === prov.name)
-        : (config.activeType === 'oauth' && config.activeProvider === prov.name);
-    });
-    const isGoogleActive = Boolean(googleActiveProv);
-    const googleSuffix = isGoogleActive
-      ? chalk.green.bold(` ← currently active (${googleActiveProv.name}: ${config.activeModel})`)
-      : '';
-    const agyAuth = config.oauth?.['google-antigravity'];
-    const geminiAuth = config.oauth?.['google-gemini'];
-    const agyLoggedIn = Boolean(agyAuth && (agyAuth.active || agyAuth.connectedAt));
-    const geminiLoggedIn = Boolean(geminiAuth && (geminiAuth.accessToken || geminiAuth.apiKey));
-    const isAnyGoogleLoggedIn = agyLoggedIn || geminiLoggedIn;
-      const googleBadge = isAnyGoogleLoggedIn ? theme.info.dim(' [Logged In]') : '';
-
-    selectOptions.push({
-      value: 'group_google',
-      label: `${optionNumber}. 🌐 ${chalk.bold('Google')} ▸ (Antigravity & Gemini OAuth)${googleBadge}${googleSuffix}`,
-    });
-    optionNumber++;
-
-    // 3. Custom Providers lain yang tersimpan (selain Agentik)
+    // 2. Custom Providers lain yang tersimpan (selain Agentik)
     const otherCustomList = customList.filter(
       (cp) => cp && cp.name && cp.name.toLowerCase() !== 'agentik'
     );
@@ -382,7 +211,7 @@ export async function runModelMenu() {
       optionNumber++;
     }
 
-    // 4. Model aliases (switch langsung tanpa sub-menu)
+    // 3. Model aliases (switch langsung tanpa sub-menu)
     const activeAlias = activeAliasName(config);
     for (const a of listAliases(config)) {
       const suffix = a.name === activeAlias ? chalk.green.bold(' ← currently active') : '';
@@ -393,10 +222,10 @@ export async function runModelMenu() {
       optionNumber++;
     }
 
-    // 5. Menu Aksi di bagian bawah
+    // 4. Menu Aksi di bagian bawah
     selectOptions.push({
       value: 'action_add_custom',
-      label: theme.cliLink('+ Custom endpoint (enter URL manually)'),
+      label: theme.cliLink('+ Kustom API (manual URL)'),
     });
 
     if (otherCustomList.length > 0) {
@@ -418,15 +247,6 @@ export async function runModelMenu() {
 
     if (p.isCancel(choice) || choice === 'action_leave') {
       return;
-    }
-
-    // Aksi: Google Group (Pilih Antigravity atau Gemini)
-    if (choice === 'group_google') {
-      const activated = await handleGoogleSubmenu();
-      if (activated) {
-        return;
-      }
-      continue;
     }
 
     // Aksi: Model alias — switch langsung tanpa sub-menu
@@ -463,7 +283,7 @@ export async function runModelMenu() {
         }
 
         const subChoice = await p.select({
-          message: `Kelola ${chalk.bold('Agentik AI')} 👑 ⭐ (Sponsor Resmi):`,
+          message: `Kelola ${chalk.bold('Agentik AI')} 👑 (Sponsor Resmi):`,
           options: [
             { value: 'activate', label: `Aktifkan Agentik (${cp.model})` },
             { value: 'setup_flow', label: '⚡ Konfigurasi cepat (Base URL, API Key & Model)' },
@@ -809,7 +629,7 @@ export async function runModelMenu() {
       }
     }
 
-    // Aksi: Custom endpoint (enter URL manually)
+    // Aksi: Kustom API (manual URL)
     if (choice === 'action_add_custom') {
       const name = await p.text({
         message: '1. Nama Provider:',

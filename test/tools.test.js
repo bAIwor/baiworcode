@@ -69,7 +69,7 @@ describe('Tahap 3B: File System Handlers', () => {
     const res = await handleWriteFile({
       file_path: targetFile,
       content: 'Baris 1\nBaris 2\nBaris 3',
-    });
+    }, { skipApproval: true });
 
     assert.equal(res.success, true);
     assert.ok(fs.existsSync(targetFile));
@@ -112,7 +112,7 @@ describe('Tahap 3B: File System Handlers', () => {
       file_path: targetFile,
       old_content: 'const b = 2;',
       new_content: 'const b = 20;',
-    });
+    }, { skipApproval: true });
 
     assert.equal(res.success, true);
     const updated = fs.readFileSync(targetFile, 'utf8');
@@ -125,7 +125,7 @@ describe('Tahap 3B: File System Handlers', () => {
       file_path: targetFile,
       old_content: 'const tidak_ada = 999;',
       new_content: 'const baru = 0;',
-    });
+    }, { skipApproval: true });
 
     assert.equal(res.success, false);
     assert.match(res.output, /tidak ditemukan/i);
@@ -140,7 +140,7 @@ describe('Tahap 3B: File System Handlers', () => {
       file_path: targetFile,
       old_content: 'const a = 1;\nconst b = 2;',
       new_content: 'const a = 1;\nconst b = 42;',
-    });
+    }, { skipApproval: true });
 
     assert.equal(res.success, true);
     const updated = fs.readFileSync(targetFile, 'utf8');
@@ -156,7 +156,7 @@ describe('Tahap 3B: File System Handlers', () => {
       file_path: targetFile,
       old_content: 'const x = 1;',
       new_content: 'const y = "$& $1 $` $$";',
-    });
+    }, { skipApproval: true });
 
     assert.equal(res.success, true);
     const updated = fs.readFileSync(targetFile, 'utf8');

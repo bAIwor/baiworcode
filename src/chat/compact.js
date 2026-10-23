@@ -179,6 +179,43 @@ export function shouldAutoCompact(conversation, { threshold = AUTO_COMPACT_THRES
 }
 
 /**
+ * Jumlah file snapshot yang dipertahankan.
+ */
+const MAX_SNAPSHOT_FILES = 50;
+
+/**
+ * Menghapus snapshot lama agar direktori snapshot tidak tumbuh tanpa batas.
+ *
+ * Tanpa rotasi ini, setiap auto-compact menambah satu file permanen yang
+ * tidak pernah dihapus (direktori snapshot juga dikecualikan dari daftar
+ * sesi, jadi file-nya tidak terlihat pengguna).
+ *
+ * @param {string} snapDir
+ */
+function pruneOldSnapshots(snapDir) {
+  try {
+    const entries = fs
+      .readdirSync(snapDir, { withFileTypes: true })
+      .filter((e) => e.isFile() && e.name.startsWith('snapshot-'))
+      .map((e) => {
+        const full = path.join(snapDir, e.name);
+        let mtime = 0;
+        try {
+          mtime = fs.statSync(full).mtimeMs;
+        } catch {}
+        return { full, mtime };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+
+    for (const stale of entries.slice(MAX_SNAPSHOT_FILES)) {
+      try {
+        fs.unlinkSync(stale.full);
+      } catch {}
+    }
+  } catch {}
+}
+
+/**
  * Memicu pemadatan konteks otomatis jika penggunaan token melampaui ambang batas.
  * Otomatis mengambil snapshot sesi sebelum dirangkum agar riwayat asli tidak pernah hilang.
  *
@@ -214,15 +251,31 @@ export async function autoCompactConversation(conversation, options = {}) {
       try {
         fs.chmodSync(snapDir, 0o700);
       } catch {}
+      pruneOldSnapshots(snapDir);
       const safeSession = String(conversation.sessionId || 'session')
         .replace(/[^A-Za-z0-9_-]/g, '_')
         .slice(0, 80);
       const snapFile = `snapshot-${safeSession}-${Date.now()}.json`;
       snapshotPath = path.join(snapDir, snapFile);
-      fs.writeFileSync(snapshotPath, JSON.stringify(conversation.messages, null, 2), {
-        encoding: 'utf8',
-        mode: 0o600,
-      });
+      // Snapshot hanya menyimpan METADATA (peran + panjang isi), bukan isi
+      // mentah. Sebelumnya seluruh `conversation.messages` ditulis apa adanya,
+      // sehingga output tool seperti isi berkas `.env` atau file kredensial
+      // ikut terduplikasi ke disk di luar berkas sesi.
+      const metadata = (Array.isArray(conversation.messages) ? conversation.messages : []).map(
+        (m) => ({
+          role: m?.role || 'unknown',
+          length: typeof m?.content === 'string' ? m.content.length : 0,
+          hasToolCalls: Array.isArray(m?.tool_calls) && m.tool_calls.length > 0,
+        })
+      );
+      fs.writeFileSync(
+        snapshotPath,
+        JSON.stringify({ sessionId: safeSession, createdAt: new Date().toISOString(), messages: metadata }, null, 2),
+        {
+          encoding: 'utf8',
+          mode: 0o600,
+        }
+      );
     } catch {}
   }
 

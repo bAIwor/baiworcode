@@ -96,12 +96,45 @@ export function commitTurnSnapshot() {
 }
 
 /**
+ * Memeriksa apa yang akan dibatalkan oleh /undo, tanpa mengubah apa pun.
+ *
+ * Dipakai untuk menampilkan daftar berkas + tindakan (dipulihkan/dihapus)
+ * sebelum pengguna mengonfirmasi.
+ *
+ * @returns {{ success: boolean, files: Array<{path: string, action: 'restore'|'delete'|'missing'}>, message: string }}
+ */
+export function previewUndoLastTurn() {
+  if (undoStack.length === 0) {
+    return {
+      success: false,
+      files: [],
+      message: 'Belum ada perubahan berkas pada sesi ini untuk dibatalkan (/undo).',
+    };
+  }
+
+  const turn = undoStack[undoStack.length - 1];
+  const files = [];
+  for (const [filePath, snapshot] of turn.files.entries()) {
+    if (snapshot.exists) {
+      files.push({ path: filePath, action: 'restore' });
+    } else if (fs.existsSync(filePath)) {
+      files.push({ path: filePath, action: 'delete' });
+    } else {
+      files.push({ path: filePath, action: 'missing' });
+    }
+  }
+
+  return { success: true, files, message: '' };
+}
+
+/**
  * Membatalkan perubahan berkas pada putaran terakhir (/undo).
  *
  * @returns {{
  *   success: boolean,
  *   restoredCount: number,
  *   files: Array<string>,
+ *   failed: Array<{path: string, error: string}>,
  *   message: string
  * }}
  */
@@ -116,12 +149,14 @@ export function undoLastTurn() {
       success: false,
       restoredCount: 0,
       files: [],
+      failed: [],
       message: 'Belum ada perubahan berkas pada sesi ini untuk dibatalkan (/undo).',
     };
   }
 
   const turn = undoStack.pop();
   const restoredFiles = [];
+  const failed = [];
   const redoFiles = new Map();
 
   for (const [filePath, snapshot] of turn.files.entries()) {
@@ -147,7 +182,9 @@ export function undoLastTurn() {
         }
       }
     } catch (err) {
-      // Catat kegagalan spesifik jika ada berkas yang terkunci
+      // Kegagalan dicatat per berkas supaya pengguna TIDAK diberi kabar
+      // "berhasil" padahal ada berkas yang tidak terpulihkan.
+      failed.push({ path: filePath, error: err?.message || String(err) });
     }
   }
 
@@ -157,11 +194,16 @@ export function undoLastTurn() {
     files: redoFiles,
   });
 
+  const success = failed.length === 0;
+
   return {
-    success: true,
+    success,
     restoredCount: restoredFiles.length,
     files: restoredFiles,
-    message: `Berhasil mengembalikan ${restoredFiles.length} berkas ke kondisi sebelum putaran terakhir.`,
+    failed,
+    message: failed.length
+      ? `Berhasil mengembalikan ${restoredFiles.length} berkas, tetapi ${failed.length} berkas gagal dipulihkan.`
+      : `Berhasil mengembalikan ${restoredFiles.length} berkas ke kondisi sebelum putaran terakhir.`,
   };
 }
 

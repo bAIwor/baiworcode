@@ -2,7 +2,7 @@ export const PROVIDERS = {
   'google-antigravity': {
     id: 'google-antigravity',
     name: 'Google Antigravity',
-    desc: '',
+    desc: 'Jembatan Antigravity CLI lokal (agy) — tanpa browser OAuth',
     method: 'agy',
     defaultModel: 'gemini-3.8-flash-high',
     models: [
@@ -20,7 +20,7 @@ export const PROVIDERS = {
   'google-gemini': {
     id: 'google-gemini',
     name: 'Google Gemini',
-    desc: '',
+    desc: 'Login Google OAuth 2.0 PKCE via browser',
     method: 'pkce',
     authEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenEndpoint: 'https://oauth2.googleapis.com/token',

@@ -1,4 +1,5 @@
 import { Chalk } from 'chalk';
+import { sanitizeTerminalText } from '../chat/wrapText.js';
 
 const colorChalk = new Chalk({ level: 2 });
 
@@ -261,16 +262,22 @@ export function generateVisualDiff(oldText, newText, options = {}) {
         break;
       }
 
+      // Isi diff berasal dari berkas proyek — bisa memuat escape sequence
+      // terminal (ESC[2J, OSC 52 clipboard, dll). Sanitasi SEBELUM diberi
+      // warna, supaya file yang disorot tidak bisa menyalin isi
+      // layar pengguna atau mengosongkan layar tepat di saat approval.
+      const safeLine = sanitizeTerminalText(op.line, { preserveNewlines: false });
+
       if (op.type === 'add') {
-        const text = `+ ${op.line}`;
+        const text = `+ ${safeLine}`;
         plainLines.push(text);
         colorLines.push(useColor ? colorChalk.green(text) : text);
       } else if (op.type === 'delete') {
-        const text = `- ${op.line}`;
+        const text = `- ${safeLine}`;
         plainLines.push(text);
         colorLines.push(useColor ? colorChalk.red(text) : text);
       } else {
-        const text = `  ${op.line}`;
+        const text = `  ${safeLine}`;
         plainLines.push(text);
         colorLines.push(useColor ? colorChalk.gray(text) : text);
       }

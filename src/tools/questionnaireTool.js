@@ -51,8 +51,23 @@ export async function handleAskUser(args = {}, runtimeOptions = {}) {
     return await customQuestionnaireHandler(args, runtimeOptions);
   }
 
-  // Jika terminal tidak interaktif (non-TTY, pipe, atau CI)
+  // Terminal tidak interaktif (non-TTY, pipe, atau CI): tidak ada manusia yang
+  // bisa menjawab. Sebelumnya tool memalsukan jawaban (default_option atau
+  // options[0]) dan melaporkan success:true, sehingga keputusan arsitek
+  // diambil diam-diam atas nama pengguna. Sekarang: TOLAK, kecuali operator
+  // opting-in eksplisit lewat env BAIWOR_ASK_USER_AUTO=1.
   if (!process.stdin.isTTY) {
+    const autoAllowed = String(process.env.BAIWOR_ASK_USER_AUTO || '').toLowerCase() === '1';
+    if (!autoAllowed) {
+      return {
+        success: false,
+        output:
+          '[ask_user] Pertanyaan tidak dapat dijawab: sesi berjalan dalam mode non-TTY sehingga tidak ada ' +
+          'manusia yang bisa memilih. Set env BAIWOR_ASK_USER_AUTO=1 bila memang ingin jawaban ' +
+          'otomatis memakai opsi default.',
+        answer: undefined,
+      };
+    }
     const fallbackAnswer = default_option || options[0];
     return {
       success: true,

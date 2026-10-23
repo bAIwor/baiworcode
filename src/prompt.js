@@ -202,6 +202,7 @@ export const COMMANDS = [
   { name: '/rules', desc: 'Lihat aturan koding aktif (BAIWORS.md / .baiwor/rules)' },
   { name: '/status', desc: 'Status konfigurasi & model AI aktif' },
   { name: '/doctor', desc: 'Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox' },
+  { name: '/scan', desc: 'Guardian security scan: /scan secrets | /scan deps | /scan all' },
   { name: '/update', desc: 'Periksa & perbarui bAIwor Code ke versi terbaru dari GitHub' },
   { name: '/sandbox', desc: 'Kelola Cloud Sandbox InstaBox (MicroVM 4 vCPU / 8 GiB RAM)' },
   { name: '/tinyfish', desc: 'Kelola integrasi TinyFish (status, wallet, key, search, fetch)' },
@@ -257,11 +258,17 @@ export const SUBCOMMANDS = {
     { name: 'fetch', desc: 'Tes ekstraksi URL: /tinyfish fetch <url>' },
   ],
   '/mcp': [
-    { name: 'list', desc: 'Tampilkan daftar MCP server & tool aktif' },
+    { name: 'list', desc: 'Tampilkan daftar & status seluruh MCP server terkonfigurasi' },
+    { name: 'tools', desc: 'Lihat daftar tool dari server tertentu: /mcp tools [nama]' },
     { name: 'add', desc: 'Tambah server MCP baru lewat wizard (tanpa edit JSON)' },
     { name: 'remove', desc: 'Lepas server MCP dari konfigurasi: /mcp remove <nama>' },
     { name: 'key', desc: 'Set API key bawaan: /mcp key <tavily|firecrawl|tinyfish> <key>' },
     { name: 'refresh', desc: 'Muat ulang & sambungkan kembali seluruh MCP server' },
+  ],
+  '/scan': [
+    { name: 'secrets', desc: 'Pindai hardcoded secret: API key, token, private key, password' },
+    { name: 'deps', desc: 'Audit dependency rentan (npm/yarn/pnpm/pip)' },
+    { name: 'all', desc: 'Jalankan pemindaian secret + audit dependency' },
   ],
   '/update': [
     { name: 'sandbox', desc: 'Perbarui instalasi bAIwor Code di Cloud Sandbox InstaBox' },

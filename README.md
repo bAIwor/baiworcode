@@ -90,7 +90,7 @@ baiworcode
 ```bash
 /model
 ```
-Pilih **Agentik AI** (paling praktis, ada bonus token gratis di [agentik.my.id](https://agentik.my.id)), atau **Google Gemini** kalau mau login pakai akun Google.
+Pilih **Agentik AI** (paling praktis, ada bonus token gratis di [agentik.my.id](https://agentik.my.id)), atau **+ Kustom API (manual URL)** untuk memakai API OpenAI-compatible pilihanmu. Untuk login Google Gemini OAuth, gunakan perintah `/login`.
 
 **3. Langsung ngobrol**
 
@@ -248,12 +248,13 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `/rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
 - `/status` — Status konfigurasi, provider aktif, **latency**, dan sesi login
 - `/tinyfish [status|search|fetch|key]` — Kelola integrasi TinyFish Web Intelligence
-- `/mcp [list|refresh]` — Kelola server & tool Model Context Protocol (MCP) eksternal
+- `/mcp [list|tools|add|remove|key|refresh]` — Kelola server & tool Model Context Protocol (MCP). Tanpa argumen membuka menu interaktif.
 - `/model [target]` — Ganti model AI & provider. Tanpa argumen membuka menu; dengan argumen switch langsung: `/model <alias>` atau `/model <provider>/<model>`. Kelola alias: `/model alias list|add|remove`
 - `/provider [target]` — Alias untuk perintah `/model`
 - `/login` — Login ke provider OAuth (Google Gemini)
 - `/logout` — Logout dari sesi provider OAuth
 - `/undo` — Batalkan seluruh perubahan berkas pada putaran (turn) terakhir secara aman tanpa merusak riwayat Git
+- `/scan [secrets|deps|all] [path]` — **Guardian Security Scan**: pindai hardcoded secret (`/scan secrets`), audit dependency rentan npm/yarn/pnpm/pip (`/scan deps`), atau keduanya (`/scan all`, default). Nilai secret yang ditemukan selalu disensor pada laporan; temuan di folder test/fixture diberi label terpisah agar tidak menutupi secret asli.
 - `/clear` — Bersihkan layar & reset riwayat percakapan
 - `/reset` — Reset konteks percakapan tanpa membersihkan layar
 - `/exit` — Keluar dari bAIwor Code (alias: `/q`, `/quit`)

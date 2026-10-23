@@ -4,7 +4,7 @@ import { theme } from '../theme.js';
 import { resolveActiveCredentials } from '../auth/resolve.js';
 import { conversationSession } from './conversation.js';
 import { streamChatCompletion } from './client.js';
-import { TOOL_DEFINITIONS, executeTool } from '../tools/index.js';
+import { getDefinitions, executeTool } from '../tools/index.js';
 import { processMultimodalPrompt } from './multimodal.js';
 import { todoStore, resetTodoStore } from '../tools/todoTool.js';
 import {
@@ -564,7 +564,11 @@ export async function handleUserChat(promptText) {
 
       const result = await runModelTurn({
         messages: buildOutboundMessages(),
-        tools: filterToolsForAgentMode(TOOL_DEFINITIONS, agentMode),
+        // Daftar tool diambil dari registry (bukan konstanta statis) supaya
+        // tool MCP yang terhubung saat runtime ikut dikirim sebagai
+        // function-calling ke provider. Sebelumnya tool MCP hanya disebut
+        // di system prompt sehingga model tidak pernah bisa memanggilnya.
+        tools: filterToolsForAgentMode(getDefinitions(), agentMode),
         spinnerText:
           currentTurn === 1
             ? 'bAIwor sedang merancang strategi...'
@@ -587,6 +591,13 @@ export async function handleUserChat(promptText) {
 
       // Cek apakah model meminta pemanggilan tool (Function Calling)
       if (result.tool_calls && Array.isArray(result.tool_calls) && result.tool_calls.length > 0) {
+        // Normalisasi ID tool call SEBELUM pesan assistant disimpan.
+        // Beberapa provider tidak mengirim `id`; ID kosong membuat hasil tool
+        // tidak bisa dipasangkan dan permintaan berikutnya ditolak 400.
+        result.tool_calls.forEach((tc, idx) => {
+          if (!tc.id) tc.id = `call_${idx}`;
+        });
+
         // Simpan pesan asisten beserta tool_calls dan reasoning ke histori
         conversationSession.addAssistantMessage(
           result.content || '',
@@ -710,7 +721,9 @@ export async function handleUserChat(promptText) {
           turnEvents.push(event);
           live.settleTool(liveIndex, event);
 
-          // Simpan hasil eksekusi tool ke memori sesi dengan role: 'tool'
+          // Simpan hasil eksekusi tool ke memori sesi dengan role: 'tool'.
+          // ID sudah dinormalisasi di atas (disintesis bila provider tidak
+          // mengirimnya), jadi hasil tool tidak pernah terbuang.
           conversationSession.addToolResult(tc.id, toolResult.output, fnName);
         }
 

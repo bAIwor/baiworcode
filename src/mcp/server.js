@@ -96,7 +96,13 @@ export function startMcpServer() {
             return;
           }
 
-          const res = await dispatchTool(toolName, toolArgs);
+          // Klien MCP adalah batas tinjauan: klien yang memanggil tool lewat
+          // JSON-RPC sudah menjadi pihak yang meminta eksekusi, jadi gate
+          // approval interaktif tidak punya manusia untuk meninjaunya.
+          // Ini disetel EKSPLISIT di sini (bukan bawaan implisit) agar
+          // keputusan "tool tulis dieksekusi tanpa prompt" terlihat jelas
+          // di diff dan mudah diaudit.
+          const res = await dispatchTool(toolName, toolArgs, { skipApproval: true });
           sendResponse(id, {
             content: [
               {

@@ -55,6 +55,35 @@ export function resolveContextWindow(model) {
 }
 
 /**
+ * Estimasi token untuk satu part gambar.
+ *
+ * Sebelumnya semua gambar dihitung.flat 500 token. Gambar 5 MB menjadi ~6,7 MB
+ * base64 (≈1,7 juta token) tetapi dihitung 500 token, sehingga trim/compact
+ * tidak pernah terpicu dan request menembus batas konteks provider (HTTP 400).
+ * Sekarang estimasi diturunkan dari ukuran data base64 yang benar-benar
+ * dikirim, dibatasi bawah agar model gambar kecil tetap punya biaya wajar.
+ *
+ * @param {object} part
+ * @returns {number}
+ */
+export function estimateImageTokens(part) {
+  const url = part?.image_url?.url || part?.image_url || '';
+  if (typeof url !== 'string' || !url) return 500;
+
+  // Data URL: decode panjang base64 tanpa membuat salinan buffer besar.
+  const base64Match = /^data:[^;]*;base64,(.*)$/s.exec(url);
+  if (base64Match) {
+    const b64Len = base64Match[1].length;
+    const bytes = Math.floor((b64Len * 3) / 4);
+    // ~1 token per 750 byte untuk representasi gambar generik.
+    return Math.max(85, Math.ceil(bytes / 750));
+  }
+
+  // URL eksternal: biaya tidak diketahui → pakai nilai konservatif.
+  return 1100;
+}
+
+/**
  * Memperkirakan jumlah token dari panjang teks.
  *
  * @param {string|null|undefined} text
@@ -66,7 +95,7 @@ export function estimateTokens(text) {
     let total = 0;
     for (const part of text) {
       if (part?.type === 'text') total += estimateTokens(part.text);
-      else if (part?.type === 'image_url') total += 500;
+      else if (part?.type === 'image_url') total += estimateImageTokens(part);
     }
     return total;
   }

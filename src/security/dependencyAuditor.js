@@ -57,6 +57,265 @@ export function detectPackageManager(dir) {
 }
 
 /**
+ * Menjalankan perintah audit dengan pengumpulan stdout/stderr + timeout.
+ *
+ * `shell: true` sengaja TIDAK dipakai: pada Windows itu berarti argumen
+ * dirangkai ke command line, sehingga karakter khusus pada path proyek bisa
+ * ditafsirkan sebagai perintah lain. Sebagai gantinya, nama executable
+ *Apa Ini resolved ke bentuk Windows-nya (`.cmd`/`.exe`) dan dijalankan lewat
+ * spawn tanpa shell.
+ *
+ * @param {string[]} candidates - Nama executable yang dicoba berurutan
+ * @param {string[]} args
+ * @param {string} cwd
+ * @param {number} timeout - ms
+ * @returns {Promise<{stdout: string, stderr: string, code: number|null, failed: boolean, error?: string}>}
+ */
+function runAuditCommand(candidates, args, cwd, timeout) {
+  return new Promise((resolve) => {
+    let attempt = 0;
+
+    const tryNext = () => {
+      if (attempt >= candidates.length) {
+        resolve({
+          stdout: '',
+          stderr: '',
+          code: null,
+          failed: true,
+          error: `Perintah audit tidak ditemukan: ${candidates.join(', ')}`,
+        });
+        return;
+      }
+
+      const command = candidates[attempt];
+      attempt += 1;
+
+      // Resolusi ke node + file JS entry bila executable adalah shim
+      // `.cmd`/`.bat` Windows (Node memblokir spawn-nya tanpa shell).
+      let spawnCommand = command;
+      let spawnArgs = args;
+      const jsEntry = resolveWindowsJsEntry(command);
+      if (jsEntry) {
+        spawnCommand = process.execPath;
+        spawnArgs = [jsEntry, ...args];
+      }
+
+      let child;
+      try {
+        child = spawn(spawnCommand, spawnArgs, {
+          cwd,
+          shell: false,
+          windowsHide: true,
+        });
+      } catch (err) {
+        resolve({
+          stdout: '',
+          stderr: '',
+          code: null,
+          failed: true,
+          error: `Gagal menjalankan ${command}: ${err.message}`,
+        });
+        return;
+      }
+
+      let stdout = '';
+      let stderr = '';
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try {
+          child.kill('SIGTERM');
+        } catch {}
+        resolve({
+          stdout,
+          stderr,
+          code: null,
+          failed: true,
+          error: `${command} timeout setelah ${timeout} ms`,
+        });
+      }, timeout);
+
+      child.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      child.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      child.on('error', (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        // ENOENT → executable ini tidak ada; coba kandidat berikutnya.
+        if (err.code === 'ENOENT' && attempt < candidates.length) {
+          tryNext();
+          return;
+        }
+        resolve({
+          stdout,
+          stderr,
+          code: null,
+          failed: true,
+          error: `${command} gagal: ${err.message}`,
+        });
+      });
+
+      child.on('close', (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ stdout, stderr, code, failed: false });
+      });
+    };
+
+    tryNext();
+  });
+}
+
+/**
+ * Kandidat nama executable untuk sebuah tool, lintas platform.
+ *
+ * @param {string} name
+ * @returns {string[]}
+ */
+function commandCandidates(name) {
+  if (process.platform !== 'win32') return [name];
+  return [`${name}.cmd`, `${name}.exe`, name];
+}
+
+/**
+ * Mencari file JS entry dari sebuah shim `.cmd`/`.bat` Windows.
+ *
+ * `npm.cmd` dan friends adalah shim yang memanggil `node <path>/npm-cli.js`.
+ * Node memblokir spawn file `.cmd`/`.bat` tanpa `shell: true` (perbaikan
+ * CVE-2024-27980), sehingga di Windows kita menjalankan file JS-nya langsung
+ * memakai `process.execPath` — tanpa shell, jadi aman dari injeksi.
+ *
+ * @param {string} command - Nama executable (mis. "npm.cmd")
+ * @returns {string|null} Path absolut file JS entry, atau null
+ */
+function resolveWindowsJsEntry(command) {
+  if (process.platform !== 'win32') return null;
+  if (!/\.(cmd|bat)$/i.test(command)) return null;
+
+  const toolName = command.replace(/\.(cmd|bat)$/i, '');
+
+  // Lokasi umum shim global Node.
+  const candidates = [
+    path.join(path.dirname(process.execPath), 'node_modules', toolName, 'bin', `${toolName}-cli.js`),
+    path.join(path.dirname(process.execPath), 'node_modules', toolName, 'bin', `${toolName}.js`),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {}
+  }
+
+  return null;
+}
+
+/**
+ * Parse output `npm audit --json`.
+ *
+ * @param {string} stdout
+ * @returns {Array<object>}
+ */
+function parseNpmAuditJson(stdout) {
+  const auditData = JSON.parse(stdout);
+  const vulnerabilities = [];
+
+  if (auditData.vulnerabilities) {
+    for (const [pkgName, pkgData] of Object.entries(auditData.vulnerabilities)) {
+      const via = Array.isArray(pkgData.via) ? pkgData.via : [];
+      const advisory = via[0] || {};
+
+      vulnerabilities.push({
+        package: pkgName,
+        version: pkgData.range || 'unknown',
+        severity: pkgData.severity || 'medium',
+        title: advisory.title || pkgData.title || 'Unknown vulnerability',
+        url: advisory.url || advisory.link,
+        fix: pkgData.fixAvailable
+          ? typeof pkgData.fixAvailable === 'object'
+            ? `Upgrade to ${pkgData.fixAvailable.name}@${pkgData.fixAvailable.version}`
+            : 'Run npm audit fix'
+          : 'No automatic fix available',
+      });
+    }
+  }
+
+  return vulnerabilities;
+}
+
+/**
+ * Parse output `pnpm audit --json` (bentuk `advisories`).
+ *
+ * @param {string} stdout
+ * @returns {Array<object>}
+ */
+function parsePnpmAuditJson(stdout) {
+  const auditData = JSON.parse(stdout);
+  const vulnerabilities = [];
+
+  const advisories = auditData.advisories || {};
+  for (const [pkgName, adv] of Object.entries(advisories)) {
+    vulnerabilities.push({
+      package: pkgName,
+      version: adv.vulnerable_versions || 'unknown',
+      severity: adv.severity || 'medium',
+      title: adv.title || 'Unknown vulnerability',
+      url: adv.url,
+      fix: adv.patched_versions
+        ? `Upgrade to versi yang sudah dipatch: ${adv.patched_versions}`
+        : 'No automatic fix available',
+    });
+  }
+
+  return vulnerabilities;
+}
+
+/**
+ * Parse output `yarn audit --json` (classic) — JSON per baris.
+ *
+ * @param {string} stdout
+ * @returns {Array<object>}
+ */
+function parseYarnClassicAuditJson(stdout) {
+  const vulnerabilities = [];
+
+  for (const line of String(stdout).split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.startsWith('{')) continue;
+    let entry;
+    try {
+      entry = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (entry.type !== 'auditAdvisory' || !entry.data) continue;
+    const advisory = entry.data.advisory || {};
+    const resolution = entry.data.resolution || {};
+
+    vulnerabilities.push({
+      package: advisory.module_name || 'unknown',
+      version: resolution.path || advisory.findings?.[0]?.version || 'unknown',
+      severity: advisory.severity || 'medium',
+      title: advisory.title || advisory.overview || 'Unknown vulnerability',
+      url: advisory.url,
+      fix: advisory.patched_versions
+        ? `Upgrade ke ${advisory.patched_versions}`
+        : 'Tidak ada fix otomatis',
+    });
+  }
+
+  return vulnerabilities;
+}
+
+/**
  * Jalankan npm audit dan parse hasilnya.
  *
  * @param {string} dir
@@ -65,92 +324,138 @@ export function detectPackageManager(dir) {
  */
 async function runNpmAudit(dir, options = {}) {
   const timeout = options.timeout || 60000;
+  const res = await runAuditCommand(commandCandidates('npm'), ['audit', '--json'], dir, timeout);
 
-  return new Promise((resolve) => {
-    const child = spawn('npm', ['audit', '--json'], {
-      cwd: dir,
-      shell: true,
-      windowsHide: true,
-    });
+  if (res.failed) {
+    return {
+      success: false,
+      vulnerabilities: [],
+      totalDependencies: 0,
+      output: res.stdout + res.stderr,
+      error: res.error || 'npm audit gagal',
+    };
+  }
 
-    let stdout = '';
-    let stderr = '';
+  try {
+    const auditData = JSON.parse(res.stdout);
+    return {
+      success: true,
+      vulnerabilities: parseNpmAuditJson(res.stdout),
+      totalDependencies: auditData.metadata?.totalDependencies || 0,
+      output: res.stdout,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      vulnerabilities: [],
+      totalDependencies: 0,
+      output: res.stdout + res.stderr,
+      error: `Gagal mengurai output npm audit: ${err.message}`,
+    };
+  }
+}
 
-    child.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
+/**
+ * Jalankan audit untuk yarn.
+ *
+ * Yarn Berry (>=2) memakai `yarn npm audit --json` dengan format JSON mirip
+ * npm. Yarn Classic (1.x) memakai `yarn audit --json` dengan format JSON
+ * per-baris. Keduanya dicoba berurutan.
+ *
+ * @param {string} dir
+ * @param {{timeout?: number}} [options]
+ * @returns {Promise<AuditResult>}
+ */
+async function runYarnAudit(dir, options = {}) {
+  const timeout = options.timeout || 60000;
 
-    child.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      resolve({
-        success: false,
-        vulnerabilities: [],
-        totalDependencies: 0,
-        output: stdout + stderr,
-        error: 'npm audit timeout',
-      });
-    }, timeout);
-
-    child.on('close', (code) => {
-      clearTimeout(timer);
-
-      try {
-        const auditData = JSON.parse(stdout);
-        const vulnerabilities = [];
-
-        // npm audit JSON format
-        if (auditData.vulnerabilities) {
-          for (const [pkgName, pkgData] of Object.entries(auditData.vulnerabilities)) {
-            const via = Array.isArray(pkgData.via) ? pkgData.via : [];
-            const advisory = via[0] || {};
-
-            vulnerabilities.push({
-              package: pkgName,
-              version: pkgData.range || 'unknown',
-              severity: pkgData.severity || 'medium',
-              title: advisory.title || pkgData.title || 'Unknown vulnerability',
-              url: advisory.url || advisory.link,
-              fix: pkgData.fixAvailable
-                ? typeof pkgData.fixAvailable === 'object'
-                  ? `Upgrade to ${pkgData.fixAvailable.name}@${pkgData.fixAvailable.version}`
-                  : 'Run npm audit fix'
-                : 'No automatic fix available',
-            });
-          }
-        }
-
-        resolve({
+  // Yarn Berry dulu (format npm-like).
+  const berry = await runAuditCommand(commandCandidates('yarn'), ['npm', 'audit', '--json'], dir, timeout);
+  if (!berry.failed) {
+    try {
+      const parsed = JSON.parse(berry.stdout);
+      if (parsed.vulnerabilities || parsed.metadata) {
+        return {
           success: true,
-          vulnerabilities,
-          totalDependencies: auditData.metadata?.totalDependencies || 0,
-          output: stdout,
-        });
-      } catch (err) {
-        resolve({
-          success: false,
-          vulnerabilities: [],
-          totalDependencies: 0,
-          output: stdout + stderr,
-          error: `Failed to parse npm audit output: ${err.message}`,
-        });
+          vulnerabilities: parseNpmAuditJson(berry.stdout),
+          totalDependencies: parsed.metadata?.totalDependencies || 0,
+          output: berry.stdout,
+        };
       }
-    });
+    } catch {
+      // Bukan format Berry — lanjut ke Yarn Classic.
+    }
+  }
 
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      resolve({
-        success: false,
-        vulnerabilities: [],
-        totalDependencies: 0,
-        output: stderr,
-        error: `npm audit failed: ${err.message}`,
-      });
-    });
-  });
+  // Yarn Classic.
+  const classic = await runAuditCommand(commandCandidates('yarn'), ['audit', '--json'], dir, timeout);
+  if (classic.failed) {
+    return {
+      success: false,
+      vulnerabilities: [],
+      totalDependencies: 0,
+      output: classic.stdout + classic.stderr,
+      error: classic.error || 'yarn audit gagal',
+    };
+  }
+
+  try {
+    const vulnerabilities = parseYarnClassicAuditJson(classic.stdout);
+    return {
+      success: true,
+      vulnerabilities,
+      totalDependencies: vulnerabilities.length,
+      output: classic.stdout,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      vulnerabilities: [],
+      totalDependencies: 0,
+      output: classic.stdout + classic.stderr,
+      error: `Gagal mengurai output yarn audit: ${err.message}`,
+    };
+  }
+}
+
+/**
+ * Jalankan audit untuk pnpm.
+ *
+ * @param {string} dir
+ * @param {{timeout?: number}} [options]
+ * @returns {Promise<AuditResult>}
+ */
+async function runPnpmAudit(dir, options = {}) {
+  const timeout = options.timeout || 60000;
+  const res = await runAuditCommand(commandCandidates('pnpm'), ['audit', '--json'], dir, timeout);
+
+  if (res.failed) {
+    return {
+      success: false,
+      vulnerabilities: [],
+      totalDependencies: 0,
+      output: res.stdout + res.stderr,
+      error: res.error || 'pnpm audit gagal',
+    };
+  }
+
+  try {
+    const auditData = JSON.parse(res.stdout);
+    return {
+      success: true,
+      vulnerabilities: parsePnpmAuditJson(res.stdout),
+      totalDependencies: auditData.metadata?.dependencies || 0,
+      output: res.stdout,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      vulnerabilities: [],
+      totalDependencies: 0,
+      output: res.stdout + res.stderr,
+      error: `Gagal mengurai output pnpm audit: ${err.message}`,
+    };
+  }
 }
 
 /**
@@ -162,84 +467,50 @@ async function runNpmAudit(dir, options = {}) {
  */
 async function runPipAudit(dir, options = {}) {
   const timeout = options.timeout || 60000;
+  const res = await runAuditCommand(commandCandidates('pip-audit'), ['--format', 'json'], dir, timeout);
 
-  return new Promise((resolve) => {
-    const child = spawn('pip-audit', ['--format', 'json'], {
-      cwd: dir,
-      shell: true,
-      windowsHide: true,
-    });
+  if (res.failed) {
+    return {
+      success: false,
+      vulnerabilities: [],
+      totalDependencies: 0,
+      output: res.stdout + res.stderr,
+      error: `${res.error}. Pastikan pip-audit terpasang (pip install pip-audit)`,
+    };
+  }
 
-    let stdout = '';
-    let stderr = '';
+  try {
+    const auditData = JSON.parse(res.stdout);
+    const vulnerabilities = [];
 
-    child.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    child.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      resolve({
-        success: false,
-        vulnerabilities: [],
-        totalDependencies: 0,
-        output: stdout + stderr,
-        error: 'pip-audit timeout',
-      });
-    }, timeout);
-
-    child.on('close', (code) => {
-      clearTimeout(timer);
-
-      try {
-        const auditData = JSON.parse(stdout);
-        const vulnerabilities = [];
-
-        if (Array.isArray(auditData)) {
-          for (const vuln of auditData) {
-            vulnerabilities.push({
-              package: vuln.name || vuln.package || 'unknown',
-              version: vuln.version || 'unknown',
-              severity: vuln.severity || vuln.fix_versions?.[0] ? 'high' : 'medium',
-              title: vuln.description || vuln.id || 'Unknown vulnerability',
-              url: vuln.url || vuln.links?.[0],
-              fix: vuln.fix_versions?.[0] ? `Upgrade to ${vuln.fix_versions[0]}` : 'No fix available',
-            });
-          }
-        }
-
-        resolve({
-          success: true,
-          vulnerabilities,
-          totalDependencies: auditData.length || 0,
-          output: stdout,
-        });
-      } catch (err) {
-        resolve({
-          success: false,
-          vulnerabilities: [],
-          totalDependencies: 0,
-          output: stdout + stderr,
-          error: `Failed to parse pip-audit output: ${err.message}`,
+    if (Array.isArray(auditData)) {
+      for (const vuln of auditData) {
+        vulnerabilities.push({
+          package: vuln.name || vuln.package || 'unknown',
+          version: vuln.version || 'unknown',
+          severity: vuln.severity || vuln.fix_versions?.[0] ? 'high' : 'medium',
+          title: vuln.description || vuln.id || 'Unknown vulnerability',
+          url: vuln.url || vuln.links?.[0],
+          fix: vuln.fix_versions?.[0] ? `Upgrade to ${vuln.fix_versions[0]}` : 'No fix available',
         });
       }
-    });
+    }
 
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      resolve({
-        success: false,
-        vulnerabilities: [],
-        totalDependencies: 0,
-        output: stderr,
-        error: `pip-audit failed: ${err.message}. Make sure pip-audit is installed (pip install pip-audit)`,
-      });
-    });
-  });
+    return {
+      success: true,
+      vulnerabilities,
+      totalDependencies: auditData.length || 0,
+      output: res.stdout,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      vulnerabilities: [],
+      totalDependencies: 0,
+      output: res.stdout + res.stderr,
+      error: `Gagal mengurai output pip-audit: ${err.message}`,
+    };
+  }
 }
 
 /**
@@ -258,26 +529,36 @@ export async function runDependencyAudit(dir, options = {}) {
       vulnerabilities: [],
       totalDependencies: 0,
       output: '',
-      error: 'No supported package manager detected (npm, yarn, pnpm, pip)',
+      error: 'Tidak ada package manager yang didukung (npm, yarn, pnpm, pip)',
+      packageManager: null,
     };
   }
 
+  let result;
   switch (packageManager) {
     case 'npm':
+      result = await runNpmAudit(dir, options);
+      break;
     case 'yarn':
+      result = await runYarnAudit(dir, options);
+      break;
     case 'pnpm':
-      return runNpmAudit(dir, options);
+      result = await runPnpmAudit(dir, options);
+      break;
     case 'pip':
-      return runPipAudit(dir, options);
+      result = await runPipAudit(dir, options);
+      break;
     default:
-      return {
+      result = {
         success: false,
         vulnerabilities: [],
         totalDependencies: 0,
         output: '',
-        error: `Unsupported package manager: ${packageManager}`,
+        error: `Package manager tidak didukung: ${packageManager}`,
       };
   }
+
+  return { ...result, packageManager };
 }
 
 /**
@@ -287,10 +568,11 @@ export async function runDependencyAudit(dir, options = {}) {
  * @returns {string}
  */
 export function formatDependencyAuditReport(auditResult) {
-  const { success, vulnerabilities, totalDependencies, output, error } = auditResult;
+  const { success, vulnerabilities, totalDependencies, output, error, packageManager } = auditResult;
 
   let report = `\n📦 Dependency Audit Report\n`;
   report += `${'='.repeat(60)}\n`;
+  if (packageManager) report += `Package manager: ${packageManager}\n`;
   report += `Total dependencies: ${totalDependencies}\n`;
   report += `Vulnerabilities found: ${vulnerabilities.length}\n\n`;
 
@@ -336,7 +618,15 @@ export function formatDependencyAuditReport(auditResult) {
     }
 
     report += `\n💡 Recommendation:\n`;
-    report += `  - Run \`npm audit fix\` untuk memperbaiki vulnerability otomatis\n`;
+    const fixCmd =
+      packageManager === 'yarn'
+        ? 'yarn npm audit'
+        : packageManager === 'pnpm'
+          ? 'pnpm audit --fix'
+          : packageManager === 'pip'
+            ? 'pip-audit -r requirements.txt'
+            : 'npm audit fix';
+    report += `  - Jalankan \`${fixCmd}\` untuk memeriksa/memperbaiki vulnerability\n`;
     report += `  - Update dependencies ke versi terbaru\n`;
     report += `  - Review manual untuk vulnerability tanpa fix otomatis\n`;
   }

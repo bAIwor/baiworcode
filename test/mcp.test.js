@@ -332,7 +332,7 @@ describe('MCP Client: Wizard Simpan & Lepas Server', () => {
   });
 });
 
-describe('CLI: /mcp add & /mcp remove', () => {
+describe('CLI: /mcp add & /mcp remove & status', () => {
   const jalankan = (perintah, home) =>
     polos(
       execFileSync(process.execPath, [BIN], {
@@ -342,6 +342,61 @@ describe('CLI: /mcp add & /mcp remove', () => {
         env: envHome(home),
       })
     );
+
+  it('/mcp tanpa argumen di non-TTY menampilkan ringkasan server konfigurasi', () => {
+    const home = buatHomeSementara();
+    try {
+      tulisConfig(home, {
+        mcpServers: {
+          testserv: {
+            type: 'remote',
+            url: 'https://mcp.test.com/mcp',
+          },
+        },
+      });
+      const out = jalankan('/mcp', home);
+      assert.match(out, /Model Context Protocol/);
+      assert.match(out, /testserv/);
+    } finally {
+      hapusHome(home);
+    }
+  });
+
+  it('/mcp list menampilkan status ringkas tanpa muntahan ratusan tools', () => {
+    const home = buatHomeSementara();
+    try {
+      tulisConfig(home, {
+        mcpServers: {
+          demo: {
+            type: 'remote',
+            url: 'https://demo.example.com',
+          },
+        },
+      });
+      const out = jalankan('/mcp list', home);
+      assert.match(out, /demo/);
+      assert.match(out, /Tidak terhubung/);
+    } finally {
+      hapusHome(home);
+    }
+  });
+
+  it('CLI menormalkan "baiworcode /mcp" sehingga tidak masuk ke prompt obrolan AI', () => {
+    const home = buatHomeSementara();
+    try {
+      const out = polos(
+        execFileSync(process.execPath, [BIN, '/mcp'], {
+          encoding: 'utf8',
+          timeout: 15_000,
+          env: envHome(home),
+        })
+      );
+      assert.match(out, /Model Context Protocol/);
+      assert.doesNotMatch(out, /How can I help you/);
+    } finally {
+      hapusHome(home);
+    }
+  });
 
   it('/mcp add tanpa TTY memberi panduan konfigurasi manual', () => {
     const home = buatHomeSementara();

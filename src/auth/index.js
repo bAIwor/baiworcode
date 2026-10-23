@@ -135,10 +135,16 @@ export async function login(providerId) {
     try {
       const { execFile } = await import('node:child_process');
       isAvailable = await new Promise((resolve) => {
-        // execFile (bukan exec) agar nilai dari environment tidak diperlakukan
-        // sebagai perintah shell.
-        execFile(agyExe, ['--version'], { timeout: 3000 }, (err) => {
-          resolve(!err);
+        execFile(agyExe, ['models'], { timeout: 6000 }, (err, stdout) => {
+          if (!err && stdout && stdout.toLowerCase().includes('gemini')) {
+            resolve(true);
+          } else if (!err) {
+            execFile(agyExe, ['--version'], { timeout: 3000 }, (vErr) => {
+              resolve(!vErr);
+            });
+          } else {
+            resolve(false);
+          }
         });
       });
     } catch {}
@@ -371,9 +377,18 @@ export async function logout(providerId) {
 
   // Jika tidak disebutkan, cari yang sedang login
   if (!targetId) {
-    const loggedInIds = Object.keys(config.oauth || {}).filter(
-      (id) => config.oauth[id] && (config.oauth[id].accessToken || config.oauth[id].apiKey)
-    );
+    const loggedInIds = Object.keys(config.oauth || {}).filter((id) => {
+      const o = config.oauth[id];
+      if (!o) return false;
+      if (PROVIDERS[id]?.method === 'agy' || o.method === 'agy') {
+        return Boolean(o.active || o.connectedAt || config.activeType === 'agy');
+      }
+      return Boolean(o.accessToken || o.apiKey);
+    });
+
+    if (config.activeType === 'agy' && !loggedInIds.includes('google-antigravity')) {
+      loggedInIds.push('google-antigravity');
+    }
 
     if (loggedInIds.length === 0) {
       console.log(theme.warning('  Tidak ada sesi OAuth yang sedang login saat ini.'));
@@ -404,7 +419,13 @@ export async function logout(providerId) {
     },
   };
 
-  if ((config.activeType === 'oauth' || config.activeType === 'agy') && config.activeProvider === provName) {
+  const isActiveMatch =
+    config.activeProvider === provName ||
+    config.activeProvider === targetId ||
+    ((config.activeType === 'agy' || provObj?.method === 'agy') &&
+      (config.activeProvider || '').toLowerCase().includes('antigravity'));
+
+  if (isActiveMatch) {
     updates.activeProvider = 'Not configured';
     updates.activeModel = 'Not configured';
     updates.activeType = 'none';

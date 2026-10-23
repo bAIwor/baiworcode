@@ -313,13 +313,22 @@ function parseSessionFile(filePath) {
  * Memuat sesi berdasarkan ID dari disk.
  * Mendukung format .jsonl terbaru maupun .json legacy.
  *
+ * Pencarian lintas proyek TIDAK dilakukan di sini secara implisit: sesi
+ * milik proyek lain hanya boleh dimuat bila pemanggil menyatakannya
+ * (`allowCrossProject: true`), sehingga `loadSession` tidak pernah diam-diam
+ * bring konteks workspace lain.
+ *
  * @param {string} sessionId
  * @param {object} [options]
  * @param {string} [options.projectPath]
  * @param {string} [options.baseConfigDir]
+ * @param {boolean} [options.allowCrossProject=false]
  * @returns {object|null}
  */
-export function loadSession(sessionId, { projectPath = process.cwd(), baseConfigDir = CONFIG_DIR } = {}) {
+export function loadSession(
+  sessionId,
+  { projectPath = process.cwd(), baseConfigDir = CONFIG_DIR, allowCrossProject = false } = {}
+) {
   if (!sessionId || typeof sessionId !== 'string') return null;
 
   // Cegah directory traversal / karakter aneh.
@@ -337,7 +346,10 @@ export function loadSession(sessionId, { projectPath = process.cwd(), baseConfig
     return parseSessionFile(jsonPath);
   }
 
-  // Fallback pencarian lintas proyek bila sesi dibuka dari folder lain (misalnya direktori HOME)
+  // Pencarian lintas proyek hanya bila diizinkan secara eksplisit
+  // (mis. `baiworcode session resume <id>` yang menunjuk sesi tertentu).
+  if (!allowCrossProject) return null;
+
   const rootSessionsDir = path.join(baseConfigDir, SESSIONS_DIR_NAME);
   if (fs.existsSync(rootSessionsDir)) {
     try {
@@ -662,22 +674,44 @@ export function listAllProjectsSessions({ baseConfigDir = CONFIG_DIR, includeMes
 
 /**
  * Mengambil sesi terakhir yang paling baru diupdate untuk proyek ini (untuk fitur resume).
- * Bila proyek aktif kosong, fallback ke sesi proyek terakhir yang tersedia.
+ *
+ * PENTING: sesi TIDAK boleh diambil dari proyek lain secara diam-diam.
+ * Dulu ada fallback ke `listAllProjectsSessions()`, sehingga `baiworcode
+ * --continue` di folder tanpa riwayat memuat percakapan proyek lain —
+ * termasuk output tool berisi isi berkas proyek tadi — dan agen melanjutkan
+ * pekerjaan dalam konteks workspace yang salah. Sekarang fallback lintas
+ * proyek hanya terjadi bila pemanggil memintanya secara eksplisit
+ * (`allowCrossProject: true`), yaitu dari alur `session resume <id>` di mana
+ * pengguna menunjuk sesi secara spesifik.
  *
  * @param {object} [options]
  * @param {string} [options.projectPath]
  * @param {string} [options.baseConfigDir]
+ * @param {boolean} [options.allowCrossProject=false]
  * @returns {object|null}
  */
-export function getLatestSession({ projectPath = process.cwd(), baseConfigDir = CONFIG_DIR } = {}) {
+export function getLatestSession({
+  projectPath = process.cwd(),
+  baseConfigDir = CONFIG_DIR,
+  allowCrossProject = false,
+} = {}) {
   const list = listSessions({ projectPath, baseConfigDir, includeMessages: true });
   if (list.length > 0) return list[0];
 
-  // Fallback ke sesi terbaru lintas proyek bila folder saat ini belum punya riwayat
+  // Fallback lintas proyek HANYA bila diminta eksplisit.
+  if (!allowCrossProject) return null;
+
   const allProjects = listAllProjectsSessions({ baseConfigDir });
   if (allProjects.length > 0) {
     const top = allProjects[0];
-    return loadSession(top.id, { baseConfigDir });
+    // Muat memakai projectPath asli sesi tersebut + izin lintas proyek,
+    // supaya sesi benar-benar ditemukan (loadSession menolak mencari
+    // lintas proyek bila izinnya tidak diberikan).
+    return loadSession(top.id, {
+      projectPath: top.projectPath || projectPath,
+      baseConfigDir,
+      allowCrossProject: true,
+    });
   }
 
   return null;

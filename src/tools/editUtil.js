@@ -317,6 +317,14 @@ export function applyUnifiedDiff(text, diffText) {
     // tujuan dari header @@ +c,d @@.
     if (oldBlock === '') {
       if (!h.neu.length) continue;
+      // Header yang gagal diparse (mis. `@@-0,0 +1,2@@` tanpa spasi) memberi
+      // newStart = null. Tanpa pemeriksaan ini, insertLinesAt() memakai
+      // fallback baris 1 sehingga patch tertanam di baris PERTAMA file —
+      // bukan gagal. Turunkan hunk sebagai error agar isi file tidak
+      // rusak diam-diam.
+      if (h.newStart === null || !Number.isFinite(h.newStart)) {
+        return { ok: false, reason: 'hunk-header-unparseable' };
+      }
       const inserted = insertLinesAt(hay, h.newStart, h.neu);
       hay = inserted.text;
       cursor = inserted.end;

@@ -40,6 +40,7 @@ import {
 import {
   initAllMcpServers,
   listActiveMcpSessions,
+  loadMcpConfigDetailed,
   startMcpServer,
   connectMcpServer,
   saveMcpServer,
@@ -47,6 +48,8 @@ import {
   isValidMcpServerName,
   validateMcpUrl,
 } from '../src/mcp/index.js';
+import { resolveMcpLaunchMode } from '../src/mcp/launchMode.js';
+import { validateBuiltinKeyForProvider } from '../src/mcp/apiKeys.js';
 import { runModelMenu } from '../src/modelMenu.js';
 import { handleModelCommand } from '../src/modelAlias.js';
 import { askBaiworInput, COMMANDS } from '../src/prompt.js';
@@ -62,11 +65,12 @@ import {
   permissionModeColor,
 } from '../src/chat/permissionMode.js';
 import { compactConversation } from '../src/chat/compact.js';
-import { listSessions, listAllProjectsSessions, deleteSession, deleteAllSessions } from '../src/chat/sessionManager.js';
+import { listAllProjectsSessions, deleteSession, deleteAllSessions } from '../src/chat/sessionManager.js';
 import { discoverSkills, getSkill } from '../src/skills/skillManager.js';
 import { discoverRules } from '../src/rules/ruleManager.js';
 import { resetTodoStore } from '../src/tools/todoTool.js';
-import { undoLastTurn } from '../src/tools/snapshot.js';
+import { undoLastTurn, previewUndoLastTurn } from '../src/tools/snapshot.js';
+import { parseScanArg, runScan, formatScanHelp } from '../src/security/scanCommand.js';
 import { isHomeDirectory } from '../src/tools/searchTool.js';
 import {
   switchWorkspace,
@@ -514,7 +518,8 @@ const HELP_USAGE = {
   '/doctor': '/doctor',
   '/update': '/update [sandbox]',
   '/platform': '/platform [start|stop|status|list] [telegram|whatsapp]',
-  '/mcp': '/mcp [list|add|remove|key|refresh]',
+  '/mcp': '/mcp [list|tools|add|remove|key|refresh]',
+  '/scan': '/scan [secrets|deps|all] [path]',
 };
 
 function showHelp() {
@@ -536,6 +541,7 @@ function showHelp() {
     '/doctor',
     '/update',
     '/image',
+    '/scan',
   ]);
   const allRows = COMMANDS.map((c) => ({
     name: c.name,
@@ -1283,9 +1289,299 @@ async function handleMcpRemove(rest = []) {
   console.log(chalk.gray('  Jalankan /mcp refresh agar perubahan koneksi konsisten.\n'));
 }
 
+function cleanMcpToolDescription(raw = '') {
+  return sanitizeTerminalText(raw, { preserveNewlines: false })
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Tampilkan ringkasan status MCP server yang terdaftar di konfigurasi.
+ *
+ * @param {Object} [options]
+ * @param {boolean} [options.showTools=false]
+ * @param {string|null} [options.targetServer=null]
+ */
+function printMcpServerList({ showTools = false, targetServer = null } = {}) {
+  const activeList = listActiveMcpSessions();
+  const activeMap = new Map(activeList.map((s) => [s.name.toLowerCase(), s]));
+  const detailed = loadMcpConfigDetailed();
+  const allConfigs = detailed.configs || {};
+  const serverNames = Object.keys(allConfigs);
+
+  console.log(chalk.hex('#FBBF24').bold('\n  🔌 Model Context Protocol (MCP) Servers:'));
+  if (serverNames.length === 0) {
+    console.log(chalk.yellow('    Belum ada MCP server yang terdaftar di konfigurasi.'));
+    console.log(chalk.gray('    Termudah: jalankan ') + chalk.cyan('/mcp add') + chalk.gray(' lalu ikuti pertanyaan.'));
+    console.log(chalk.gray('    Penyedia bawaan: ') + chalk.cyan('/mcp key tavily <tvly-...>') + chalk.gray(' atau ') + chalk.cyan('/mcp key firecrawl <fc-...>') + chalk.gray(' (aktif otomatis setelah kunci diisi).'));
+    console.log(chalk.gray('    Alternatif: edit ~/.baiwor/config.json (key "mcpServers") atau .baiwor/mcp.json'));
+    console.log(chalk.gray('    Gunakan /mcp refresh untuk memindai ulang server yang baru ditambahkan.\n'));
+    return;
+  }
+
+  let totalActive = 0;
+  let totalTools = 0;
+
+  for (const name of serverNames) {
+    if (targetServer && name.toLowerCase() !== targetServer.toLowerCase()) {
+      continue;
+    }
+    const cfg = allConfigs[name] || {};
+    const active = activeMap.get(name.toLowerCase());
+    const type = cfg.type || (cfg.command ? 'stdio' : 'remote');
+    const endpoint = cfg.url || (cfg.command ? `${cfg.command} ${(cfg.args || []).join(' ')}`.trim() : '');
+
+    if (active && active.status === 'connected') {
+      totalActive += 1;
+      totalTools += active.tools.length;
+      console.log(`    ${chalk.green('●')} ${chalk.white.bold(name)} ${chalk.dim(`[${type}]`)} ─ ${chalk.cyan(`${active.tools.length} tool aktif`)}${endpoint ? chalk.gray(` (${endpoint})`) : ''}`);
+      if (showTools) {
+        for (const t of active.tools) {
+          const desc = cleanMcpToolDescription(t.description || '');
+          console.log(`       - ${chalk.yellow(t.name)}: ${chalk.dim(desc)}`);
+        }
+      }
+    } else {
+      console.log(`    ${chalk.red('✗')} ${chalk.white.bold(name)} ${chalk.dim(`[${type}]`)} ─ ${chalk.red('Tidak terhubung')}${endpoint ? chalk.gray(` (${endpoint})`) : ''}`);
+    }
+  }
+
+  console.log();
+  if (!showTools && totalTools > 0) {
+    console.log(chalk.gray(`  Status: ${totalActive}/${serverNames.length} server terhubung, total ${totalTools} tool siap digunakan.`));
+    console.log(chalk.gray(`  Ketik ${chalk.cyan('/mcp tools <nama>')} untuk melihat daftar tool server tertentu.`));
+    console.log(chalk.gray(`  Ketik ${chalk.cyan('/mcp tools')} untuk melihat semua tool, atau ${chalk.cyan('/mcp refresh')} untuk memuat ulang.\n`));
+  } else {
+    console.log(chalk.gray('  Gunakan /mcp refresh untuk memuat ulang seluruh koneksi server.\n'));
+  }
+}
+
+/**
+ * Tampilkan daftar tool milik server tertentu (atau semua server).
+ *
+ * @param {string|null} [serverName]
+ */
+function printMcpTools(serverName = null) {
+  const activeList = listActiveMcpSessions();
+  if (activeList.length === 0) {
+    console.log(chalk.yellow('\n  Belum ada MCP server yang aktif/terhubung.'));
+    console.log(chalk.gray('  Jalankan /mcp refresh untuk mencoba menghubungkan kembali.\n'));
+    return;
+  }
+
+  if (!serverName || serverName.toLowerCase() === 'all') {
+    printMcpServerList({ showTools: true });
+    return;
+  }
+
+  const target = activeList.find((s) => s.name.toLowerCase() === serverName.toLowerCase());
+  if (!target) {
+    const detailed = loadMcpConfigDetailed();
+    const isConfigured = Object.keys(detailed.configs || {}).some((n) => n.toLowerCase() === serverName.toLowerCase());
+    if (isConfigured) {
+      console.log(chalk.yellow(`\n  ⚠️  Server MCP '${serverName}' terdaftar di konfigurasi tetapi sedang tidak terhubung.`));
+      console.log(chalk.gray('     Jalankan /mcp refresh untuk mencoba menghubungkan kembali.\n'));
+    } else {
+      console.log(chalk.red(`\n  ✗ Server MCP '${serverName}' tidak ditemukan.`));
+      console.log(chalk.gray(`    Server aktif: ${activeList.map((s) => s.name).join(', ')}\n`));
+    }
+    return;
+  }
+
+  console.log(chalk.hex('#FBBF24').bold(`\n  🔌 Tools untuk MCP Server '${target.name}' (${target.tools.length} tool aktif):`));
+  for (const t of target.tools) {
+    const desc = cleanMcpToolDescription(t.description || '');
+    console.log(`    - ${chalk.yellow(t.name)}: ${chalk.dim(desc)}`);
+  }
+  console.log();
+}
+
+/**
+ * Alur interaktif pengaturan API Key penyedia MCP bawaan (Tavily, Firecrawl, TinyFish).
+ */
+async function runMcpKeyInteractive() {
+  const penolong = {
+    tavily: { name: 'Tavily (Pencarian & ekstraksi web)', get: getTavilyApiKey, save: saveTavilyApiKey, contoh: 'tvly-...' },
+    firecrawl: { name: 'Firecrawl (Scraping & crawling)', get: getFirecrawlApiKey, save: saveFirecrawlApiKey, contoh: 'fc-...' },
+    tinyfish: { name: 'TinyFish (Web Intelligence)', get: getTinyFishApiKey, save: saveTinyFishApiKey, contoh: 'sk-tinyfish-...' },
+  };
+
+  const choice = await p.select({
+    message: 'Pilih penyedia MCP bawaan untuk mengatur API key:',
+    options: [
+      ...Object.entries(penolong).map(([id, info]) => {
+        const val = info.get();
+        const status = val ? chalk.green(`[Tersimpan: ${maskSecret(val)}]`) : chalk.yellow('[Belum diset]');
+        return {
+          value: id,
+          label: `${chalk.white.bold(id.padEnd(12))} ─ ${status} ${chalk.dim(info.name)}`,
+        };
+      }),
+      { value: '__cancel__', label: chalk.gray('← Batal') },
+    ],
+  });
+
+  if (p.isCancel(choice) || choice === '__cancel__') return;
+
+  const inputKey = await p.password({
+    message: `Masukkan API Key untuk ${choice} (${penolong[choice].contoh}):`,
+    mask: '*',
+  });
+
+  if (p.isCancel(inputKey) || !String(inputKey || '').trim()) {
+    console.log(chalk.gray('\n  Dibatalkan.\n'));
+    return;
+  }
+
+  const cleanKey = String(inputKey).trim();
+
+  const cek = validateBuiltinKeyForProvider(cleanKey, choice);
+  if (!cek.ok) {
+    console.log(chalk.red.bold(`\n  ✗ ${cek.reason}`));
+    console.log(chalk.gray(`  Simpan kunci ${cek.detected} di slotnya masing-masing.\n`));
+    return;
+  }
+
+  try {
+    penolong[choice].save(cleanKey);
+  } catch (err) {
+    console.log(chalk.red.bold(`\n  ✗ API key ${choice} GAGAL disimpan: ${err.message}`));
+    console.log(chalk.gray('  Key lama tidak berubah. Periksa izin folder ~/.baiwor.\n'));
+    return;
+  }
+  console.log(chalk.green.bold(`\n  ✔ API key ${choice} berhasil disimpan.`));
+
+  const s = p.spinner();
+  s.start(`Menghubungkan server MCP '${choice}'...`);
+  const results = await initAllMcpServers();
+  const r = results.find((x) => x.name === choice);
+  if (r && r.status === 'connected') {
+    s.stop(chalk.green(`● ${choice} terhubung — ${r.toolCount} tool aktif.`));
+  } else if (r) {
+    s.stop(chalk.red(`✗ ${choice} gagal terhubung: ${r.error || r.status}`));
+  } else {
+    s.stop(chalk.gray('Selesai.'));
+  }
+  console.log();
+}
+
+/**
+ * Menu interaktif utama /mcp (saat dipanggil tanpa argumen di TTY).
+ */
+async function runMcpMenu() {
+  const activeList = listActiveMcpSessions();
+  const detailed = loadMcpConfigDetailed();
+  const totalConfigured = Object.keys(detailed.configs || {}).length;
+  const totalTools = activeList.reduce((acc, s) => acc + s.tools.length, 0);
+
+  const picked = await p.select({
+    message: `Kelola Model Context Protocol (MCP) [${activeList.length}/${totalConfigured} server aktif, ${totalTools} tool]:`,
+    options: [
+      {
+        value: 'list',
+        label: `${chalk.cyan('Daftar Server'.padEnd(16))} ─ Ringkasan status server & koneksi`,
+      },
+      {
+        value: 'tools',
+        label: `${chalk.blue('Lihat Tools'.padEnd(16))} ─ Intip tool dari server tertentu`,
+      },
+      {
+        value: 'add',
+        label: `${chalk.green('Tambah Server'.padEnd(16))} ─ Tambah server MCP baru via wizard (remote/stdio)`,
+      },
+      {
+        value: 'key',
+        label: `${chalk.yellow('API Key Bawaan'.padEnd(16))} ─ Atur API key Tavily, Firecrawl, atau TinyFish`,
+      },
+      {
+        value: 'remove',
+        label: `${chalk.red('Hapus Server'.padEnd(16))} ─ Lepas server MCP dari konfigurasi global`,
+      },
+      {
+        value: 'refresh',
+        label: `${chalk.magenta('Refresh Koneksi'.padEnd(16))} ─ Muat ulang & sambungkan kembali semua server`,
+      },
+      {
+        value: '__cancel__',
+        label: chalk.gray('← Batal'),
+      },
+    ],
+  });
+
+  if (p.isCancel(picked) || picked === '__cancel__') {
+    return;
+  }
+
+  switch (picked) {
+    case 'list':
+      printMcpServerList({ showTools: false });
+      break;
+    case 'tools': {
+      if (activeList.length === 0) {
+        console.log(chalk.yellow('\n  Belum ada MCP server yang aktif. Hubungkan server terlebih dahulu.\n'));
+        break;
+      }
+      const serverPick = await p.select({
+        message: 'Pilih server untuk melihat daftar tool:',
+        options: [
+          ...activeList.map((s) => ({
+            value: s.name,
+            label: `${chalk.white.bold(s.name.padEnd(14))} ─ ${chalk.cyan(`${s.tools.length} tool`)} ${chalk.dim(`[${s.type}]`)}`,
+          })),
+          { value: '__all__', label: chalk.yellow('Lihat seluruh tool dari semua server') },
+          { value: '__cancel__', label: chalk.gray('← Batal') },
+        ],
+      });
+      if (p.isCancel(serverPick) || serverPick === '__cancel__') break;
+      if (serverPick === '__all__') {
+        printMcpServerList({ showTools: true });
+      } else {
+        printMcpTools(serverPick);
+      }
+      break;
+    }
+    case 'add':
+      await runMcpAddWizard();
+      break;
+    case 'key':
+      await runMcpKeyInteractive();
+      break;
+    case 'remove':
+      await handleMcpRemove([]);
+      break;
+    case 'refresh':
+      await handleMcpRefresh();
+      break;
+  }
+}
+
+async function handleMcpRefresh() {
+  console.log(chalk.cyan('\n  🔄 Memuat ulang seluruh koneksi MCP Server...'));
+  const results = await initAllMcpServers();
+  if (results.length === 0) {
+    console.log(chalk.yellow('    Belum ada MCP server yang terdaftar di konfigurasi.\n'));
+    return;
+  }
+  for (const r of results) {
+    const badge = r.status === 'connected'
+      ? chalk.green('● Terhubung')
+      : r.status === 'skipped'
+        ? chalk.yellow('○ Dilewati')
+        : chalk.red('✗ Gagal');
+    console.log(`    ${badge} ${chalk.bold(r.name)}: ${r.toolCount} tool ${r.error ? chalk.gray(`(${r.error})`) : ''}`);
+  }
+  console.log();
+}
+
 async function handleMcpCommand(arg = '') {
-  const parts = String(arg || '').trim().split(/\s+/);
+  const parts = String(arg || '').trim().split(/\s+/).filter(Boolean);
   const sub = parts[0]?.toLowerCase();
+
+  // Jika tanpa argumen dan terminal interaktif (TTY): buka menu interaktif
+  if (!sub && process.stdin.isTTY) {
+    await runMcpMenu();
+    return;
+  }
 
   if (sub === 'add') {
     await runMcpAddWizard(parts.slice(1).join(' '));
@@ -1297,9 +1593,19 @@ async function handleMcpCommand(arg = '') {
     return;
   }
 
+  if (sub === 'tools' || sub === 'tool' || sub === 'info') {
+    const target = parts[1] || null;
+    printMcpTools(target);
+    return;
+  }
+
   // /mcp key <tavily|firecrawl|tinyfish> [apiKey]
   // Simpan API key penyedia MCP bawaan lalu sambungkan ulang otomatis.
   if (sub === 'key') {
+    if (!parts[1] && process.stdin.isTTY) {
+      await runMcpKeyInteractive();
+      return;
+    }
     const provider = String(parts[1] || '').toLowerCase();
     const apiKey = String(parts[2] || '').trim();
     const penolong = {
@@ -1320,7 +1626,22 @@ async function handleMcpCommand(arg = '') {
       return;
     }
 
-    penolong[provider].save(apiKey);
+    // Kunci yang jelas milik penyedia lain DITOLAK: menyimpannya di slot
+    // yang keliru akan mengirim kredensial itu ke vendor yang keliru.
+    const cek = validateBuiltinKeyForProvider(apiKey, provider);
+    if (!cek.ok) {
+      console.log(chalk.red.bold(`\n  ✗ ${cek.reason}`));
+      console.log(chalk.gray(`  Simpan kunci ${cek.detected} di slotnya masing-masing.\n`));
+      return;
+    }
+
+    try {
+      penolong[provider].save(apiKey);
+    } catch (err) {
+      console.log(chalk.red.bold(`\n  ✗ API key ${provider} GAGAL disimpan: ${err.message}`));
+      console.log(chalk.gray('  Key lama tidak berubah. Periksa izin folder ~/.baiwor.\n'));
+      return;
+    }
     console.log(chalk.green.bold(`\n  ✔ API key ${provider} tersimpan.`));
 
     // Sambungkan ulang supaya server bawaan langsung terdaftar di sesi ini.
@@ -1337,43 +1658,77 @@ async function handleMcpCommand(arg = '') {
   }
 
   if (sub === 'refresh') {
-    console.log(chalk.cyan('\n  🔄 Memuat ulang seluruh koneksi MCP Server...'));
-    const results = await initAllMcpServers();
-    if (results.length === 0) {
-      console.log(chalk.yellow('    Belum ada MCP server yang terdaftar di konfigurasi.\n'));
+    await handleMcpRefresh();
+    return;
+  }
+
+  // Default: /mcp list atau fallback non-TTY
+  const showTools = parts.slice(1).some((p) => p === 'all' || p === '--tools' || p === '-v');
+  printMcpServerList({ showTools });
+}
+
+/**
+ * Handle perintah /scan — Guardian Security Scan.
+ *
+ * Mendukung:
+ *   /scan secrets  → pindai hardcoded secret
+ *   /scan deps     → audit dependency rentan
+ *   /scan all      → keduanya (default)
+ *   /scan secrets <path> → pindai secret pada folder tertentu
+ *
+ * @param {string} arg - Argumen perintah
+ */
+async function handleScanCommand(arg = '') {
+  const raw = String(arg || '').trim();
+
+  // Tanpa argumen → tampilkan bantuan, jangan langsung scan.
+  if (!raw) {
+    console.log(formatScanHelp());
+    return;
+  }
+
+  const { mode, target, unknown } = parseScanArg(raw);
+
+  if (unknown) {
+    console.log(chalk.yellow(`\n  ⚠️  Subcommand tidak dikenal: "${unknown}"\n`));
+    console.log(formatScanHelp());
+    return;
+  }
+
+  // Validasi target path sebelum scan.
+  let resolvedTarget = null;
+  if (target) {
+    const resolved = path.resolve(process.cwd(), target);
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+      console.log(chalk.red(`\n  ❌ Folder tidak ditemukan: ${target}\n`));
       return;
     }
-    for (const r of results) {
-      const badge = r.status === 'connected'
-        ? chalk.green('● Terhubung')
-        : r.status === 'skipped'
-          ? chalk.yellow('○ Dilewati')
-          : chalk.red('✗ Gagal');
-      console.log(`    ${badge} ${chalk.bold(r.name)}: ${r.toolCount} tool ${r.error ? chalk.gray(`(${r.error})`) : ''}`);
-    }
-    console.log();
-    return;
+    resolvedTarget = resolved;
   }
 
-  // Default: /mcp list
-  const active = listActiveMcpSessions();
-  console.log(chalk.hex('#FBBF24').bold('\n  🔌 Model Context Protocol (MCP) Servers:'));
-  if (active.length === 0) {
-    console.log(chalk.yellow('    Belum ada MCP server yang terhubung.'));
-    console.log(chalk.gray('    Termudah: jalankan ') + chalk.cyan('/mcp add') + chalk.gray(' lalu ikuti pertanyaan.'));
-    console.log(chalk.gray('    Penyedia bawaan: ') + chalk.cyan('/mcp key tavily <tvly-...>') + chalk.gray(' atau ') + chalk.cyan('/mcp key firecrawl <fc-...>') + chalk.gray(' (aktif otomatis setelah kunci diisi).'));
-    console.log(chalk.gray('    Alternatif: edit ~/.baiwor/config.json (key "mcpServers") atau .baiwor/mcp.json'));
-    console.log(chalk.gray('    Gunakan /mcp refresh untuk memindai ulang server yang baru ditambahkan.\n'));
-    return;
-  }
+  const label =
+    mode === 'secrets'
+      ? 'memindai hardcoded secret'
+      : mode === 'deps'
+        ? 'menaudit dependency'
+        : 'menjalankan security scan';
 
-  for (const s of active) {
-    console.log(`    ${chalk.green('●')} ${chalk.white.bold(s.name)} ${chalk.dim(`[${s.type}]`)} ─ ${chalk.cyan(`${s.tools.length} tool aktif`)}`);
-    for (const t of s.tools) {
-      console.log(`       - ${chalk.yellow(t.name)}: ${chalk.dim(sanitizeTerminalText(t.description || '', { preserveNewlines: false }))}`);
-    }
+  console.log(chalk.cyan(`\n  🛡️  Guardian sedang ${label}...`));
+
+  const result = await runScan({
+    mode,
+    cwd: process.cwd(),
+    target: resolvedTarget,
+  });
+
+  // Laporan disensor & difilter sebelum dicetak.
+  console.log(sanitizeTerminalText(result.report));
+
+  if (result.totalIssues > 0) {
+    console.log(chalk.yellow.bold(`\n  ⚠️  ${result.totalIssues} temuan keamanan. Periksa sebelum commit.\n`));
+  } else {
+    console.log(chalk.green.bold('\n  ✅ Tidak ada temuan keamanan.\n'));
   }
-  console.log(chalk.gray('\n  Gunakan /mcp refresh untuk memuat ulang koneksi server.\n'));
 }
 
 /**
@@ -1799,7 +2154,9 @@ async function startInteractive(opts = {}) {
         } else if (action === 'resume') {
           const targetId = subParts[1];
           if (targetId) {
-            const ok = conversationSession.loadFromDisk(targetId);
+            // Sesi ditunjuk eksplisit oleh pengguna → pencarian lintas
+            // proyek diizinkan.
+            const ok = conversationSession.loadFromDisk(targetId, { allowCrossProject: true });
             if (ok) {
               showResumedBanner();
             } else {
@@ -1834,7 +2191,9 @@ async function startInteractive(opts = {}) {
               });
 
               if (!p.isCancel(pickedId) && pickedId !== '__cancel__') {
-                const ok = conversationSession.loadFromDisk(pickedId);
+                // Pengguna memilih sesi dari daftar lintas proyek secara
+                // eksplisit → pencarian lintas proyek diizinkan.
+                const ok = conversationSession.loadFromDisk(pickedId, { allowCrossProject: true });
                 if (ok) {
                   showResumedBanner();
                 } else {
@@ -1992,6 +2351,10 @@ async function startInteractive(opts = {}) {
       case '/platform':
         await handlePlatformCommand(arg);
         break;
+      case '/scan':
+      case '/security':
+        await handleScanCommand(arg);
+        break;
       case '/model':
       case '/provider': {
         // Tanpa argumen → menu interaktif. Dengan argumen → switch langsung:
@@ -2021,6 +2384,35 @@ async function startInteractive(opts = {}) {
         break;
       }
       case '/undo': {
+        // Tampilkan pratinjau dulu: /undo menimpa isi berkas dan MENGHAPUS
+        // berkas yang dibuat pada putaran itu, sehingga tidak boleh berjalan
+        // tanpa sepengetahuan pengguna.
+        const preview = previewUndoLastTurn();
+        if (!preview.success) {
+          console.log(chalk.yellow(`\n  ℹ️  ${preview.message}\n`));
+          break;
+        }
+
+        console.log(chalk.yellow.bold('\n  ↩️  Pratinjau rollback:'));
+        for (const item of preview.files) {
+          const label =
+            item.action === 'restore'
+              ? 'dipulihkan ke isi sebelumnya'
+              : item.action === 'delete'
+                ? 'DIHAPUS (dibuat pada putaran ini)'
+                : 'sudah tidak ada';
+          console.log(chalk.gray(`     • ${item.path} — ${label}`));
+        }
+
+        const confirmed = await p.confirm({
+          message: chalk.bold('Lanjutkan rollback perubahan berkas di atas?'),
+          initialValue: false,
+        });
+        if (p.isCancel(confirmed) || !confirmed) {
+          console.log(chalk.gray('\n  Dibatalkan. Tidak ada berkas yang diubah.\n'));
+          break;
+        }
+
         const res = undoLastTurn();
         if (!res.success) {
           console.log(chalk.yellow(`\n  ℹ️  ${res.message}\n`));
@@ -2030,6 +2422,13 @@ async function startInteractive(opts = {}) {
             console.log(chalk.gray(`     • ${f}`));
           }
           console.log(chalk.gray('     Seluruh perubahan pada putaran terakhir telah dikembalikan.\n'));
+        }
+        if (res.failed?.length) {
+          console.log(chalk.yellow.bold(`\n  ⚠️  ${res.failed.length} berkas gagal dipulihkan:`));
+          for (const f of res.failed) {
+            console.log(chalk.gray(`     • ${f.path} — ${f.error}`));
+          }
+          console.log('');
         }
         break;
       }
@@ -2114,6 +2513,7 @@ program
   .option('-c, --continue', 'Lanjutkan sesi percakapan terakhir')
   .option('-r, --resume', 'Alias untuk --continue')
   .option('-s, --session <id>', 'Lanjutkan sesi percakapan tertentu berdasarkan ID')
+  .option('--permission <mode>', 'Mode izin awal: safe | auto | plan | yolo')
   .argument('[targetOrPrompt...]', 'Folder target (bila ada) dan/atau instruksi coding langsung')
   .action(async (promptParts, options = {}) => {
     const { targetDir, prompt: fullPrompt } = extractTargetAndPrompt(promptParts, options);
@@ -2125,9 +2525,21 @@ program
       }
     }
 
+    // Mode izin dari CLI (--permission safe|auto|plan|yolo).
+    // Dipakai sebagai escape hatch untuk sesi non-TTY: mode safe selalu
+    // menjalankan gate approval, dan tanpa TTY gate menolak otomatis.
+    if (options.permission) {
+      const requested = parsePermissionModeArg(options.permission);
+      if (!requested) {
+        console.error(chalk.red(`\n  ❌ Mode izin tidak dikenal: "${options.permission}". Pilihan: safe | auto | plan | yolo\n`));
+        process.exit(1);
+      }
+      setPermissionMode(requested);
+    }
+
     let resumed = false;
     if (options.session) {
-      resumed = conversationSession.loadFromDisk(options.session);
+      resumed = conversationSession.loadFromDisk(options.session, { allowCrossProject: true });
       if (!resumed) {
         console.log(chalk.yellow(`\n  ⚠️  Sesi "${options.session}" tidak ditemukan. Memulai sesi baru.`));
       }
@@ -2169,35 +2581,34 @@ program
   .description('Kelola sesi percakapan proyek (list, resume, delete, clear)')
   .action(async (action = 'list', target) => {
     if (action === 'list') {
-      const list = listSessions();
-      if (list.length === 0) {
-        const allProjects = listAllProjectsSessions();
-        if (allProjects.length > 0) {
-          console.log(chalk.yellow(`\n  Belum ada sesi percakapan tersimpan di folder ini (${process.cwd()}).`));
-          console.log(chalk.cyan.bold(`  💡 Ditemukan ${allProjects.length} sesi tersimpan dari proyek lain:\n`));
-          allProjects.slice(0, 15).forEach((s, i) => {
-            const dt = s.updatedAt ? new Date(s.updatedAt).toLocaleString('id-ID') : '-';
-            const projName = s.projectPath ? path.basename(s.projectPath) : s.projectKey;
-            console.log(chalk.white(`  ${i + 1}. `) + chalk.green.bold(s.title || s.id) + chalk.cyan(` [${projName}]`));
-            console.log(chalk.gray(`     ID: ${s.id} · Path: ${s.projectPath || '-'} · Terakhir: ${dt}`));
-          });
-          console.log(chalk.gray('\n  Gunakan: baiworcode session resume <id> untuk melanjutkan sesi dari mana saja.\n'));
-        } else {
-          console.log(chalk.yellow('\n  Belum ada sesi percakapan tersimpan untuk proyek ini.\n'));
-        }
+      const allSessions = listAllProjectsSessions();
+      if (allSessions.length === 0) {
+        console.log(chalk.yellow('\n  Belum ada sesi percakapan tersimpan.\n'));
       } else {
-        console.log(chalk.cyan.bold(`\n  📁 Sesi Percakapan Proyek (${list.length} sesi):\n`));
-        list.slice(0, 15).forEach((s, i) => {
+        const currentNorm = path.resolve(process.cwd()).toLowerCase();
+        const homeNorm = path.resolve(os.homedir()).toLowerCase();
+        console.log(chalk.cyan.bold(`\n  📁 Seluruh Sesi Percakapan (${allSessions.length} sesi):\n`));
+        allSessions.slice(0, 25).forEach((s, i) => {
           const dt = s.updatedAt ? new Date(s.updatedAt).toLocaleString('id-ID') : '-';
-          console.log(chalk.white(`  ${i + 1}. `) + chalk.green.bold(s.title || s.id));
-          console.log(chalk.gray(`     ID: ${s.id} · Terakhir: ${dt} · ${s.stats?.turnCount || 0} turn`));
+          const sNorm = s.projectPath ? path.resolve(s.projectPath).toLowerCase() : '';
+          const isCurrent = sNorm === currentNorm;
+          let folderLabel = s.projectPath ? path.basename(s.projectPath) : (s.projectKey || 'proyek');
+          if (sNorm === homeNorm) folderLabel = '~ (Home)';
+          const workspaceTag = isCurrent
+            ? chalk.green.bold(' [Workspace Ini]')
+            : chalk.cyan(` [${folderLabel}]`);
+
+          console.log(chalk.white(`  ${i + 1}. `) + chalk.green.bold(s.title || s.id) + workspaceTag);
+          console.log(chalk.gray(`     ID: ${s.id} · Path: ${s.projectPath || '-'} · Terakhir: ${dt} · ${s.stats?.turnCount || 0} turn`));
         });
-        console.log();
+        console.log(chalk.gray('\n  Gunakan: baiworcode session resume <id> untuk melanjutkan sesi dari mana saja.\n'));
       }
     } else if (action === 'resume') {
       const targetId = target;
       if (targetId) {
-        const ok = conversationSession.loadFromDisk(targetId);
+        // `session resume <id>` = pengguna menunjuk sesi secara spesifik,
+        // jadi pencarian lintas proyek diizinkan di sini.
+        const ok = conversationSession.loadFromDisk(targetId, { allowCrossProject: true });
         if (ok) {
           showResumedBanner();
           await startInteractive({ skipBanner: true });
@@ -2396,10 +2807,29 @@ program
   });
 
 program
-  .command('mcp')
-  .description('Jalankan bAIwor Code sebagai MCP Server (stdio) untuk berbagai klien MCP eksternal')
-  .action(() => {
-    startMcpServer();
+  .command('mcp [action] [target...]')
+  .description('Kelola server MCP atau jalankan bAIwor Code sebagai MCP Server (stdio)')
+  .option('--serve', 'Jalankan sebagai MCP Server (stdio)')
+  .action(async (action, targets, options = {}) => {
+    // Jalankan sebagai MCP Server stdio bila pengguna memintanya eksplisit
+    // (`--serve` / `mcp serve`) atau bila pemanggil terdeteksi sebagai klien
+    // MCP eksternal (stdin & stdout keduanya pipe). Tanpa deteksi klien,
+    // `baiworcode mcp` dari script/CI akan menggantung menunggu EOF.
+    const mode = resolveMcpLaunchMode({
+      wantsServe: Boolean(options.serve),
+      action,
+      stdinIsTty: Boolean(process.stdin.isTTY),
+      stdoutIsTty: Boolean(process.stdout.isTTY),
+      wasSlashMcp: process.argv.some((a) => a.toLowerCase() === '/mcp'),
+    });
+
+    if (mode === 'serve') {
+      startMcpServer();
+      return;
+    }
+    const arg = [action, ...(targets || [])].filter(Boolean).join(' ');
+    await handleMcpCommand(arg);
+    process.exit(0);
   });
 
 // Samakan gaya warna help untuk seluruh subcommand yang sudah terdaftar.
@@ -2407,12 +2837,22 @@ for (const command of program.commands) {
   applyHelpStyle(command);
 }
 
+// Subperintah CLI yang sah
+const KNOWN_CLI_COMMANDS = new Set([
+  'session', 'skill', 'rules', 'status', 'doctor',
+  'update', 'model', 'provider', 'login', 'logout', 'mcp'
+]);
+
 // Commander 13 hanya mendukung SATU short flag dan bawaannya huruf besar (-V).
 // bAIwor memakai lowercase (-v) sebagai default, dan tetap menerima varian
 // lain (--v, --V, -V) supaya tidak ada pengguna yang tertinggal.
-const normalizedArgv = process.argv.map((arg) => {
+// Sekaligus menormalkan jika pengguna mengetik /perintah di shell CLI (mis. baiworcode /mcp).
+const normalizedArgv = process.argv.map((arg, idx) => {
   if (arg === '--v' || arg === '--V') return '--version';
   if (arg === '-V') return '-v';
+  if (idx >= 2 && arg.startsWith('/') && KNOWN_CLI_COMMANDS.has(arg.slice(1).toLowerCase())) {
+    return arg.slice(1).toLowerCase();
+  }
   return arg;
 });
 

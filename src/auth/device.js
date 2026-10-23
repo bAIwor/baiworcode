@@ -86,6 +86,12 @@ export async function runDeviceFlow(provider, clientId) {
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
 
+    // Tandai error yang sudah sabotage polling supaya catch di bawah tidak
+    // menelan dan mengulanginya. Tanpa penanda ini, error OAuth (mis.
+    // "invalid_grant") ikut tertelan lalu polling berjalan terus hingga
+    // batas 5 menit, dan pengguna tidak pernah melihat penyebabnya.
+    let fatal = null;
+
     try {
       const pollParams = new URLSearchParams({
         client_id: clientId,
@@ -101,7 +107,15 @@ export async function runDeviceFlow(provider, clientId) {
           'User-Agent': USER_AGENT,
         },
         body: pollParams.toString(),
+        // Timeout per percobaan: tanpa ini satu request yang menggantung
+        // membekukan alur login selamanya (tidak ada abort signal).
+        signal: AbortSignal.timeout(20000),
       });
+
+      if (!tokenRes.ok && tokenRes.status >= 500) {
+        // Kesalahan server: transient, coba lagi pada iterasi berikutnya.
+        continue;
+      }
 
       const tokenData = await tokenRes.json();
 
@@ -131,21 +145,27 @@ export async function runDeviceFlow(provider, clientId) {
             break;
           case 'expired_token':
             pollSpinner.stop(theme.error('Kode otorisasi telah kedaluwarsa.'));
-            throw new Error('Kode verifikasi kedaluwarsa. Silakan coba lagi.');
+            fatal = new Error('Kode verifikasi kedaluwarsa. Silakan coba lagi.');
+            break;
           case 'access_denied':
             pollSpinner.stop(theme.error('Otorisasi ditolak oleh pengguna.'));
-            throw new Error('Otorisasi ditolak.');
+            fatal = new Error('Otorisasi ditolak.');
+            break;
           default:
             pollSpinner.stop(theme.error(`Error OAuth: ${tokenData.error_description || tokenData.error}`));
-            throw new Error(tokenData.error_description || tokenData.error);
+            fatal = new Error(tokenData.error_description || tokenData.error);
         }
       }
     } catch (err) {
-      if (err.message.includes('Otorisasi') || err.message.includes('kedaluwarsa')) {
-        throw err;
+      if (fatal) throw fatal;
+      if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+        // Timeout satu percobaan: transient, lanjut ke iterasi berikutnya.
+        continue;
       }
       // Kesalahan jaringan sementara: coba lagi pada iterasi berikutnya
     }
+
+    if (fatal) throw fatal;
   }
 
   pollSpinner.stop(theme.error('Waktu tunggu otorisasi habis (5 menit).'));

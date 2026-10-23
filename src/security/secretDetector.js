@@ -78,6 +78,9 @@ const SECRET_PATTERNS = [
   },
 ];
 
+/** Batas ukuran berkas yang boleh dipindai (5 MB). */
+const MAX_SCAN_FILE_BYTES = 5 * 1024 * 1024;
+
 /** Daftar file/direktori yang di-skip saat scanning. */
 const SKIP_PATTERNS = [
   'node_modules',
@@ -100,18 +103,60 @@ const SKIP_PATTERNS = [
 ];
 
 /**
+ * Segmen path yang menandai berkas fixture test.
+ *
+ * Secret di folder test hampir selalu dummy (contoh: token contoh untuk
+ * menguji detektornya sendiri). Tanpa penanda, satu repo dengan 20 file
+ * test akan menghasilkan puluhan temuan palsu yang menutupi secret asli.
+ * Berkas TETAP dipindai — hanya hasil temuannya yang diberi label agar
+ * pengguna bisa menilai sendiri.
+ */
+const TEST_DIR_SEGMENTS = new Set([
+  'test',
+  'tests',
+  '__tests__',
+  '__test__',
+  'spec',
+  'specs',
+  'e2e',
+  'fixtures',
+  '__fixtures__',
+  'mocks',
+  '__mocks__',
+]);
+
+/**
+ * Cek apakah path berada di dalam folder test/fixture.
+ *
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+export function isLikelyTestFixture(filePath) {
+  const segments = String(filePath || '')
+    .replace(/\\/g, '/')
+    .split('/');
+  return segments.some((seg) => TEST_DIR_SEGMENTS.has(seg.toLowerCase()));
+}
+
+/**
  * Cek apakah path harus di-skip berdasarkan SKIP_PATTERNS.
+ *
+ * Pencocokan dilakukan per SEGMENT path, bukan substring. Dengan substring,
+ * '.git' ikut menyaring '.github/workflows/ci.yml' dan 'build' ikut
+ * menyaring 'my-buildings/' — dua tempat yang justru sering menyimpan
+ * secret yang perlu ditemukan.
  *
  * @param {string} filePath
  * @returns {boolean}
  */
 function shouldSkip(filePath) {
   const normalized = filePath.replace(/\\/g, '/');
+  const segments = normalized.split('/');
   return SKIP_PATTERNS.some((pattern) => {
     if (pattern.startsWith('*.')) {
       return normalized.endsWith(pattern.slice(1));
     }
-    return normalized.includes(pattern);
+    return segments.includes(pattern);
   });
 }
 
@@ -137,6 +182,15 @@ export function scanFileForSecrets(filePath) {
 
   if (!fs.existsSync(filePath)) return matches;
 
+  // Jangan muat berkas raksasa ke memori: satu file 2 GB sudah cukup untuk
+  // menghabiskan memori proses CLI.
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size > MAX_SCAN_FILE_BYTES) return matches;
+  } catch {
+    return matches;
+  }
+
   let content;
   try {
     content = fs.readFileSync(filePath, 'utf8');
@@ -146,16 +200,48 @@ export function scanFileForSecrets(filePath) {
 
   const lines = content.split('\n');
 
+  // Satu secret bisa cocok beberapa pola (mis. "ghp_..." cocok github-token
+  // sekaligus generic-secret). Tanpa dedup, satu kredensial dihitung berkali-
+  // kali dan jumlah temuan jadi tidak akurat. Kunci dedup: berkas + baris +
+  // nilai secret itu sendiri.
+  const seen = new Map();
+
   for (let lineNum = 0; lineNum < lines.length; lineNum++) {
     const line = lines[lineNum];
 
     for (const { type, pattern, description } of SECRET_PATTERNS) {
       const match = pattern.exec(line);
       if (match) {
-        // Redact secret value dari snippet
+        const secretValue = match[1] || match[0];
+        const dedupKey = `${filePath}:${lineNum + 1}:${secretValue}`;
+
+        // Sama persis kredensialnya sudah ketemu di pola lain pada baris ini.
+        // Kalau pola yang baru punya capture group, redaksinya lebih informatif
+        // (konteks baris tetap terlihat, hanya nilainya yang disensor) —
+        // pakai yang itu. Kalau tidak, temuan pertama tetap dipakai.
+        const existing = seen.get(dedupKey);
+        if (existing) {
+          if (match[1] && !existing.hasCaptureGroup) {
+            existing.snippet = line
+              .trim()
+              .replace(match[1], redactSecret(match[1]))
+              .slice(0, 100);
+            existing.hasCaptureGroup = true;
+          }
+          continue;
+        }
+
+        // Redact secret value dari snippet.
+        // Pola BERKUMPUL KELOMPOK (capture group) menyisakan konteks baris.
+        // Pola TANPA capture group (AWS key, GitHub token, JWT, Slack, Stripe)
+        // match[0]-nya justru kredensial itu sendiri, jadi SELURUH baris
+        // direduct — kalau hanya match[0] yang disensor, sisa kredensial
+        // (mis. badan private key di baris berikutnya) tetap bocor.
         let snippet = line.trim();
         if (match[1]) {
           snippet = snippet.replace(match[1], redactSecret(match[1]));
+        } else {
+          snippet = redactSecret(snippet);
         }
 
         matches.push({
@@ -164,7 +250,10 @@ export function scanFileForSecrets(filePath) {
           type,
           description,
           snippet: snippet.slice(0, 100),
+          likelyFixture: isLikelyTestFixture(filePath),
+          hasCaptureGroup: Boolean(match[1]),
         });
+        seen.set(dedupKey, matches[matches.length - 1]);
       }
     }
   }
@@ -233,19 +322,28 @@ export function scanDirectoryForSecrets(dirPath, options = {}) {
 export function formatSecretScanReport(scanResult) {
   const { matches, filesScanned, errors } = scanResult;
 
+  // Pisahkan temuan fixture test dari temuan pada kode produksi — yang
+  // fixture biasanya dummy dan hanya menutupi masalah sebenarnya.
+  const realMatches = matches.filter((m) => !m.likelyFixture);
+  const fixtureMatches = matches.filter((m) => m.likelyFixture);
+
   let report = `\n🔍 Secret Scan Report\n`;
   report += `${'='.repeat(60)}\n`;
   report += `Files scanned: ${filesScanned}\n`;
-  report += `Secrets found: ${matches.length}\n\n`;
+  report += `Secrets found: ${realMatches.length}\n`;
+  if (fixtureMatches.length > 0) {
+    report += `Likely test fixtures (dummy): ${fixtureMatches.length}\n`;
+  }
+  report += `\n`;
 
-  if (matches.length === 0) {
+  if (realMatches.length === 0) {
     report += `✅ No hardcoded secrets detected!\n`;
   } else {
-    report += `⚠️  Found ${matches.length} potential secret(s):\n\n`;
+    report += `⚠️  Found ${realMatches.length} potential secret(s):\n\n`;
 
     // Group by type
     const byType = {};
-    for (const match of matches) {
+    for (const match of realMatches) {
       if (!byType[match.type]) byType[match.type] = [];
       byType[match.type].push(match);
     }
@@ -265,6 +363,11 @@ export function formatSecretScanReport(scanResult) {
     report += `  - Move secrets to environment variables\n`;
     report += `  - Use .env files (add to .gitignore)\n`;
     report += `  - Use secret management tools (Vault, AWS Secrets Manager)\n`;
+  }
+
+  if (fixtureMatches.length > 0) {
+    report += `\nℹ️  ${fixtureMatches.length} temuan lain berada di folder test/fixture `;
+    report += `(umumnya token dummy — tetap periksa bila pernah dipakai di produksi).\n`;
   }
 
   if (errors.length > 0) {

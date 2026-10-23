@@ -46,7 +46,7 @@ describe('Workspace Snapshot & /undo Rollback Engine', () => {
     const writeRes = await handleWriteFile({
       file_path: target,
       content: 'Halo dunia baru!',
-    });
+    }, { skipApproval: true });
     assert.equal(writeRes.success, true);
     assert.equal(fs.existsSync(target), true);
     assert.ok(writeRes.diff, 'harus menyertakan visual diff');
@@ -70,7 +70,7 @@ describe('Workspace Snapshot & /undo Rollback Engine', () => {
       file_path: target,
       old_content: 'Versi 1.0 Original',
       new_content: 'Versi 2.0 Modified',
-    });
+    }, { skipApproval: true });
     assert.equal(editRes.success, true);
     assert.equal(fs.readFileSync(target, 'utf8'), 'Versi 2.0 Modified\nTetap di sini.');
     commitTurnSnapshot();
@@ -92,14 +92,14 @@ describe('Workspace Snapshot & /undo Rollback Engine', () => {
       file_path: target,
       old_content: 'Awal mula',
       new_content: 'Tengah',
-    });
+    }, { skipApproval: true });
 
     // Edit 2: Tengah -> Akhir
     await handleEditFile({
       file_path: target,
       old_content: 'Tengah',
       new_content: 'Akhir',
-    });
+    }, { skipApproval: true });
 
     assert.equal(fs.readFileSync(target, 'utf8'), 'Akhir');
     commitTurnSnapshot();
@@ -117,8 +117,8 @@ describe('Workspace Snapshot & /undo Rollback Engine', () => {
     fs.writeFileSync(file2, 'File 2 Lama', 'utf8');
 
     beginTurnSnapshot(4);
-    await handleEditFile({ file_path: file1, old_content: 'File 1 Lama', new_content: 'File 1 Baru' });
-    await handleEditFile({ file_path: file2, old_content: 'File 2 Lama', new_content: 'File 2 Baru' });
+    await handleEditFile({ file_path: file1, old_content: 'File 1 Lama', new_content: 'File 1 Baru' }, { skipApproval: true });
+    await handleEditFile({ file_path: file2, old_content: 'File 2 Lama', new_content: 'File 2 Baru' }, { skipApproval: true });
     commitTurnSnapshot();
 
     assert.equal(fs.readFileSync(file1, 'utf8'), 'File 1 Baru');
@@ -136,7 +136,7 @@ describe('Workspace Snapshot & /undo Rollback Engine', () => {
     fs.writeFileSync(target, 'Konten Asli', 'utf8');
 
     beginTurnSnapshot(5);
-    await handleEditFile({ file_path: target, old_content: 'Konten Asli', new_content: 'Konten Modif' });
+    await handleEditFile({ file_path: target, old_content: 'Konten Asli', new_content: 'Konten Modif' }, { skipApproval: true });
     commitTurnSnapshot();
 
     assert.equal(fs.readFileSync(target, 'utf8'), 'Konten Modif');

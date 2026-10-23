@@ -1,6 +1,7 @@
 export {
   McpSession,
   loadMcpConfig,
+  loadMcpConfigDetailed,
   connectMcpServer,
   initAllMcpServers,
   listActiveMcpSessions,

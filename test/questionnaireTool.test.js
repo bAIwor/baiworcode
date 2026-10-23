@@ -36,17 +36,39 @@ describe('Interactive Questionnaire Widget (ask_user)', () => {
     assert.ok(res.output.includes('minimal 1 pilihan jawaban'));
   });
 
-  it('harus otomatis memilih opsi default pada lingkungan non-TTY', async () => {
-    // Di lingkungan pengujian otomatis (biasanya non-TTY)
+  it('harus menolak di lingkungan non-TTY alih-alih memalsukan jawaban', async () => {
+    // Di lingkungan pengujian otomatis (biasanya non-TTY) tidak ada manusia
+    // yang bisa menjawab. Tool TIDAK boleh memalsukan jawaban atas nama
+    // pengguna — ia harus menolak dan menyuruh operator opting-in.
     const res = await handleAskUser({
       question: 'Pilih format basis data:',
       options: ['SQLite', 'PostgreSQL', 'MySQL'],
       default_option: 'PostgreSQL',
     });
 
-    assert.equal(res.success, true);
-    assert.equal(res.answer, 'PostgreSQL');
-    assert.ok(res.output.includes('PostgreSQL'));
+    assert.equal(res.success, false);
+    assert.equal(res.answer, undefined);
+    assert.ok(res.output.includes('non-TTY'));
+    assert.ok(res.output.includes('BAIWOR_ASK_USER_AUTO'));
+  });
+
+  it('harus memakai jawaban otomatis bila operator opting-in lewat env', async () => {
+    const previous = process.env.BAIWOR_ASK_USER_AUTO;
+    process.env.BAIWOR_ASK_USER_AUTO = '1';
+    try {
+      const res = await handleAskUser({
+        question: 'Pilih format basis data:',
+        options: ['SQLite', 'PostgreSQL', 'MySQL'],
+        default_option: 'PostgreSQL',
+      });
+
+      assert.equal(res.success, true);
+      assert.equal(res.answer, 'PostgreSQL');
+      assert.ok(res.output.includes('PostgreSQL'));
+    } finally {
+      if (previous === undefined) delete process.env.BAIWOR_ASK_USER_AUTO;
+      else process.env.BAIWOR_ASK_USER_AUTO = previous;
+    }
   });
 
   it('harus dapat menangkap pilihan single-select via custom handler', async () => {
