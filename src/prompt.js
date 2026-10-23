@@ -81,6 +81,12 @@ if (typeof Prompt === 'function' && !Prompt.prototype._baiworStdinPatched) {
 
   const origClose = Prompt.prototype.close;
   Prompt.prototype.close = function (...args) {
+    try {
+      const output = this.output || process.stdout;
+      if (typeof output?.write === 'function') {
+        output.write('\x1b[?2004l');
+      }
+    } catch {}
     const res = origClose.apply(this, args);
     if (activePromptCount > 0) activePromptCount--;
     logStdin('close()');
@@ -289,7 +295,10 @@ export const SUBCOMMANDS = {
  * @returns {{ type: 'none'|'command'|'subcommand'|'freeform', parentCmd: string|null, query: string, matches: Array<{name:string, desc:string}> }}
  */
 export function getPromptContext(value = '') {
-  const trimmedStart = (value || '').trimStart();
+  if (!value || typeof value !== 'string' || value.includes('\n')) {
+    return { type: 'none', parentCmd: null, query: '', matches: [] };
+  }
+  const trimmedStart = value.trimStart();
   if (!trimmedStart.startsWith('/')) {
     return { type: 'none', parentCmd: null, query: '', matches: [] };
   }
@@ -351,6 +360,26 @@ export function getPromptContext(value = '') {
   };
 }
 
+const MAX_VISIBLE_INPUT_LINES = 5;
+
+function renderMultilineContent({ rawText, styledFirst, styledRest, badgeFn, isMultiline }) {
+  if (!isMultiline) {
+    return styledFirst(rawText);
+  }
+  const lines = rawText.split('\n');
+  if (lines.length <= MAX_VISIBLE_INPUT_LINES) {
+    return lines
+      .map((l, i) => (i === 0 ? styledFirst(l) : `     ${styledRest(l)}`))
+      .join('\n');
+  }
+  const preview = [
+    styledFirst(lines[0]),
+    `     ${styledRest(lines[1])}`,
+    `     ${badgeFn(lines.length, lines.length - 2)}`,
+  ];
+  return preview.join('\n');
+}
+
 /**
  * Menyusun seluruh frame area input: garis atas, baris input, dropdown
  * perintah bila terbuka, garis bawah, lalu baris status.
@@ -389,9 +418,26 @@ export function buildPromptFrame({
   out += rules.top + '\n';
 
   if (state === 'submit') {
-    out += `  ${theme.input('›')}  ${theme.input(value || placeholder)}`;
+    const text = value || placeholder;
+    const isMulti = text.includes('\n');
+    out += renderMultilineContent({
+      rawText: text,
+      isMultiline: isMulti,
+      styledFirst: (l) => `  ${theme.input('›')}  ${theme.input(l)}`,
+      styledRest: (l) => theme.input(l),
+      badgeFn: (total, hidden) =>
+        theme.muted(`[📋 +${hidden} baris · total ${total} baris]`),
+    });
   } else if (state === 'cancel') {
-    out += `  ${theme.error('›')}  ${theme.muted.strikethrough(value)}`;
+    const isMulti = (value || '').includes('\n');
+    out += renderMultilineContent({
+      rawText: value || '',
+      isMultiline: isMulti,
+      styledFirst: (l) => `  ${theme.error('›')}  ${theme.muted.strikethrough(l)}`,
+      styledRest: (l) => theme.muted.strikethrough(l),
+      badgeFn: (total, hidden) =>
+        theme.muted.strikethrough(`[📋 +${hidden} baris dibatalkan · total ${total} baris]`),
+    });
   } else if (exitPending && !value) {
     const width = currentCols - 1;
     const msg =
@@ -400,7 +446,19 @@ export function buildPromptFrame({
         : 'Tekan Ctrl+C sekali lagi untuk keluar (atau ketik /exit)';
     out += `  ${theme.warning.bold('›')}  ${theme.warning(msg)}`;
   } else {
-    out += `  ${theme.input('›')}  ${shown ? theme.input(shown) : theme.muted(placeholder)}`;
+    const isMulti = Boolean(shown && shown.includes('\n'));
+    if (isMulti) {
+      out += renderMultilineContent({
+        rawText: shown,
+        isMultiline: true,
+        styledFirst: (l) => `  ${theme.input('›')}  ${theme.input(l)}`,
+        styledRest: (l) => theme.input(l),
+        badgeFn: (total, hidden) =>
+          `${theme.info.bold(`[📋 +${hidden} baris disembunyikan · total ${total} baris]`)} ${theme.muted('(Enter kirim, Ctrl+C batal)')}`,
+      });
+    } else {
+      out += `  ${theme.input('›')}  ${shown ? theme.input(shown) : theme.muted(placeholder)}`;
+    }
 
     const ctx = getPromptContext(value);
     if (dropdownOpen && (ctx.type === 'command' || ctx.type === 'subcommand')) {
@@ -469,6 +527,39 @@ export class SlashTextPrompt extends TextPrompt {
     let historyIndex = -1;
     let savedInputBuffer = '';
 
+    // Bracketed paste & multiline handling
+    let isPasting = false;
+    let pasteBuffer = '';
+    let pasteSafetyTimer = null;
+
+    const clearPasteTimer = () => {
+      if (pasteSafetyTimer) {
+        clearTimeout(pasteSafetyTimer);
+        pasteSafetyTimer = null;
+      }
+    };
+
+    const insertPastedText = (rawText) => {
+      if (!rawText) return;
+      const clean = rawText
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/\t/g, '  ');
+
+      const cur = this._cursor ?? (this.value ? this.value.length : 0);
+      const currentVal = this.value || '';
+      const nextVal = currentVal.slice(0, cur) + clean + currentVal.slice(cur);
+      this.value = nextVal;
+      this._cursor = cur + clean.length;
+      if (this.rl) {
+        this.rl.line = nextVal;
+        this.rl.cursor = this._cursor;
+      }
+      lastVal = nextVal;
+      this.emit('value', nextVal);
+      this.render();
+    };
+
     super({
       ...opts,
       render() {
@@ -522,6 +613,28 @@ export class SlashTextPrompt extends TextPrompt {
           if (showDropdown) return;
           return origNext();
         };
+
+        if (typeof val._ttyWrite === 'function') {
+          const origTtyWrite = val._ttyWrite.bind(val);
+          val._ttyWrite = (s, key) => {
+            if (key?.name === 'paste-start') {
+              isPasting = true;
+              pasteBuffer = '';
+              return;
+            }
+            if (key?.name === 'paste-end') {
+              isPasting = false;
+              clearPasteTimer();
+              insertPastedText(pasteBuffer);
+              pasteBuffer = '';
+              return;
+            }
+            if (isPasting) {
+              return;
+            }
+            return origTtyWrite(s, key);
+          };
+        }
       }
     };
 
@@ -547,6 +660,8 @@ export class SlashTextPrompt extends TextPrompt {
     // Menghilangkan strobing/flickering pada Windows Terminal dan terminal modern.
     const SYNC_START = '\x1b[?2026h';
     const SYNC_END = '\x1b[?2026l';
+    const BRACKETED_PASTE_START = '\x1b[?2004h';
+    const BRACKETED_PASTE_END = '\x1b[?2004l';
 
     this.render = () => {
       const currentCols = outStream.columns || terminalWidth();
@@ -560,6 +675,7 @@ export class SlashTextPrompt extends TextPrompt {
 
       if (this.state === 'initial') {
         buf += '\x1b[?25l'; // Sembunyikan kursor hardware selama interaksi input
+        buf += BRACKETED_PASTE_START; // Aktifkan bracketed paste mode di terminal
         buf += currentFrame;
         this.state = 'active';
       } else if (isResized) {
@@ -678,6 +794,14 @@ export class SlashTextPrompt extends TextPrompt {
 
     const origClose = this.close.bind(this);
     this.close = () => {
+      try {
+        if (typeof outStream?.write === 'function') {
+          outStream.write(BRACKETED_PASTE_END);
+        }
+      } catch {}
+      clearPasteTimer();
+      isPasting = false;
+      pasteBuffer = '';
       if (ctrlCTimer) {
         clearTimeout(ctrlCTimer);
         ctrlCTimer = null;
@@ -695,6 +819,55 @@ export class SlashTextPrompt extends TextPrompt {
     this.onKeypress = (u, key) => {
       ensureRlHooked();
 
+      // Intersep bracketed paste start/end
+      if (key?.name === 'paste-start') {
+        isPasting = true;
+        pasteBuffer = '';
+        clearPasteTimer();
+        pasteSafetyTimer = setTimeout(() => {
+          if (isPasting) {
+            isPasting = false;
+            insertPastedText(pasteBuffer);
+            pasteBuffer = '';
+          }
+        }, 500);
+        return;
+      }
+
+      if (key?.name === 'paste-end') {
+        clearPasteTimer();
+        isPasting = false;
+        insertPastedText(pasteBuffer);
+        pasteBuffer = '';
+        return;
+      }
+
+      if (isPasting) {
+        clearPasteTimer();
+        pasteSafetyTimer = setTimeout(() => {
+          if (isPasting) {
+            isPasting = false;
+            insertPastedText(pasteBuffer);
+            pasteBuffer = '';
+          }
+        }, 500);
+        if (u) {
+          pasteBuffer += u;
+        } else if (key?.sequence) {
+          pasteBuffer += key.sequence;
+        }
+        return;
+      }
+
+      // Alt+Enter / Option+Enter: sisipkan baris baru (newline) manual tanpa submit
+      const isAltEnter =
+        (key?.name === 'return' || key?.name === 'enter') &&
+        Boolean(key?.meta);
+      if (isAltEnter) {
+        insertPastedText('\n');
+        return;
+      }
+
       const val = this.value || '';
       const isSlash = val.trimStart().startsWith('/');
       const isCtrlC =
@@ -704,6 +877,9 @@ export class SlashTextPrompt extends TextPrompt {
 
       // 1. Proteksi penekanan Ctrl+C
       if (isCtrlC) {
+        clearPasteTimer();
+        isPasting = false;
+        pasteBuffer = '';
         // Jika ada teks yang sedang diketik: hapus teks baris input (seperti shell/REPL)
         // Pengguna tidak kehilangan sesi atau keluar dari bAIwor Code karena salah pencet
         if (val.length > 0) {
@@ -1096,5 +1272,16 @@ export async function askBaiworInput(opts = {}) {
       }
       resolve(answer);
     });
+  });
+}
+
+// Pastikan mode bracketed paste & kursor terminal dinormalkan kembali saat proses keluar
+if (typeof process.on === 'function') {
+  process.on('exit', () => {
+    try {
+      if (process.stdout?.isTTY && typeof process.stdout.write === 'function') {
+        process.stdout.write('\x1b[?2004l\x1b[?25h');
+      }
+    } catch {}
   });
 }
