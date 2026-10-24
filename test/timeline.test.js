@@ -481,6 +481,16 @@ describe('Timeline: Tim Punakawan AI (Aktor & Penamaan)', () => {
     assert.ok(out.includes('semAIr · Daftar tugas'));
   });
 
+  it('harus menghormati ev.actor kustom (misal bAIwor sebagai tokoh utama loop utama)', () => {
+    const sample = [
+      { name: 'read_file', actor: 'bAIwor', args: { path: 'a.js' }, durationMs: 10, success: true },
+      { name: 'run_command', actor: 'bAIwor', args: { command: 'git status' }, durationMs: 20, success: true },
+    ];
+    const out = renderTimeline(sample, { useColor: false });
+    assert.ok(out.includes('bAIwor · Baca berkas'));
+    assert.ok(out.includes('bAIwor · Jalankan perintah'));
+  });
+
   it('harus tetap menyertakan nama karakter Punakawan saat tool gagal', () => {
     const out = renderTimeline(
       [{ name: 'run_command', args: {}, durationMs: 5, output: 'gagal', success: false }],

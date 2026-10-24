@@ -39,7 +39,7 @@ const ESLINT_CONFIGS = [
  * @param {typeof fs} [fsImpl] Dipakai pengujian untuk menyuntik fs tiruan.
  * @returns {Array<{label:string, command:string}>}
  */
-export function detectDiagnosticCommands(dir, fsImpl = fs) {
+export function detectDiagnosticCommands(dir, fsImpl = fs, { fastOnly = false } = {}) {
   const cmds = [];
   const pkgPath = path.join(dir, 'package.json');
   let scripts = {};
@@ -52,11 +52,15 @@ export function detectDiagnosticCommands(dir, fsImpl = fs) {
   }
   const hasScript = (n) => typeof scripts[n] === 'string';
 
-  const checkScript = ['check'].find(hasScript);
-
-  if (checkScript) {
-    cmds.push({ label: `npm run ${checkScript}`, command: `npm run ${checkScript}` });
-    return cmds;
+  // Script agregat 'check' (yang seringkali menjalankan full test suite)
+  // hanya diutamakan saat BUKAN mode fastOnly. Mode fastOnly memprioritaskan
+  // linting & typechecking cepat untuk siklus self-healing.
+  if (!fastOnly) {
+    const checkScript = ['check'].find(hasScript);
+    if (checkScript) {
+      cmds.push({ label: `npm run ${checkScript}`, command: `npm run ${checkScript}` });
+      return cmds;
+    }
   }
 
   const typecheckScript = ['typecheck', 'type-check', 'types'].find(hasScript);

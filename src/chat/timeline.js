@@ -386,7 +386,7 @@ export function renderTimeline(
     if (lineCount > 0) meta.push(c.gray(`${lineCount} baris`));
     if (ev.extraMeta) meta.push(c.gray(ev.extraMeta));
 
-    const punakawan = PUNAKAWAN_ROLES[ev.name];
+    const punakawan = ev.actor || PUNAKAWAN_ROLES[ev.name];
     // Nama karakter Punakawan selalu kuning emas (seragam) agar identitas aktor
     // langsung terbaca; warna kategori tetap dipegang oleh nama tool di
     // sampingnya.
@@ -552,7 +552,7 @@ export function renderTimelineCompact(
       const toolName = (failed ? c.hex(palette.error) : tint)(c.bold(toolLabel(ev.name)));
 
       // Aktor Punakawan tetap tampil (kuning emas) agar "siapa yang bertindak" tetap jelas.
-      const punakawan = PUNAKAWAN_ROLES[ev.name];
+      const punakawan = ev.actor || PUNAKAWAN_ROLES[ev.name];
       const actorPart = punakawan
         ? `${c.hex(PUNAKAWAN_COLORS[punakawan] || palette.gold)(c.bold(punakawan))} ${dot} `
         : '';

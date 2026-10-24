@@ -88,9 +88,9 @@ export class LiveActivity {
   }
 
   /** Menandai tool mulai berjalan, menggambar ulang blok, dan memutar frame. */
-  addTool(name, args) {
+  addTool(name, args, { actor } = {}) {
     const index = this.events.length;
-    this.events.push({ name, args, running: true, durationMs: 0, success: true });
+    this.events.push({ name, args, actor, running: true, durationMs: 0, success: true });
     this.#draw();
     this.#ensureTimer();
     return index;

@@ -89,12 +89,13 @@ export async function runSelfHealingDiagnostics(modifiedFiles, options = {}) {
   const cwd = options.cwd || process.cwd();
   const projectRoot = findProjectRoot(modifiedFiles, cwd);
 
-  // Cek apakah ada perintah diagnostik yang tersedia
-  const commands = detectDiagnosticCommands(projectRoot);
+  // Cek apakah ada perintah diagnostik cepat yang tersedia (lint/typecheck).
+  // Jangan jalankan script agregat berat (npm run check / npm test) secara otomatis.
+  const commands = detectDiagnosticCommands(projectRoot, fs, { fastOnly: true });
   if (commands.length === 0) {
     return {
       passed: true,
-      output: 'Tidak ada pemeriksaan diagnostik yang terdeteksi (tidak ada script lint/typecheck/check).',
+      output: 'Tidak ada pemeriksaan diagnostik cepat yang terdeteksi (tidak ada script lint/typecheck).',
       errors: [],
       projectRoot,
     };
@@ -159,7 +160,7 @@ Tugas Anda:
 2. Perbaiki error tersebut menggunakan tool edit_file atau patch_file.
 3. Setelah perbaikan, sistem akan menjalankan diagnostik ulang secara otomatis.
 
-Jangan menjelaskan error kepada pengguna — langsung perbaiki saja.
+Jelaskan secara singkat apa error yang terjadi dan berkas apa yang Anda perbaiki kepada pengguna.
 </self-healing-diagnostic-failure>`;
 }
 

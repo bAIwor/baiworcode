@@ -356,6 +356,17 @@ export async function handleUserChat(promptText) {
     const styler = new AnswerStyler({ useColor: isTTY });
     let inDeliverTag = false;
     let deliverTagBuffer = '';
+    let hasPrintedAssistantHeader = false;
+
+    const ensureAssistantHeader = () => {
+      if (!hasPrintedAssistantHeader) {
+        hasPrintedAssistantHeader = true;
+        const header = isTTY
+          ? chalk.hex(palette.gold).bold('✦ bAIwor') + '\n\n'
+          : '✦ bAIwor\n\n';
+        process.stdout.write(header);
+      }
+    };
 
     startThinkingSpinner(spinnerText);
     try {
@@ -408,6 +419,8 @@ export async function handleUserChat(promptText) {
 
           if (!text) return;
 
+          ensureAssistantHeader();
+
           try {
             const styled = styler.push(text);
             if (styled) {
@@ -444,10 +457,12 @@ export async function handleUserChat(promptText) {
    * kesimpulan, bukan memanggil tool lagi. Hasilnya tetap sebuah jawaban akhir,
    * jadi kerja yang sudah dilakukan tidak berakhir tanpa keputusan.
    */
-  const requestFinalAnswer = async () => {
-    const reason = stuckLoop
-      ? 'Model mengulang langkah yang sama tanpa menyimpulkan'
-      : `Batas ${MAX_AGENT_TURNS} putaran tool tercapai`;
+  const requestFinalAnswer = async (customReason) => {
+    const reason =
+      customReason ||
+      (stuckLoop
+        ? 'Model mengulang langkah yang sama tanpa menyimpulkan'
+        : `Batas ${MAX_AGENT_TURNS} putaran tool tercapai`);
     process.stdout.write(chalk.yellow(`\n  ⚠️  ${reason}. Meminta kesimpulan akhir…\n`));
 
     // Dikirim sebagai `user` (bukan `system` di tengah riwayat) agar diterima
@@ -630,7 +645,7 @@ export async function handleUserChat(promptText) {
           }
 
           const shouldSuspend = toolMayPrompt(fnName, parsedArgs);
-          const liveIndex = live.addTool(fnName, parsedArgs);
+          const liveIndex = live.addTool(fnName, parsedArgs, { actor: 'bAIwor' });
           if (shouldSuspend) live.suspend();
 
           // Penjaga mode Plan: tool tulis sudah tidak dikirim ke model di mode
@@ -709,6 +724,7 @@ export async function handleUserChat(promptText) {
 
           const event = {
             name: fnName,
+            actor: 'bAIwor',
             args: parsedArgs,
             durationMs,
             output: toolResult.output,
@@ -813,6 +829,15 @@ export async function handleUserChat(promptText) {
         );
         conversationSession.addUserMessage(buildTodoTurnEndReminder(sisaTodo));
         continue;
+      }
+
+      const finalContent = (result.content || '').trim();
+      if (!finalContent && toolCallsThisTurn > 0) {
+        // Model menyelesaikan pemanggilan tool tetapi berhenti tanpa memberikan laporan akhir.
+        // Minta laporan kesimpulan secara eksplisit agar pengguna tidak dibiarkan tanpa penjelasan.
+        await requestFinalAnswer('Langkah pekerjaan selesai');
+        completedNaturally = true;
+        break;
       }
 
       conversationSession.addAssistantMessage(

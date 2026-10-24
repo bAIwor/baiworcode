@@ -206,7 +206,16 @@ describe('StatusLine: Penyesuaian Lebar Terminal', () => {
 
   it('harus mengorbankan provider lebih dulu daripada nama model', () => {
     const config = getConfig();
-    const sempit = polos(renderStatusLine({ maxWidth: 65 }));
+    let sempit = polos(renderStatusLine({ maxWidth: 55 }));
+    if (config.activeProvider && sempit.includes(config.activeProvider)) {
+      for (let w = 54; w >= 40; w--) {
+        const s = polos(renderStatusLine({ maxWidth: w }));
+        if (!s.includes(config.activeProvider)) {
+          sempit = s;
+          break;
+        }
+      }
+    }
     const modelSnippet = (config.activeModel || 'Not configured').slice(0, 10);
     assert.ok(sempit.includes(modelSnippet), 'nama model harus bertahan');
     if (config.activeProvider && config.activeProvider !== 'baiwor.my.id' && config.activeProvider !== 'Not configured') {

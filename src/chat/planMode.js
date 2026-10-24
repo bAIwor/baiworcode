@@ -19,71 +19,11 @@ export const PLAN_ALLOWED_TOOLS = [
   'ask_user',
 ];
 
-/**
- * Spesialisasi 4 Peran Tim Punakawan AI (Punakawan Agent Roles)
- * Mengadopsi arsitektur multi-agent: Architect, Explorer, Worker, Verifier.
- */
-export const PUNAKAWAN_ROLES = {
-  semAIr: {
-    name: 'semAIr',
-    title: 'Sang Arsitek & Orchestrator',
-    emoji: '👑',
-    role: 'architect',
-    description: 'Merancang breakdown tugas, analisis kebutuhan, struktur roadmap, dan memelihara konteks percakapan.',
-    allowedTools: ['todo_list', 'read_file', 'list_directory', 'search_files', 'websearch', 'ask_user'],
-  },
-  pAItruk: {
-    name: 'pAItruk',
-    title: 'Sang Scout & Penjelajah',
-    emoji: '🔭',
-    role: 'explore',
-    description: 'Investigasi kode read-only, pemetaan dependensi, dan penelusuran referensi tanpa mengubah berkas.',
-    allowedTools: ['read_file', 'list_directory', 'search_files', 'webfetch', 'websearch'],
-  },
-  bAIwor: {
-    name: 'bAIwor',
-    title: 'Sang Master Builder & Worker',
-    emoji: '🔨',
-    role: 'worker',
-    description: 'Eksekusi produksi konkrit, modifikasi kode presisi, refactoring, dan implementasi fitur.',
-    allowedTools: ['edit_file', 'write_file', 'patch_file', 'run_command'],
-  },
-  gAIreng: {
-    name: 'gAIreng',
-    title: 'Sang Auditor & Verifier',
-    emoji: '⚖️',
-    role: 'verifier',
-    description: 'Audit mutu independen, eksekusi unit test, verifikasi diagnostik, dan mitigasi regresi.',
-    allowedTools: ['run_command', 'diagnostics', 'read_file'],
-  },
-};
-
-/**
- * Mengambil metadata peran Punakawan berdasarkan nama atau alias
- * @param {string} roleName
- * @returns {object|null}
- */
-export function getPunakawanRole(roleName) {
-  if (!roleName || typeof roleName !== 'string') return null;
-  const key = roleName.toLowerCase().trim();
-  for (const [name, meta] of Object.entries(PUNAKAWAN_ROLES)) {
-    if (name.toLowerCase() === key || meta.role.toLowerCase() === key) {
-      return meta;
-    }
-  }
-  return null;
-}
-
-/**
- * Menghasilkan badge teks peran Punakawan untuk display status UI
- * @param {string} roleName
- * @returns {string}
- */
-export function formatPunakawanBadge(roleName) {
-  const role = getPunakawanRole(roleName);
-  if (!role) return '';
-  return `[${role.emoji} ${role.name}: ${role.title}]`;
-}
+export {
+  PUNAKAWAN_ROLES,
+  getPunakawanRole,
+  formatPunakawanBadge,
+} from '../agents/punakawan.js';
 
 export const PLAN_SYSTEM_INSTRUCTION = `
 🚨 [MODE PERENCANAAN AKTIF (/permission plan) — Kearifan semAIr]
