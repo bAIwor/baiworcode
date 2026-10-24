@@ -1,5 +1,6 @@
 import { createPainter } from '../colors.js';
 import { palette } from '../theme.js';
+import { PUNAKAWAN_COLORS, SQUAD_ROLE_EMOJIS } from '../agents/punakawan.js';
 import { sanitizeTerminalText } from './wrapText.js';
 
 const DEFAULT_SUMMARY_LEN = 80;
@@ -59,27 +60,9 @@ export const PUNAKAWAN_ROLES = {
   instabox_exec: 'bAIwor',
 };
 
-/** Ikon peran subagent untuk pohon aktivitas paralel (Punakawan Squad). */
-const SQUAD_ROLE_EMOJIS = {
-  pAItruk: '🔍',
-  gAIreng: '⚖️',
-  bAIwor: '🔨',
-};
-
-/**
- * Palet warna representasi karakter Tim Punakawan AI.
- *
- * Semua anggota memakai SATU warna yang sama — kuning emas — supaya identitas
- * "siapa yang bertindak" seragam dan langsung terbaca. Kategori aksi sudah
- * dibedakan lewat warna nama tool (lihat TOOL_TINTS), jadi peran dan jenis
- * aksi tidak saling berebut perhatian.
- */
-export const PUNAKAWAN_COLORS = {
-  semAIr: palette.gold, // kuning emas — Arsitek & Pamomong
-  bAIwor: palette.gold, // kuning emas — Master Builder
-  pAItruk: palette.gold, // kuning emas — Penelusur & Periset
-  gAIreng: palette.gold, // kuning emas — Auditor & Quality Gate
-};
+// Warna & ikon peran berasal dari sumber tunggal di agents/punakawan.js.
+// Kategori aksi tetap dibedakan lewat warna nama tool (lihat TOOL_TINTS).
+export { PUNAKAWAN_COLORS };
 
 const DEFAULT_TOOL_TINT = palette.textMuted;
 

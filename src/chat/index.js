@@ -1,6 +1,6 @@
 import path from 'node:path';
 import chalk from 'chalk';
-import { theme } from '../theme.js';
+import { theme, palette } from '../theme.js';
 import { resolveActiveCredentials } from '../auth/resolve.js';
 import { conversationSession } from './conversation.js';
 import { streamChatCompletion } from './client.js';
@@ -292,7 +292,11 @@ export async function handleUserChat(promptText) {
   // Sekali per giliran pengguna: cegah model menutup giliran dengan todo aktif.
   let todoTurnEndNudgeUsed = false;
 
-  // Self-Healing Diagnostics: lacak berkas yang dimodifikasi dan jumlah retry
+  // Self-Healing Diagnostics: lacak berkas yang dimodifikasi dan jumlah retry.
+  // Otomatis mati secara bawaan — diagnostik hanya berjalan bila model memanggil
+  // tool `diagnostics` atau pengguna memintanya. Set BAIWOR_SELF_HEALING=1
+  // untuk mengaktifkan pemeriksaan cepat (lint/typecheck) setelah berkas diubah.
+  const SELF_HEALING_ENABLED = /^(1|true|on|yes)$/i.test(process.env.BAIWOR_SELF_HEALING || '');
   const FILE_MODIFYING_TOOLS = ['write_file', 'edit_file', 'patch_file'];
   const MAX_DIAGNOSTICS_RETRIES = 2;
   let diagnosticsRetryCount = 0;
@@ -498,7 +502,7 @@ export async function handleUserChat(promptText) {
       chalk.gray('     Model tetap tidak memberi kesimpulan. Coba persempit atau perjelas permintaan Anda.\n')
     );
     conversationSession.addAssistantMessage(
-      '[Sistem] Batas putaran tool tercapai sebelum jawaban akhir diberikan.'
+      '[Sistem] Model menyelesaikan giliran tanpa memberikan laporan akhir.'
     );
   };
 
@@ -698,6 +702,7 @@ export async function handleUserChat(promptText) {
 
           // Self-Healing: lacak berkas yang berhasil dimodifikasi oleh tool modifikasi
           if (
+            SELF_HEALING_ENABLED &&
             toolResult.success &&
             FILE_MODIFYING_TOOLS.includes(fnName) &&
             parsedArgs.file_path
@@ -765,7 +770,7 @@ export async function handleUserChat(promptText) {
 
         // Self-Healing Diagnostics: jika ada berkas yang dimodifikasi, jalankan
         // pemeriksaan otomatis sebelum lanjut ke giliran berikutnya
-        if (modifiedFilesThisTurn.length > 0) {
+        if (SELF_HEALING_ENABLED && modifiedFilesThisTurn.length > 0) {
           const diagResult = await runSelfHealingDiagnostics(modifiedFilesThisTurn, {
             signal: controller.signal,
           });
@@ -832,10 +837,10 @@ export async function handleUserChat(promptText) {
       }
 
       const finalContent = (result.content || '').trim();
-      if (!finalContent && toolCallsThisTurn > 0) {
-        // Model menyelesaikan pemanggilan tool tetapi berhenti tanpa memberikan laporan akhir.
-        // Minta laporan kesimpulan secara eksplisit agar pengguna tidak dibiarkan tanpa penjelasan.
-        await requestFinalAnswer('Langkah pekerjaan selesai');
+      if (!finalContent) {
+        // Giliran berakhir tanpa teks apa pun. Jangan tutup diam-diam: minta
+        // laporan kesimpulan sekali agar pengguna tidak ditinggalkan tanpa kabar.
+        await requestFinalAnswer('Model mengakhiri giliran tanpa laporan');
         completedNaturally = true;
         break;
       }
