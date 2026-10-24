@@ -15,6 +15,44 @@ function cleanUrl(urlStr) {
   }
 }
 
+/** Batas waktu probe /models. Singkat agar menu tidak terasa membeku. */
+const MODELS_PROBE_TIMEOUT_MS = 5000;
+
+/**
+ * Menyusun endpoint /models dari base URL yang mungkin ditempel pengguna secara
+ * lengkap (`…/chat/completions`, `…/responses`, atau `…/models`). Tanpa
+ * normalisasi, probe menuju path yang tidak ada (404) dan menu melaporkan
+ * "tidak bisa mengambil daftar model".
+ *
+ * @param {string} baseUrl
+ * @returns {string}
+ */
+export function modelsEndpoint(baseUrl) {
+  let base = String(baseUrl || '').trim().replace(/\/+$/, '');
+  base = base
+    .replace(/\/chat\/completions$/i, '')
+    .replace(/\/responses$/i, '')
+    .replace(/\/models$/i, '');
+  return `${base.replace(/\/+$/, '')}/models`;
+}
+
+/**
+ * clack menghitung jendela opsi dari `process.stdout.rows`. Bila terminal
+ * belum melaporkan ukuran (0/undefined), daftar opsi bisa dirender kosong
+ * sehingga menu tampak tidak bisa dipakai. Pasang ukuran cadangan.
+ */
+function ensureMenuViewport() {
+  if (!process.stdout.rows || process.stdout.rows < 6) {
+    try {
+      Object.defineProperty(process.stdout, 'rows', {
+        value: 24,
+        configurable: true,
+        writable: true,
+      });
+    } catch {}
+  }
+}
+
 const DEFAULT_AGENTIK_MODELS = [
   'gemini-3.8-flash-high',
   'gemini-3.5-flash',
@@ -70,17 +108,18 @@ async function configureAgentikFlow(existingCp, customList, config) {
   const apiKey = (inputKey && inputKey.trim()) ? inputKey.trim() : currentKey;
 
   // 3. Probe daftar model dari server (endpoint /models)
+  const probeUrl = modelsEndpoint(baseUrl);
   const s = spinner();
-  s.start(`Menghubungi ${cleanUrl(baseUrl)}/models...`);
+  s.start(`Menghubungi ${cleanUrl(probeUrl)}...`);
 
   let fetchedModels = [];
   try {
-    const res = await fetch(`${baseUrl}/models`, {
+    const res = await fetch(probeUrl, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'User-Agent': CLI_USER_AGENT,
       },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(MODELS_PROBE_TIMEOUT_MS),
     });
 
     if (res.ok) {
@@ -98,7 +137,14 @@ async function configureAgentikFlow(existingCp, customList, config) {
     }
   } catch {}
 
-  const availableModels = fetchedModels.length > 0 ? fetchedModels : DEFAULT_AGENTIK_MODELS;
+  // Fallback berurutan: hasil probe → daftar tersimpan → rekomendasi bawaan.
+  const savedModels = Array.isArray(existingCp?.models) ? existingCp.models.filter(Boolean) : [];
+  const availableModels =
+    fetchedModels.length > 0
+      ? fetchedModels
+      : savedModels.length > 0
+        ? savedModels
+        : DEFAULT_AGENTIK_MODELS;
 
   if (fetchedModels.length > 0) {
     s.stop(chalk.green(`✓ Terhubung! Ditemukan ${fetchedModels.length} model di server Agentik.`));
@@ -109,6 +155,7 @@ async function configureAgentikFlow(existingCp, customList, config) {
   // 4. Pilih Model
   const pickedModel = await p.select({
     message: '3. Pilih model aktif:',
+    maxItems: 10,
     options: [
       ...availableModels.map((m) => ({
         value: m,
@@ -169,6 +216,7 @@ export async function runModelMenu() {
   while (true) {
     // Catatan: jangan mengelola pause/resume process.stdin di sini.
     // Biarkan @clack/core menjaga stdin.
+    ensureMenuViewport();
     const config = getConfig();
 
     console.log();
@@ -242,6 +290,7 @@ export async function runModelMenu() {
 
     let choice = await p.select({
       message: 'Select model or provider:',
+      maxItems: 10,
       options: selectOptions,
     });
 
@@ -284,11 +333,12 @@ export async function runModelMenu() {
 
         const subChoice = await p.select({
           message: `Kelola ${chalk.bold('Agentik AI')} 👑 (Sponsor Resmi):`,
+          maxItems: 10,
           options: [
             { value: 'activate', label: `Aktifkan Agentik (${cp.model})` },
             { value: 'setup_flow', label: '⚡ Konfigurasi cepat (Base URL, API Key & Model)' },
             { value: 'switch_model', label: 'Ganti model aktif' },
-            { value: 'refresh_models', label: `Refresh daftar model dari ${cleanUrl(cp.baseUrl)}/models` },
+            { value: 'refresh_models', label: `Refresh daftar model dari ${cleanUrl(modelsEndpoint(cp.baseUrl))}` },
             { value: 'edit_key', label: `Ubah API Key (${maskSecret(cp.apiKey)})` },
             { value: 'back', label: '← Kembali' },
           ],
@@ -341,6 +391,7 @@ export async function runModelMenu() {
 
           const picked = await p.select({
             message: 'Pilih model aktif untuk Agentik:',
+            maxItems: 10,
             options: [
               ...modelsList.map((m) => ({ value: m, label: m })),
               { value: '__manual__', label: '✎ Ketik nama model lain...' },
@@ -381,16 +432,17 @@ export async function runModelMenu() {
         }
 
         if (subChoice === 'refresh_models') {
+          const probeUrl = modelsEndpoint(cp.baseUrl);
           const s = spinner();
-          s.start(`Menghubungi ${cleanUrl(cp.baseUrl)}/models...`);
+          s.start(`Menghubungi ${cleanUrl(probeUrl)}...`);
 
           try {
-            const res = await fetch(`${cp.baseUrl}/models`, {
+            const res = await fetch(probeUrl, {
               headers: {
                 Authorization: `Bearer ${cp.apiKey}`,
                 'User-Agent': CLI_USER_AGENT,
               },
-              signal: AbortSignal.timeout(10000),
+              signal: AbortSignal.timeout(MODELS_PROBE_TIMEOUT_MS),
             });
 
             if (!res.ok) {
@@ -425,7 +477,7 @@ export async function runModelMenu() {
             saveConfig({ customProviders: updatedCustom });
             continue;
           } catch (err) {
-            s.stop(chalk.red(`Gagal me-refresh model: ${err.message}`));
+            s.stop(chalk.red(`Gagal me-refresh model dari ${cleanUrl(probeUrl)}: ${err.message}`));
             continue;
           }
         }
@@ -436,10 +488,11 @@ export async function runModelMenu() {
       // Handler untuk Custom Provider selain Agentik
       const subChoice = await p.select({
         message: `Kelola Custom Provider: ${chalk.bold(cp.name)}`,
+        maxItems: 10,
         options: [
           { value: 'activate', label: `Aktifkan ${cp.name} (${cp.model})` },
           { value: 'switch_model', label: 'Ganti model aktif' },
-          { value: 'refresh_models', label: `Refresh daftar model dari ${cleanUrl(cp.baseUrl)}/models` },
+          { value: 'refresh_models', label: `Refresh daftar model dari ${cleanUrl(modelsEndpoint(cp.baseUrl))}` },
           { value: 'edit_key', label: `Ubah API Key (${maskSecret(cp.apiKey)})` },
           { value: 'delete', label: chalk.redBright(`Hapus provider ${cp.name}`) },
           { value: 'back', label: '← Kembali' },
@@ -528,6 +581,7 @@ export async function runModelMenu() {
 
         const picked = await p.select({
           message: `Pilih model untuk ${cp.name}:`,
+          maxItems: 10,
           options: [
             ...modelsList.map((m) => ({ value: m, label: m })),
             { value: '__manual__', label: '✎ Ketik nama model lain...' },
@@ -568,16 +622,17 @@ export async function runModelMenu() {
       }
 
       if (subChoice === 'refresh_models') {
+        const probeUrl = modelsEndpoint(cp.baseUrl);
         const s = spinner();
-        s.start(`Menghubungi ${cleanUrl(cp.baseUrl)}/models...`);
+        s.start(`Menghubungi ${cleanUrl(probeUrl)}...`);
 
         try {
-          const res = await fetch(`${cp.baseUrl}/models`, {
+          const res = await fetch(probeUrl, {
             headers: {
               Authorization: `Bearer ${cp.apiKey}`,
               'User-Agent': CLI_USER_AGENT,
             },
-            signal: AbortSignal.timeout(10000),
+            signal: AbortSignal.timeout(MODELS_PROBE_TIMEOUT_MS),
           });
 
           if (!res.ok) {
@@ -602,6 +657,7 @@ export async function runModelMenu() {
             s.stop(chalk.green(`Berhasil menemukan ${fetched.length} model!`));
             const newPicked = await p.select({
               message: 'Pilih model aktif:',
+              maxItems: 10,
               options: fetched.map((m) => ({ value: m, label: m })),
             });
 
@@ -623,7 +679,7 @@ export async function runModelMenu() {
             return;
           }
         } catch (err) {
-          s.stop(chalk.red(`Gagal me-refresh model: ${err.message}`));
+          s.stop(chalk.red(`Gagal me-refresh model dari ${cleanUrl(probeUrl)}: ${err.message}`));
         }
         continue;
       }
@@ -669,19 +725,20 @@ export async function runModelMenu() {
       if (p.isCancel(apiKey)) continue;
 
       const cleanBase = baseUrl.trim().replace(/\/+$/, '');
+      const probeUrl = modelsEndpoint(cleanBase);
       const s = spinner();
-      s.start(`Menghubungi ${cleanBase}/models...`);
+      s.start(`Menghubungi ${cleanUrl(probeUrl)}...`);
 
       let fetchedModels = [];
       let fetchSuccess = false;
 
       try {
-        const res = await fetch(`${cleanBase}/models`, {
+        const res = await fetch(probeUrl, {
           headers: {
             Authorization: `Bearer ${apiKey.trim()}`,
             'User-Agent': CLI_USER_AGENT,
           },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(MODELS_PROBE_TIMEOUT_MS),
         });
 
         if (res.ok) {
@@ -709,11 +766,16 @@ export async function runModelMenu() {
         s.stop(chalk.green(`Berhasil menemukan ${fetchedModels.length} model!`));
         selectedModel = await p.select({
           message: 'Pilih model yang ingin digunakan:',
+          maxItems: 10,
           options: fetchedModels.map((m) => ({ value: m, label: m })),
         });
         if (p.isCancel(selectedModel)) continue;
       } else {
-        s.stop(chalk.yellow('Tidak dapat mengambil daftar model secara otomatis.'));
+        s.stop(
+          chalk.yellow(
+            `Tidak dapat mengambil ${cleanUrl(probeUrl)} — ketik nama model secara manual.`
+          )
+        );
         selectedModel = await p.text({
           message: 'Ketik nama model secara manual:',
           placeholder: 'contoh: gemini-3.8-flash-high',
@@ -761,6 +823,7 @@ export async function runModelMenu() {
       );
       const toRemove = await p.select({
         message: 'Pilih custom provider yang ingin dihapus:',
+        maxItems: 10,
         options: [
           ...removableList.map((cp) => ({
             value: cp.name,

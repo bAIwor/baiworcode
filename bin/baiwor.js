@@ -2363,6 +2363,12 @@ async function startInteractive(opts = {}) {
         //   /model alias list|add|remove <nama> [provider/model]
         const handled = handleModelCommand(arg);
         if (handled.needsMenu) {
+          // Menu memakai prompt raw-mode: hanya masuk akal di terminal nyata.
+          if (!(process.stdin.isTTY && process.stdout.isTTY)) {
+            console.log(chalk.yellow('\n  ⚠️  Menu /model membutuhkan terminal interaktif.'));
+            console.log(chalk.gray('     Gunakan: /model <provider/model> atau /model alias list\n'));
+            break;
+          }
           await runModelMenu();
         } else if (handled.output) {
           console.log(handled.output);
