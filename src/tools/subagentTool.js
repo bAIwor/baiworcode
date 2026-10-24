@@ -77,6 +77,16 @@ Jawab lugas, to-the-point, dan jujur (blakasuta).`,
   },
 };
 
+/**
+ * Batas putaran bawaan per peran. pAItruk mendapat jatah lebih longgar karena
+ * tugas eksplorasi memang membaca banyak berkas sebelum bisa menyimpulkan.
+ */
+export const DEFAULT_MAX_TURNS_BY_ROLE = {
+  pAItruk: 12,
+  gAIreng: 8,
+  bAIwor: 8,
+};
+
 export const MAX_PARALLEL_TASKS = 6;
 export const PARALLEL_CONCURRENCY = 3;
 
@@ -87,12 +97,12 @@ export const PARALLEL_CONCURRENCY = 3;
  * @param {string} args.role - 'pAItruk' | 'gAIreng' | 'bAIwor'
  * @param {string} args.task - Deskripsi tugas
  * @param {string} [args.context] - Konteks tambahan
- * @param {number} [args.max_turns=8] - Batas putaran (1-20)
+ * @param {number} [args.max_turns] - Batas putaran (1-20; default per peran, lihat DEFAULT_MAX_TURNS_BY_ROLE)
  * @param {Object} [options] - Opsi runtime & dependency injection ({ completionFn, credentials, signal })
  * @returns {Promise<{ success: boolean, output: string, role?: string, turns?: number }>}
  */
 async function runSingleDelegate(args = {}, options = {}) {
-  const { role, task, context = '', max_turns = 8 } = args || {};
+  const { role, task, context = '', max_turns } = args || {};
 
   if (!role || !SUBAGENT_ROLES[role]) {
     const rolesList = Object.keys(SUBAGENT_ROLES).join(', ');
@@ -110,7 +120,8 @@ async function runSingleDelegate(args = {}, options = {}) {
   }
 
   const roleConfig = SUBAGENT_ROLES[role];
-  const maxTurns = Math.max(1, Math.min(20, Number(max_turns) || 8));
+  const defaultTurns = DEFAULT_MAX_TURNS_BY_ROLE[role] || 8;
+  const maxTurns = Math.max(1, Math.min(20, Number(max_turns) || defaultTurns));
 
   // Progres: mulai → tiap turn → selesai/gagal. Kegagalan callback tidak boleh
   // menggagalkan subagent.
@@ -145,9 +156,77 @@ async function runSingleDelegate(args = {}, options = {}) {
   let turn = 0;
   let finalReport = '';
   let toolCallCount = 0;
+  // Alasan loop berhenti tanpa laporan: 'tool_budget' | 'empty' | null (batas putaran).
+  let stopReason = null;
   const startedAt = Date.now();
   const MAX_DURATION_MS = 5 * 60 * 1000;
   const MAX_TOOL_CALLS = 40;
+
+  /**
+   * Satu panggilan model ke provider (atau `completionFn` saat pengujian).
+   * Melempar error ber-`code: 'NO_CREDENTIALS'` bila kredensial belum tersedia.
+   */
+  const requestCompletion = async (outboundMessages, tools) => {
+    if (typeof options.completionFn === 'function') {
+      return await options.completionFn({
+        messages: [...outboundMessages],
+        tools,
+        signal: options.signal,
+        turn,
+      });
+    }
+
+    const credentials = options.credentials || (await resolveActiveCredentials());
+    if (
+      !credentials ||
+      !(credentials.apiKey || credentials.headers?.Authorization || credentials.type === 'agy')
+    ) {
+      const err = new Error('Kredensial model AI tidak ditemukan untuk menjalankan subagent.');
+      err.code = 'NO_CREDENTIALS';
+      throw err;
+    }
+
+    let contentBuffer = '';
+    const result = await streamChatCompletion({
+      credentials,
+      messages: outboundMessages,
+      tools,
+      signal: options.signal,
+      onDelta: (chunk) => {
+        contentBuffer += chunk;
+      },
+    });
+    if (!result.content && contentBuffer) {
+      result.content = contentBuffer;
+    }
+    return result;
+  };
+
+  /**
+   * Giliran penutup TANPA tool: memaksa subagent menyusun laporan dari temuan
+   * yang sudah ada ketika batas putaran/panggilan tool tercapai. Tanpa ini,
+   * seluruh hasil investigasi dibuang dan agen utama menerima error kosong.
+   */
+  const attemptWrapUpReport = async (reasonText) => {
+    try {
+      const wrap = await requestCompletion(
+        [
+          ...messages,
+          {
+            role: 'user',
+            content:
+              `[Sistem] ${reasonText}. JANGAN memanggil tool lagi. ` +
+              'Tuliskan laporan akhir sekarang dari hasil yang sudah kamu peroleh, ' +
+              'dan sebutkan secara jujur bagian mana yang belum tuntas.',
+          },
+        ],
+        []
+      );
+      return String(wrap?.content || '').trim();
+    } catch {
+      return '';
+    }
+  };
 
   while (turn < maxTurns) {
     turn += 1;
@@ -175,64 +254,19 @@ async function runSingleDelegate(args = {}, options = {}) {
     emitProgress('turn', turn);
 
     let completionResult = null;
-
-    if (typeof options.completionFn === 'function') {
-      try {
-        completionResult = await options.completionFn({
-          messages: [...messages],
-          tools: allowedToolDefs,
-          signal: options.signal,
-          turn,
-        });
-      } catch (err) {
-        emitProgress('failed', turn);
-        return {
-          success: false,
-          output: `[delegate_task] Eksekusi subagent gagal: ${err.message}`,
-          role,
-          turns: turn,
-        };
-      }
-    } else {
-      // resolveActiveCredentials bersifat async; tanpa await, objek Promise
-      // dianggap kredensial dan subagent selalu gagal.
-      const credentials = options.credentials || (await resolveActiveCredentials());
-      if (
-        !credentials ||
-        !(credentials.apiKey || credentials.headers?.Authorization || credentials.type === 'agy')
-      ) {
-        emitProgress('failed', turn);
-        return {
-          success: false,
-          output: '[delegate_task] Kredensial model AI tidak ditemukan untuk menjalankan subagent.',
-          role,
-          turns: turn,
-        };
-      }
-
-      let contentBuffer = '';
-      try {
-        completionResult = await streamChatCompletion({
-          credentials,
-          messages,
-          tools: allowedToolDefs,
-          signal: options.signal,
-          onDelta: (chunk) => {
-            contentBuffer += chunk;
-          },
-        });
-        if (!completionResult.content && contentBuffer) {
-          completionResult.content = contentBuffer;
-        }
-      } catch (err) {
-        emitProgress('failed', turn);
-        return {
-          success: false,
-          output: `[delegate_task] Komunikasi model untuk subagent ${roleConfig.name} gagal: ${err.message}`,
-          role,
-          turns: turn,
-        };
-      }
+    try {
+      completionResult = await requestCompletion(messages, allowedToolDefs);
+    } catch (err) {
+      emitProgress('failed', turn);
+      return {
+        success: false,
+        output:
+          err.code === 'NO_CREDENTIALS'
+            ? '[delegate_task] Kredensial model AI tidak ditemukan untuk menjalankan subagent.'
+            : `[delegate_task] Status: GAGAL — subagent ${roleConfig.name} berhenti karena error: ${err.message}`,
+        role,
+        turns: turn,
+      };
     }
 
     const { content = '', tool_calls } = completionResult || {};
@@ -240,13 +274,8 @@ async function runSingleDelegate(args = {}, options = {}) {
     // Jika model meminta pemanggilan tool
     if (Array.isArray(tool_calls) && tool_calls.length > 0) {
       if (toolCallCount + tool_calls.length > MAX_TOOL_CALLS) {
-        emitProgress('failed', turn);
-        return {
-          success: false,
-          output: `[delegate_task] Subagent ${roleConfig.name} dihentikan: melebihi batas ${MAX_TOOL_CALLS} panggilan tool tanpa laporan akhir.`,
-          role,
-          turns: turn,
-        };
+        stopReason = 'tool_budget';
+        break;
       }
       toolCallCount += tool_calls.length;
 
@@ -298,15 +327,64 @@ async function runSingleDelegate(args = {}, options = {}) {
       break;
     }
 
-    // Jika respons kosong tanpa tool_calls, keluar
+    // Respons kosong tanpa tool_calls bukan laporan: minta laporan penutup.
+    stopReason = 'empty';
     break;
   }
 
   if (!finalReport) {
+    const stop = stopReason || 'max_turns';
+    const reasonText =
+      stop === 'tool_budget'
+        ? `Batas ${MAX_TOOL_CALLS} panggilan tool tercapai`
+        : stop === 'empty'
+          ? 'Model mengakhiri giliran tanpa laporan'
+          : `Batas ${turn} putaran tercapai`;
+
+    const abortedResult = () => ({
+      success: false,
+      output: `[delegate_task] Subagent ${roleConfig.name} dibatalkan oleh sinyal pengguna.`,
+      role,
+      turns: turn,
+    });
+    if (options.signal?.aborted) {
+      emitProgress('aborted', turn);
+      return abortedResult();
+    }
+
+    // Selamatkan temuan yang sudah ada lewat satu giliran tanpa tool.
+    const partialReport = await attemptWrapUpReport(reasonText);
+
+    if (options.signal?.aborted) {
+      emitProgress('aborted', turn);
+      return abortedResult();
+    }
+
+    if (partialReport) {
+      emitProgress('failed', turn);
+      return {
+        success: false,
+        partial: true,
+        output:
+          `${roleConfig.emoji} ⚠️ [Laporan Parsial Subagent ${roleConfig.name} - ${roleConfig.title}]\n` +
+          `${reasonText}; pekerjaan mungkin belum tuntas.\n\n${partialReport}\n\n` +
+          '[delegate_task] Status: GAGAL PARSIAL — jangan anggap tugas ini selesai; ' +
+          'periksa bagian yang belum tuntas sebelum melanjutkan.',
+        role,
+        turns: turn,
+      };
+    }
+
     emitProgress('failed', turn);
+    const cause =
+      stop === 'tool_budget'
+        ? `melebihi batas ${MAX_TOOL_CALLS} panggilan tool tanpa laporan akhir`
+        : stop === 'empty'
+          ? 'mengakhiri giliran tanpa laporan akhir'
+          : `mencapai batas ${turn} putaran tanpa laporan akhir`;
     return {
       success: false,
-      output: `[delegate_task] Subagent ${roleConfig.name} mencapai batas ${turn} putaran tanpa laporan akhir. Pekerjaan mungkin belum selesai.`,
+      output: `[delegate_task] Status: GAGAL — Subagent ${roleConfig.name} ${cause}. Pekerjaan mungkin belum selesai.`,
       role,
       turns: turn,
     };

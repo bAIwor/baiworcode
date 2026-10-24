@@ -345,7 +345,7 @@ export const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'delegate_task',
-      description: 'Mendelegasikan pekerjaan ke subagent Punakawan terisolasi. Mode tunggal memakai role+task; mode PARALEL memakai tasks berisi 2-6 tugas yang dijalankan bersamaan (maksimum 3 sekaligus). Gunakan mode paralel untuk eksplorasi/audit independen yang tidak saling bergantung. Setiap subagent punya konteks sendiri dan hanya mengembalikan laporan sintesis.',
+      description: 'Mendelegasikan pekerjaan ke subagent Punakawan terisolasi. Mode tunggal memakai role+task; mode PARALEL memakai tasks berisi 2-6 tugas yang dijalankan bersamaan (maksimum 3 sekaligus). Gunakan mode paralel untuk eksplorasi/audit independen yang tidak saling bergantung. Setiap subagent punya konteks sendiri dan hanya mengembalikan laporan sintesis. Hasil berstatus "GAGAL" atau "GAGAL PARSIAL" berarti tugas belum tuntas dan tidak boleh dilaporkan sebagai selesai.',
       parameters: {
         type: 'object',
         properties: {
@@ -364,7 +364,7 @@ export const TOOL_DEFINITIONS = [
           },
           max_turns: {
             type: 'integer',
-            description: 'Batas putaran subagent mode tunggal (default: 8, max: 20).',
+            description: 'Batas putaran subagent mode tunggal (default: 8; pAItruk 12; max: 20).',
           },
           tasks: {
             type: 'array',

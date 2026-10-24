@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   handleDelegateTask,
   SUBAGENT_ROLES,
+  DEFAULT_MAX_TURNS_BY_ROLE,
 } from '../src/tools/subagentTool.js';
 import '../src/tools/index.js';
 
@@ -308,6 +309,57 @@ describe('Child Subagent Delegation Engine (delegate_task)', () => {
 
     assert.equal(res.success, false);
     assert.match(res.output, /batas 2 putaran tanpa laporan akhir/i);
+  });
+
+  it('harus menyelamatkan temuan lewat laporan parsial saat batas putaran tercapai', async () => {
+    const res = await handleDelegateTask(
+      { role: 'pAItruk', task: 'Jelajahi terus', max_turns: 1 },
+      {
+        completionFn: async ({ tools }) => {
+          // Giliran penutup dipanggil tanpa tool dan harus menghasilkan laporan.
+          if (tools.length === 0) {
+            return { content: 'Temuan parsial: src/chat memuat alur chat utama.' };
+          }
+          return {
+            content: '',
+            tool_calls: [{
+              id: 'call_partial',
+              function: { name: 'list_directory', arguments: '{"dir_path":"src"}' },
+            }],
+          };
+        },
+      }
+    );
+
+    assert.equal(res.success, false);
+    assert.equal(res.partial, true);
+    assert.match(res.output, /Laporan Parsial Subagent pAItruk/);
+    assert.match(res.output, /Temuan parsial/);
+    assert.match(res.output, /GAGAL PARSIAL/);
+  });
+
+  it('harus memberi pAItruk jatah putaran lebih longgar daripada peran lain', async () => {
+    let loopCalls = 0;
+    const res = await handleDelegateTask(
+      { role: 'pAItruk', task: 'Baca banyak berkas' },
+      {
+        completionFn: async ({ tools }) => {
+          if (tools.length === 0) return { content: '' };
+          loopCalls += 1;
+          return {
+            content: '',
+            tool_calls: [{
+              id: `call_${loopCalls}`,
+              function: { name: 'list_directory', arguments: '{"dir_path":"src"}' },
+            }],
+          };
+        },
+      }
+    );
+
+    assert.equal(DEFAULT_MAX_TURNS_BY_ROLE.pAItruk, 12);
+    assert.equal(loopCalls, DEFAULT_MAX_TURNS_BY_ROLE.pAItruk);
+    assert.equal(res.success, false);
   });
 
   it('harus menangani pembatalan AbortSignal dengan elegan', async () => {
