@@ -5,6 +5,7 @@ import { spinner } from './spinner.js';
 import { getConfig, saveConfig, maskSecret } from './config.js';
 import { CLI_USER_AGENT } from './branding.js';
 import { listAliases, activeAliasName, switchToModel } from './modelAlias.js';
+import { modelsEndpoint } from './modelUrl.js';
 
 function cleanUrl(urlStr) {
   try {
@@ -18,23 +19,7 @@ function cleanUrl(urlStr) {
 /** Batas waktu probe /models. Singkat agar menu tidak terasa membeku. */
 const MODELS_PROBE_TIMEOUT_MS = 5000;
 
-/**
- * Menyusun endpoint /models dari base URL yang mungkin ditempel pengguna secara
- * lengkap (`…/chat/completions`, `…/responses`, atau `…/models`). Tanpa
- * normalisasi, probe menuju path yang tidak ada (404) dan menu melaporkan
- * "tidak bisa mengambil daftar model".
- *
- * @param {string} baseUrl
- * @returns {string}
- */
-export function modelsEndpoint(baseUrl) {
-  let base = String(baseUrl || '').trim().replace(/\/+$/, '');
-  base = base
-    .replace(/\/chat\/completions$/i, '')
-    .replace(/\/responses$/i, '')
-    .replace(/\/models$/i, '');
-  return `${base.replace(/\/+$/, '')}/models`;
-}
+export { modelsEndpoint };
 
 /**
  * clack menghitung jendela opsi dari `process.stdout.rows`. Bila terminal

@@ -2763,7 +2763,7 @@ program
       syncSandbox: target === 'sandbox' || target === 'all',
       yes: Boolean(options.yes),
     });
-    const isError = /^Non-git|not a git|Untrusted|failed|Gagal/i.test(result.message || '');
+    const isError = /not a git|Untrusted|Diverged|failed|Gagal/i.test(result.message || '');
     finishNonInteractive(isError ? 1 : 0);
     return;
   });

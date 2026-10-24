@@ -5,11 +5,28 @@ import * as p from '@clack/prompts';
 import chalk from 'chalk';
 import { theme } from './theme.js';
 import { handleInstaboxExec } from './tools/instaboxTool.js';
-import { APP_NAME, VERSION, WEBSITE } from './branding.js';
+import { APP_NAME, VERSION, WEBSITE, CLI_USER_AGENT } from './branding.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
+
+const NPM_PACKAGE = '@baiworcode/baiworcode';
+const NPM_REGISTRY = 'https://registry.npmjs.org';
+
+/** Versi terbaru paket di dist-tag `latest` npm, atau null bila tak terbaca. */
+async function fetchLatestNpmVersion() {
+  const res = await globalThis.fetch(
+    `${NPM_REGISTRY}/${NPM_PACKAGE.replace('/', '%2F')}/latest`,
+    {
+      headers: { Accept: 'application/json', 'User-Agent': CLI_USER_AGENT },
+      signal: AbortSignal.timeout(8000),
+    }
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return typeof data.version === 'string' ? data.version : null;
+}
 
 /**
  * Memperbarui instalasi bAIwor Code ke versi terbaru dari GitHub.
@@ -32,9 +49,34 @@ export async function runUpdate(options = {}) {
   } catch {}
 
   if (!isGit) {
-    console.log(theme.warning('  ⚠️  Instalasi bAIwor Code ini tidak dijalankan dari repositori Git.'));
-    console.log(theme.muted('      Gunakan `npm update -g @baiworcode/baiworcode` untuk pembaruan paket npm.\n'));
-    return { updated: false, message: 'Non-git installation' };
+    // Instalasi npm (mayoritas pengguna): update lewat npm, bukan git. Tetap
+    // periksa registry supaya perintah ini benar-benar memberi informasi.
+    console.log(theme.muted('  Instalasi ini dikelola npm (bukan checkout Git).'));
+    let latest = null;
+    try {
+      latest = await fetchLatestNpmVersion();
+    } catch (err) {
+      console.log(theme.warning(`  ⚠️  Tidak dapat memeriksa registry npm: ${err.message}`));
+    }
+
+    if (latest && latest === VERSION) {
+      console.log(theme.success(`\n  ✓ ${APP_NAME} v${VERSION} sudah versi terbaru di npm.\n`));
+    } else if (latest) {
+      console.log(theme.success(`\n  ✦ Versi terbaru di npm: v${latest} (terpasang: v${VERSION}).`));
+      console.log(theme.muted('    Perbarui dengan:'));
+      console.log(`    ${chalk.cyan(`npm install -g ${NPM_PACKAGE}@latest`)}\n`);
+    } else {
+      console.log(theme.muted('\n    Periksa/perbarui dengan:'));
+      console.log(`    ${chalk.cyan(`npm install -g ${NPM_PACKAGE}@latest`)}\n`);
+    }
+
+    if (options.syncSandbox) {
+      await updateSandboxRemote(assumeYes);
+    }
+    return {
+      updated: false,
+      message: latest ? `Npm installation (latest ${latest})` : 'Npm installation',
+    };
   }
 
   // 1b. Pastikan REPO_ROOT adalah root repo (bukan subfolder repo lain) dan
@@ -80,18 +122,35 @@ export async function runUpdate(options = {}) {
     return { updated: false, message: err.message };
   }
 
-  // 3. Bandingkan HEAD dengan origin/main
+  // 3. Bandingkan HEAD dengan origin/main. SHA yang berbeda belum tentu
+  //    berarti ada pembaruan: commit lokal yang belum di-push juga membuat
+  //    keduanya berbeda, dan pull --ff-only justru akan gagal.
   const localHead = execSync('git rev-parse HEAD', { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
   const remoteHead = execSync('git rev-parse origin/main', { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
+  const countCommits = (range) =>
+    Number(execSync(`git rev-list --count ${range}`, { cwd: REPO_ROOT, encoding: 'utf8' }).trim()) || 0;
+  const behind = countCommits('HEAD..origin/main');
+  const ahead = countCommits('origin/main..HEAD');
 
-  if (localHead === remoteHead) {
+  if (behind === 0) {
     console.log(theme.success(`\n  ✓ ${APP_NAME} v${VERSION} sudah pada versi terbaru!`));
-    console.log(theme.muted(`    Commit aktif: ${localHead.slice(0, 7)} (up to date dengan origin/main).\n`));
+    console.log(theme.muted(`    Commit aktif: ${localHead.slice(0, 7)} (up to date dengan origin/main).`));
+    if (ahead > 0) {
+      console.log(theme.muted(`    ${ahead} commit lokal belum di-push (bukan pembaruan yang tertinggal).`));
+    }
+    console.log('');
 
     if (options.syncSandbox) {
       await updateSandboxRemote(assumeYes);
     }
     return { updated: false, message: 'Already up to date' };
+  }
+
+  if (ahead > 0) {
+    console.log(theme.warning(`\n  ⚠️  Riwayat lokal bercabang dari origin/main (${ahead} commit lokal, ${behind} commit remote).`));
+    console.log(theme.muted('      Update otomatis dibatalkan agar commit lokal tidak hilang.'));
+    console.log(theme.muted('      Selesaikan dengan git pull --rebase atau merge secara manual.\n'));
+    return { updated: false, message: 'Diverged from origin/main' };
   }
 
   // 4. Ada pembaruan: tampilkan ringkasan commit baru

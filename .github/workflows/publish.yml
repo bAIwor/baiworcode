@@ -65,9 +65,7 @@ jobs:
             echo "- mengandung '...' (masked?): $(case "$NODE_AUTH_TOKEN" in *...*) echo ya;; *) echo tidak;; esac)"
             echo "- .npmrc: $(cat "$HOME/.npmrc" 2>/dev/null | sed 's/_authToken=.*/_authToken=****/' | head -2)"
           } >> "$GITHUB_STEP_SUMMARY"
-          {
-            echo "::error title=token diagnostics::panjang=${#NODE_AUTH_TOKEN} masked=$(case "$NODE_AUTH_TOKEN" in *...*) echo ya;; *) echo tidak;; esac) akhir=...${NODE_AUTH_TOKEN: -4} npmrc=$(test -f "$HOME/.npmrc" && echo ada || echo tidak)"
-          }
+          echo "::notice title=token diagnostics::panjang=${#NODE_AUTH_TOKEN} masked=$(case "$NODE_AUTH_TOKEN" in *...*) echo ya;; *) echo tidak;; esac) akhir=...${NODE_AUTH_TOKEN: -4} npmrc=$(test -f "$HOME/.npmrc" && echo ada || echo tidak)"
           npm publish --provenance --access public --tag ${{ steps.dist.outputs.tag }} 2>&1 | tee /tmp/publish.txt || {
             echo "### ❌ npm publish gagal" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -79,10 +77,22 @@ jobs:
             exit 1
           }
           # Verifikasi langsung ke registry, bukan hanya percaya exit code npm.
+          # Registry bisa masih "processing" beberapa saat setelah publish, jadi
+          # ulangi beberapa kali sebelum menyimpulkan versi belum terdaftar.
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VERSION=$(node -p "require('./package.json').version")
-          TERDAFTAR=$(npm view "$PKG_NAME@$PKG_VERSION" version 2>/dev/null || echo "TIDAK-ADA")
-          echo "::notice title=npm publish::terdaftar=$TERDAFTAR diminta=$PKG_VERSION"
+          TERDAFTAR=""
+          for i in 1 2 3 4 5 6 7 8; do
+            TERDAFTAR=$(npm view "$PKG_NAME@$PKG_VERSION" version 2>/dev/null || true)
+            if [ "$TERDAFTAR" = "$PKG_VERSION" ]; then break; fi
+            echo "Registry belum menampilkan $PKG_VERSION (percobaan $i/8); tunggu 10 detik..."
+            sleep 10
+          done
+          if [ "$TERDAFTAR" = "$PKG_VERSION" ]; then
+            echo "::notice title=npm publish::terdaftar=$TERDAFTAR diminta=$PKG_VERSION"
+          else
+            echo "::warning title=npm publish::registry belum menampilkan $PKG_VERSION setelah ~80 detik; publish sendiri tetap sukses"
+          fi
 
       - name: Arahkan dist-tag latest ke rilis ini
         # Selama belum ada rilis stabil, `npm install @baiworcode/baiworcode`

@@ -14,6 +14,7 @@ import {
 import { listActiveMcpSessions, loadMcpConfig } from './mcp/index.js';
 import { getInstaboxStatus } from './tools/instaboxTool.js';
 import { isHomeDirectory } from './tools/searchTool.js';
+import { modelsEndpoint } from './modelUrl.js';
 import { APP_NAME, VERSION } from './branding.js';
 
 /**
@@ -94,9 +95,10 @@ export async function runDoctor() {
     if (activeCp && activeCp.baseUrl) {
       try {
         const start = Date.now();
-        const testRes = await globalThis.fetch(`${activeCp.baseUrl.replace(/\/+$/, '')}/models`, {
+        const probeUrl = modelsEndpoint(activeCp.baseUrl);
+        const testRes = await globalThis.fetch(probeUrl, {
           headers: activeCp.apiKey ? { Authorization: `Bearer ${activeCp.apiKey}` } : {},
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(5000),
         });
         const lat = Date.now() - start;
         if (testRes.ok) {
@@ -104,7 +106,7 @@ export async function runDoctor() {
         } else if (testRes.status === 401 || testRes.status === 403) {
           check(false, `Koneksi API (${provider})`, `HTTP ${testRes.status} — API key ditolak/tidak berhak`, true);
         } else {
-          check(false, `Koneksi API (${provider})`, `HTTP ${testRes.status} dari ${activeCp.baseUrl}/models`, true);
+          check(false, `Koneksi API (${provider})`, `HTTP ${testRes.status} dari ${probeUrl}`, true);
         }
       } catch (err) {
         check(false, `Koneksi API (${provider})`, `Gagal terhubung: ${err.message}`, true);
