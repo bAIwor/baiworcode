@@ -198,7 +198,7 @@ export async function handleUserChat(promptText) {
     if (process.stdout.isTTY) process.stdout.write(`\r\x1b[K${suffix}`);
   };
 
-  const startThinkingSpinner = (msg = 'bAIwor sedang berpikir...') => {
+  const startThinkingSpinner = (msg = 'Punakawan sedang berpikir...') => {
     stopThinkingSpinner();
     // Animasi spinner bergantung pada carriage return untuk menimpa baris
     // sebelumnya. Bila stdout bukan TTY (mis. `baiworcode "prompt" > hasil.txt`),
@@ -380,9 +380,11 @@ export async function handleUserChat(promptText) {
     const ensureAssistantHeader = () => {
       if (!hasPrintedAssistantHeader) {
         hasPrintedAssistantHeader = true;
+        // Header ini menandai aplikasi (bAIwor Code), bukan karakter yang
+        // menyampaikan jawaban; penyampai ditentukan oleh badge Punakawan.
         const header = isTTY
-          ? chalk.hex(palette.gold).bold('✦ bAIwor') + '\n\n'
-          : '✦ bAIwor\n\n';
+          ? chalk.hex(palette.gold).bold('✦ bAIwor Code') + '\n\n'
+          : '✦ bAIwor Code\n\n';
         process.stdout.write(header);
       }
     };

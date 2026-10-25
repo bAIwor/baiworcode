@@ -762,7 +762,7 @@ function showResumedBanner() {
     const recent = msgs.slice(-2);
     console.log(chalk.dim('\n     Riwayat Terakhir:'));
     for (const msg of recent) {
-      const roleLabel = msg.role === 'user' ? chalk.cyan('› Kamu   ') : chalk.yellow('✦ bAIwor ');
+      const roleLabel = msg.role === 'user' ? chalk.cyan('› Kamu        ') : chalk.yellow('✦ bAIwor Code ');
       const cleanContent = typeof msg.content === 'string' ? msg.content.replace(/\s+/g, ' ').trim() : '';
       const snippet = cleanContent.slice(0, 80);
       console.log(`     ${roleLabel}: ${chalk.gray(snippet)}${cleanContent.length > 80 ? '...' : ''}`);
