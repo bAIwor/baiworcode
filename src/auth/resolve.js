@@ -44,10 +44,6 @@ export function findMissingEnvRefs(value) {
  */
 export function hasActiveCredentials(config = getConfig()) {
   try {
-    if (config.activeType === 'agy' || (config.activeProvider || '').toLowerCase().includes('antigravity')) {
-      // Ketersediaan CLI agy baru bisa dipastikan saat login; jangan blokir.
-      return true;
-    }
     if (config.activeType === 'oauth') {
       const prov = Object.values(PROVIDERS).find(
         (p) => p.name.toLowerCase() === (config.activeProvider || '').toLowerCase()
@@ -134,22 +130,6 @@ export async function resolveActiveCredentials() {
         'User-Agent': customHeaders['User-Agent'] || USER_AGENT,
         ...customHeaders,
       },
-      model: activeModel,
-    };
-  }
-
-  if (config.activeType === 'agy' || (config.activeProvider || '').toLowerCase().includes('antigravity')) {
-    const prov = PROVIDERS['google-antigravity'];
-    const activeModel =
-      config.activeModel && config.activeModel !== 'Not configured'
-        ? config.activeModel
-        : prov.defaultModel;
-
-    return {
-      provider: prov.name,
-      type: 'agy',
-      baseUrl: 'local://antigravity',
-      headers: {},
       model: activeModel,
     };
   }

@@ -177,10 +177,7 @@ async function runSingleDelegate(args = {}, options = {}) {
     }
 
     const credentials = options.credentials || (await resolveActiveCredentials());
-    if (
-      !credentials ||
-      !(credentials.apiKey || credentials.headers?.Authorization || credentials.type === 'agy')
-    ) {
+    if (!credentials || !(credentials.apiKey || credentials.headers?.Authorization)) {
       const err = new Error('Kredensial model AI tidak ditemukan untuk menjalankan subagent.');
       err.code = 'NO_CREDENTIALS';
       throw err;

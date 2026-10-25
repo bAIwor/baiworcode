@@ -126,67 +126,6 @@ export async function login(providerId) {
     return null;
   }
 
-  if (provider.method === 'agy') {
-    const s = spinner();
-    s.start('Memeriksa status Antigravity CLI (agy)...');
-
-    const agyExe = process.env.ANTIGRAVITY_AGENTAPI_EXE || 'agy';
-    let isAvailable = false;
-    try {
-      const { execFile } = await import('node:child_process');
-      isAvailable = await new Promise((resolve) => {
-        execFile(agyExe, ['models'], { timeout: 6000 }, (err, stdout) => {
-          if (!err && stdout && stdout.toLowerCase().includes('gemini')) {
-            resolve(true);
-          } else if (!err) {
-            execFile(agyExe, ['--version'], { timeout: 3000 }, (vErr) => {
-              resolve(!vErr);
-            });
-          } else {
-            resolve(false);
-          }
-        });
-      });
-    } catch {}
-
-    if (!isAvailable) {
-      s.stop(theme.error('✗ Antigravity CLI (agy) belum terdeteksi atau belum login.'));
-      console.log(theme.warning('  Pastikan Antigravity CLI sudah terpasang dan login dengan akun Google Anda.'));
-      return null;
-    }
-
-    s.stop(theme.success('✓ Terhubung ke Antigravity CLI (Akun Google aktif)!'));
-
-    const modelChoice = await p.select({
-      message: `Pilih model aktif untuk ${provider.name}:`,
-      options: [
-        { value: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High) — Bawaan Cepat & Cerdas' },
-        { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Thinking) — Penalaran Mendalam' },
-        { value: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking) — Arsitektur & Refactor' },
-        { value: 'gpt-oss-120b-medium', label: 'GPT-OSS 120B (Medium) — Open-weights' },
-        { value: 'gemini-3.8-flash-medium', label: 'Gemini 3.8 Flash (Medium)' },
-        { value: 'gemini-3.8-flash-low', label: 'Gemini 3.8 Flash (Low)' },
-      ],
-    });
-
-    if (p.isCancel(modelChoice)) return null;
-
-    saveConfig({
-      oauth: {
-        [provider.id]: {
-          active: true,
-          method: 'agy',
-          connectedAt: Date.now(),
-        },
-      },
-      activeProvider: provider.name,
-      activeModel: modelChoice,
-      activeType: 'agy',
-    });
-
-    p.outro(theme.success(`✓ Berhasil mengaktifkan ${provider.name} (${modelChoice})!`));
-    return { success: true, method: 'agy', model: modelChoice };
-  }
 
   let config = getConfig();
   let clientId = provider.getClientId(config);
@@ -379,16 +318,8 @@ export async function logout(providerId) {
   if (!targetId) {
     const loggedInIds = Object.keys(config.oauth || {}).filter((id) => {
       const o = config.oauth[id];
-      if (!o) return false;
-      if (PROVIDERS[id]?.method === 'agy' || o.method === 'agy') {
-        return Boolean(o.active || o.connectedAt || config.activeType === 'agy');
-      }
-      return Boolean(o.accessToken || o.apiKey);
+      return Boolean(o && (o.accessToken || o.apiKey));
     });
-
-    if (config.activeType === 'agy' && !loggedInIds.includes('google-antigravity')) {
-      loggedInIds.push('google-antigravity');
-    }
 
     if (loggedInIds.length === 0) {
       console.log(theme.warning('  Tidak ada sesi OAuth yang sedang login saat ini.'));
@@ -420,10 +351,7 @@ export async function logout(providerId) {
   };
 
   const isActiveMatch =
-    config.activeProvider === provName ||
-    config.activeProvider === targetId ||
-    ((config.activeType === 'agy' || provObj?.method === 'agy') &&
-      (config.activeProvider || '').toLowerCase().includes('antigravity'));
+    config.activeProvider === provName || config.activeProvider === targetId;
 
   if (isActiveMatch) {
     updates.activeProvider = 'Not configured';
@@ -441,16 +369,13 @@ export async function logout(providerId) {
 export function authStatus() {
   const config = getConfig();
   return Object.values(PROVIDERS).map((prov) => {
-    const isAgy = prov.method === 'agy';
     const auth = config.oauth?.[prov.id];
-    const isLoggedIn = isAgy
-      ? Boolean((auth && (auth.active || auth.connectedAt)) || (config.activeType === 'agy' && config.activeProvider === prov.name))
-      : Boolean(auth && (auth.accessToken || auth.apiKey));
-    const tokenVal = isAgy ? 'Google OAuth (agy)' : (auth?.accessToken || auth?.apiKey || '');
-    const masked = isAgy ? 'agy cli (local session)' : maskSecret(tokenVal);
+    const isLoggedIn = Boolean(auth && (auth.accessToken || auth.apiKey));
+    const tokenVal = auth?.accessToken || auth?.apiKey || '';
+    const masked = maskSecret(tokenVal);
     const expiresAt = auth?.expiresAt || null;
 
-    let expiryStatus = isAgy ? 'Aktif (Sesi Google)' : 'Aktif';
+    let expiryStatus = 'Aktif';
     if (expiresAt) {
       if (Date.now() >= expiresAt) {
         expiryStatus = 'Kedaluwarsa';

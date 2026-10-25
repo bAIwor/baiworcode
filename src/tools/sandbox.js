@@ -45,6 +45,13 @@ const HOME_ENV_REFS = [
   /%HOMEDRIVE%/i,
   /%HOMEPATH%/i,
   /%LOCALAPPDATA%/i,
+  // Variabel lingkungan lain yang menunjuk ke luar home/workspace.
+  /\$(?:USERPROFILE|APPDATA|LOCALAPPDATA|PROGRAMDATA|OLDPWD)\b/i,
+  /\$\{(?:USERPROFILE|APPDATA|LOCALAPPDATA|PROGRAMDATA|OLDPWD)\}/i,
+  /%PROGRAMDATA%/i,
+  /%ALLUSERSPROFILE%/i,
+  /%SYSTEMDRIVE%/i,
+  /%PUBLIC%/i,
   // PowerShell: $env:USERPROFILE, ${env:APPDATA}
   /\$env:/i,
   /\$\{env:/i,
@@ -69,6 +76,21 @@ const SYSTEM_ALLOWED_PREFIXES =
 const WIN32_SYSTEM_PREFIXES = ['c:\\windows', 'c:\\program files', 'c:\\program files (x86)'];
 
 /**
+ * Menormalkan escape shell yang umum dipakai untuk mengelabui pencocokan
+ * string: caret cmd.exe (`C^:`) dan backslash sebelum separator POSIX
+ * (`\/etc`). Backslash sebelum huruf TIDAK dihapus agar path Windows
+ * (`C:\Users`) tetap utuh.
+ *
+ * @param {string} command
+ * @returns {string}
+ */
+function normalizeShellEscapes(command) {
+  return String(command ?? '')
+    .replace(/\^([\\/*?"'<>|&;():])/g, '$1')
+    .replace(/\\\//g, '/');
+}
+
+/**
  * Pola perintah yang bersifat merusak dan tidak pernah wajar untuk agent coding.
  *
  * Setiap aturan punya `id` stabil. Id ini dipakai oleh mekanisme override sadar
@@ -83,7 +105,13 @@ const DANGEROUS_RULES = [
   },
   {
     id: 'del-drive',
-    re: /\bdel\s+\/[a-z]*[sq][a-z]*\s+[a-z]:[\\/]?\s*(?:\s|$)/i,
+    // Flag boleh lebih dari satu dan urutannya bebas: del /f /s /q C:\
+    re: /\b(?:del|erase)\s+(?:\/[a-z]+\s+)*["']?[a-z]:[\\/]?(?:\*[^\s"']*)?["']?\s*(?:\s|$)/i,
+    reason: 'menghapus seluruh isi drive',
+  },
+  {
+    id: 'rd-drive',
+    re: /\b(?:rd|rmdir)\s+(?:\/[a-z]+\s+)*["']?[a-z]:[\\/]?(?:\*[^\s"']*)?["']?\s*(?:\s|$)/i,
     reason: 'menghapus seluruh isi drive',
   },
   {
@@ -98,13 +126,23 @@ const DANGEROUS_RULES = [
   },
   {
     id: 'power',
-    re: /\b(?:shutdown|reboot|halt|poweroff)\b/i,
+    re: /\b(?:shutdown|reboot|halt|poweroff|stop-computer|restart-computer)\b/i,
     reason: 'mematikan atau me-reboot mesin',
   },
   {
     id: 'pipe-to-shell',
-    re: /\b(?:curl|wget)\b[^|;&]*\|\s*(?:sudo\s+)?(?:sh|bash|zsh|pwsh|powershell)\b/i,
+    // Path absolut (/bin/bash) dan interpreter umum ikut ditangkap. Tanpa
+    // prefix path opsional, `curl ... | /bin/bash` lolos karena /bin ada di
+    // SYSTEM_ALLOWED_PREFIXES.
+    re: /\b(?:curl|wget)\b[^|;&]*\|\&?\s*(?:sudo\s+(?:-[a-z]+\s+)*)?(?:(?:\/|\.{1,2}\/)?[\w.-]+\/)*(?:env\s+(?:-[^\s]+\s+)*)?(?:sh|bash|zsh|dash|ksh|pwsh|powershell|python[\d.]*|perl|ruby|node|php)\b/i,
     reason: 'menjalankan skrip dari internet secara langsung',
+  },
+  {
+    id: 'encoded-command',
+    // Perintah PowerShell terenkode tidak bisa diaudit; jangan biarkan lolos
+    // lewat singkatan parameter (-e, -enc, -encodedcommand).
+    re: /\b(?:pwsh|powershell)\b[^|;&]*\s-(?:encodedcommand|encoded|encode|encod|enco|enc|ec|e)\b/i,
+    reason: 'menjalankan perintah PowerShell terenkode yang tidak bisa diperiksa',
   },
   {
     id: 'git-force-push',
@@ -371,6 +409,12 @@ export const CONFIRM_RULES = [
   { re: /\bclear-content\b/i, reason: 'mengosongkan isi berkas melalui PowerShell' },
   { re: /\b(?:kill|taskkill|pkill)\b/i, reason: 'menghentikan proses yang sedang berjalan' },
   { re: /\bchmod\b|\bchown\b|\bicacls\b/i, reason: 'mengubah izin atau kepemilikan berkas' },
+  {
+    // Kode inline yang membaca environment/home bisa merakit path di luar
+    // workspace tanpa literal path yang bisa dicek regex path.
+    re: /\b(?:node|python[\d.]*|perl|ruby|php)\b[^|;&]*\s(?:-e|-c|-r)\s+[^\n]*(?:process\.env|os\.homedir|USERPROFILE|APPDATA|LOCALAPPDATA|PROGRAMDATA|OLDPWD)\b/i,
+    reason: 'menjalankan kode inline yang mengakses environment/home',
+  },
 ];
 
 /**
@@ -400,7 +444,7 @@ export function classifyCommand(command, options = {}) {
     };
   }
 
-  const raw = String(command ?? '');
+  const raw = normalizeShellEscapes(command);
   for (const rule of CONFIRM_RULES) {
     if (rule.re.test(raw)) {
       return {
@@ -619,6 +663,9 @@ function referencesSensitiveName(raw, name) {
 export function analyzeCommand(command, options = {}) {
   const workspace = path.resolve(options.workspace || process.cwd());
   const raw = String(command ?? '');
+  // Analisis memakai bentuk yang sudah dinormalisasi, sementara eksekusi tetap
+  // memakai string asli dari model.
+  const normalized = normalizeShellEscapes(raw);
 
   if (!raw.trim()) {
     return deny('empty', 'Perintah kosong.');
@@ -626,7 +673,7 @@ export function analyzeCommand(command, options = {}) {
 
   // 1. Referensi ke area kredensial (hanya bila benar-benar berupa path).
   for (const dir of SENSITIVE_DIRS) {
-    if (referencesSensitiveName(raw, dir)) {
+    if (referencesSensitiveName(normalized, dir)) {
       return deny(
         'sensitive-path',
         `Perintah menyentuh area kredensial '${dir}' yang dilindungi. Gunakan tool berkas bila memang perlu, atau minta pengguna membukanya sendiri.`
@@ -634,7 +681,7 @@ export function analyzeCommand(command, options = {}) {
     }
   }
   for (const file of SENSITIVE_FILES) {
-    if (referencesSensitiveName(raw, file)) {
+    if (referencesSensitiveName(normalized, file)) {
       return deny(
         'sensitive-path',
         `Perintah menyentuh berkas kredensial '${file}' yang dilindungi.`
@@ -642,7 +689,7 @@ export function analyzeCommand(command, options = {}) {
     }
   }
   for (const re of HOME_ENV_REFS) {
-    if (re.test(raw)) {
+    if (re.test(normalized)) {
       return deny(
         'sensitive-path',
         'Perintah mengacu ke direktori home pengguna (di luar workspace). Gunakan path relatif di dalam workspace.'
@@ -652,21 +699,21 @@ export function analyzeCommand(command, options = {}) {
 
   // 2. Pola perintah merusak
   for (const rule of DANGEROUS_RULES) {
-    if (rule.re.test(raw)) {
+    if (rule.re.test(normalized)) {
       return deny('dangerous-command', `Perintah ditolak karena ${rule.reason}.`, rule.id);
     }
   }
 
   // 3. Percobaan keluar dari workspace lewat cd/pushd
   // `cd`/`pushd` tanpa argumen berpindah ke HOME / direktori sebelumnya.
-  if (/(?:^|[;&|]\s*)(?:cd|chdir|pushd|set-location|sl)\s*(?:[;&|]|$)/i.test(raw)) {
+  if (/(?:^|[;&|]\s*)(?:cd|chdir|pushd|set-location|sl)\s*(?:[;&|]|$)/i.test(normalized)) {
     return deny(
       'workspace-escape',
       'Perintah cd/pushd tanpa argumen menuju direktori home atau direktori sebelumnya. Gunakan path di dalam workspace.'
     );
   }
 
-  const cdMatches = raw.matchAll(/\b(?:cd|chdir|pushd|set-location|sl)\s+([^\s;&|]+)/gi);
+  const cdMatches = normalized.matchAll(/\b(?:cd|chdir|pushd|set-location|sl)\s+([^\s;&|]+)/gi);
   for (const match of cdMatches) {
     const target = match[1].replace(/^["']|["']$/g, '');
     if (isCommandPathOutside(target, workspace)) {
@@ -678,7 +725,7 @@ export function analyzeCommand(command, options = {}) {
   }
 
   // 4. Path relatif yang keluar workspace lewat segmen `..`
-  const relativeEscape = findEscapingRelativePath(raw, workspace);
+  const relativeEscape = findEscapingRelativePath(normalized, workspace);
   if (relativeEscape) {
     return deny(
       'workspace-escape',
@@ -687,7 +734,7 @@ export function analyzeCommand(command, options = {}) {
   }
 
   // 5. Path absolut di luar workspace / tmp / sistem
-  for (const candidate of extractAbsolutePaths(raw)) {
+  for (const candidate of extractAbsolutePaths(normalized)) {
     if (isOutsideWorkspace(candidate, workspace)) {
       return deny(
         'workspace-escape',

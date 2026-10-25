@@ -2,7 +2,6 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { sanitizeMcpToolDescription } from '../src/mcp/client.js';
 import { parsePermissionModeArg } from '../src/chat/permissionMode.js';
-import { flattenContentForText, buildAgyPrompt } from '../src/chat/client.js';
 import { previewUndoLastTurn, undoLastTurn, recordFileBeforeChange, beginTurnSnapshot, commitTurnSnapshot } from '../src/tools/snapshot.js';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -45,27 +44,6 @@ describe('Perbaikan audit: keamanan & konsistensi', () => {
     test('menolak nilai tidak dikenal agar CLI bisa keluar dengan pesan jelas', () => {
       assert.equal(parsePermissionModeArg('ngawur'), null);
       assert.equal(parsePermissionModeArg(''), null);
-    });
-  });
-
-  describe('flattenContentForText (bridge agy)', () => {
-    test('menyusun part teks dan gambar dari konten multimodal', () => {
-      const content = [
-        { type: 'text', text: 'Jelaskan gambar ini' },
-        { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
-      ];
-      const out = flattenContentForText(content);
-      assert.ok(out.includes('Jelaskan gambar ini'));
-      assert.ok(out.includes('[gambar dilampirkan]'));
-      assert.ok(!out.includes('[object Object]'));
-    });
-
-    test('buildAgyPrompt tidak menghasilkan [object Object] untuk konten multimodal', () => {
-      const prompt = buildAgyPrompt([
-        { role: 'user', content: [{ type: 'text', text: 'Halo agy' }, { type: 'image_url', image_url: { url: 'x' } }] },
-      ]);
-      assert.ok(!prompt.includes('[object Object]'));
-      assert.ok(prompt.includes('Halo agy'));
     });
   });
 

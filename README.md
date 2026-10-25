@@ -184,8 +184,9 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - **Pre-hook** bisa memblokir eksekusi tool (misal: validasi command berbahaya sebelum `run_command`).
   - **Post-hook** untuk logging/notifikasi setelah tool selesai (misal: auto-format setelah `edit_file`).
   - Konfigurasi fleksibel di `.baiwor/hooks.json` (per-proyek) atau `~/.baiwor/hooks.json` (global).
+  - **Trust gate**: hooks proyek tidak dijalankan sampai pengguna menyetujui isi file (hash SHA-256). Perubahan pada `.baiwor/hooks.json` memicu persetujuan ulang; sesi non-interaktif melewati hooks proyek yang belum dipercaya.
   - Kondisi opsional untuk trigger selektif (misal: hanya untuk tool tertentu).
-  - Timeout default 30 detik per hook untuk mencegah hang.
+  - Timeout default 30 detik per hook; pre-hook yang timeout **memblokir** tool (fail-closed).
 - **🔄 Workflows (Multi-Stage Orchestration)**:
   - Skrip JavaScript untuk orkestrasi multi-agent deterministik dengan fase (pipeline/parallel).
   - API sederhana: `agent()`, `parallel()`, `pipeline()`, `phase()` untuk membangun alur kerja kompleks.
@@ -218,15 +219,9 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - **Custom agents**: Disimpan di `.baiwor/agents/*.json` dan bisa dipanggil via `delegate_task`.
   - **Tool filtering**: Otomatis filter tool definitions berdasarkan `allowedTools` agent.
   - API: `createAgent`, `updateAgent`, `deleteAgent`, `getAgent`, `listAgents`, `filterToolsForAgent`.
-- **💬 Messaging Platforms (Telegram & WhatsApp)**:
-  - Akses bAIwor Code dari Telegram Bot atau WhatsApp (Baileys) dengan unified API.
-  - **Telegram Bot**: Integrasi dengan `node-telegram-bot-api`, long polling, Markdown formatting, typing indicator.
-  - **WhatsApp Baileys**: Integrasi dengan `@whiskeysockets/baileys`, QR code authentication, session persistence, auto-reconnect.
-  - **PlatformManager**: Abstraction layer untuk multi-platform dengan event-driven message routing.
-  - Commands: `/platform start telegram|whatsapp`, `/platform stop`, `/platform status`.
-  - Requirements: `npm install node-telegram-bot-api @whiskeysockets/baileys`
 - **🔒 Keamanan Berlapis**:
   - **Sandbox workspace** — akses berkas dibatasi pada folder proyek; area kredensial seperti `.ssh` dan `~/.baiwor` selalu ditolak.
+  - **Guard perintah shell** — pipe ke interpreter (termasuk path absolut seperti `/bin/bash`), PowerShell `-EncodedCommand`, `Stop-Computer`, serta penghapusan root drive (`rd`/`del`) ditolak; escape caret/backslash dinormalisasi sebelum analisis.
   - **Approval Gate (Y/n)** — perintah berisiko seperti `git push`, `npm publish`, atau penghapusan rekursif akan meminta konfirmasi lebih dulu, dengan default **Tidak**.
 
 ---

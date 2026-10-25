@@ -1,6 +1,14 @@
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import * as p from '@clack/prompts';
+import {
+  isHooksProjectTrusted,
+  trustHooksProject,
+} from '../config.js';
+import { sanitizeTerminalText } from '../chat/wrapText.js';
 
 /**
  * Hooks System untuk bAIwor Code.
@@ -50,14 +58,80 @@ export const HOOK_EVENTS = [
  * @property {number} exitCode - Exit code dari command
  */
 
+function killHookProcess(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+
+  if (process.platform === 'win32' && child.pid) {
+    try {
+      const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      killer.on('error', () => {
+        try {
+          child.kill('SIGKILL');
+        } catch {}
+      });
+      return;
+    } catch {
+      // jatuh ke child.kill di bawah
+    }
+  }
+
+  try {
+    child.kill('SIGTERM');
+  } catch {}
+  setTimeout(() => {
+    try {
+      child.kill('SIGKILL');
+    } catch {}
+  }, 200);
+}
+
 export class HookManager {
   /**
-   * @param {{cwd?: string, configPath?: string}} [options]
+   * @param {{
+   *   cwd?: string,
+   *   configPath?: string,
+   *   interactive?: boolean,
+   *   trustCheck?: (configPath: string, hash: string) => boolean|Promise<boolean>,
+   *   allowUntrustedProjectHooks?: boolean,
+   * }} [options]
+   *
+   * `configPath` eksplisit dianggap sebagai override administratif (dipakai
+   * test dan pemanggil yang mengelola file sendiri), jadi tidak melewati gate
+   * trust proyek. Hooks proyek hanya berjalan setelah disetujui pengguna dan
+   * hash file-nya masih cocok.
    */
   constructor(options = {}) {
     this.cwd = options.cwd || process.cwd();
+    this.projectRoot = this.cwd;
     this.configPath = options.configPath || this.#resolveConfigPath();
+
+    this.globalConfigPath = path.join(os.homedir(), '.baiwor', 'hooks.json');
+    const normalizeForCompare = (value) => {
+      const resolved = path.resolve(value);
+      return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+    };
+    this.isProjectConfig =
+      normalizeForCompare(this.configPath) !== normalizeForCompare(this.globalConfigPath);
+    this.interactive =
+      options.interactive !== false &&
+      Boolean(process.stdin.isTTY && process.stdout.isTTY);
+    this.trustCheck =
+      typeof options.trustCheck === 'function' ? options.trustCheck : null;
+    this.allowUntrustedProjectHooks = Boolean(
+      options.allowUntrustedProjectHooks || options.configPath
+    );
+    this.trustDecision = null;
+    this.trustPromise = null;
+    this.changeWarned = false;
+
     this.hooks = this.#loadHooks();
+    // Hash dari isi yang benar-benar dimuat. Bila file berubah di tengah sesi,
+    // hooks dihentikan: menjalankan definisi lama di bawah approval hash baru
+    // akan menyesatkan.
+    this.loadedHash = this.#hashConfig();
     this.listeners = new Map(); // event -> [hook, hook, ...]
     this.#registerListeners();
   }
@@ -69,14 +143,133 @@ export class HookManager {
       return projectConfig;
     }
 
-    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-    const globalConfig = path.join(homeDir, '.baiwor', 'hooks.json');
+    const globalConfig = path.join(os.homedir(), '.baiwor', 'hooks.json');
     if (fs.existsSync(globalConfig)) {
       return globalConfig;
     }
 
     // Default: buat di project
     return projectConfig;
+  }
+
+  #hashConfig() {
+    try {
+      return crypto
+        .createHash('sha256')
+        .update(fs.readFileSync(this.configPath))
+        .digest('hex');
+    } catch {
+      return null;
+    }
+  }
+
+  #describeHooks() {
+    const preview = this.hooks.slice(0, 5).map((hook, index) => {
+      const command = sanitizeTerminalText(String(hook.command || ''), {
+        preserveNewlines: false,
+      });
+      const short = command.length > 160 ? `${command.slice(0, 157)}...` : command;
+      return `  ${index + 1}. [${hook.event}] ${short}`;
+    });
+    const rest =
+      this.hooks.length > 5 ? `\n  ... dan ${this.hooks.length - 5} hook lainnya` : '';
+    return preview.join('\n') + rest;
+  }
+
+  /**
+   * Gate trust untuk hooks proyek. Global hooks (~/.baiwor/hooks.json) adalah
+   * milik pengguna sendiri sehingga tidak perlu persetujuan.
+   *
+   * @returns {Promise<boolean>}
+   */
+  async #ensureTrust() {
+    // Override administratif (configPath eksplisit) dikelola pemanggil sendiri.
+    if (this.allowUntrustedProjectHooks) return true;
+
+    const currentHash = this.#hashConfig();
+    if (currentHash !== this.loadedHash) {
+      if (!this.changeWarned) {
+        this.changeWarned = true;
+        console.warn(
+          '[Hooks] File hooks berubah setelah dimuat; hooks dihentikan sampai bAIwor dijalankan ulang.'
+        );
+      }
+      return false;
+    }
+
+    if (!this.isProjectConfig) return true;
+    if (this.trustDecision !== null) return this.trustDecision;
+    if (this.trustPromise) return this.trustPromise;
+
+    this.trustPromise = this.#decideTrust();
+    try {
+      return await this.trustPromise;
+    } finally {
+      this.trustPromise = null;
+    }
+  }
+
+  async #decideTrust() {
+    if (this.hooks.length === 0) {
+      this.trustDecision = true;
+      return true;
+    }
+
+    const hash = this.#hashConfig();
+    if (!hash) {
+      this.trustDecision = true;
+      return true;
+    }
+
+    let trusted = false;
+    try {
+      trusted = this.trustCheck
+        ? Boolean(await this.trustCheck(this.configPath, hash))
+        : isHooksProjectTrusted(this.projectRoot, hash);
+    } catch {
+      trusted = false;
+    }
+
+    if (!trusted && this.interactive) {
+      try {
+        const safePath = sanitizeTerminalText(this.configPath, {
+          preserveNewlines: false,
+        });
+        const answer = await p.confirm({
+          message:
+            'Folder ini mendefinisikan hooks yang akan menjalankan perintah shell:\n\n' +
+            `${this.#describeHooks()}\n\n` +
+            `File: ${safePath}\n\n` +
+            'Percayai dan jalankan hooks proyek ini?',
+          initialValue: false,
+        });
+        trusted = !p.isCancel(answer) && answer === true;
+        if (trusted) {
+          try {
+            trustHooksProject(this.projectRoot, hash);
+          } catch (err) {
+            console.warn(`[Hooks] Gagal menyimpan persetujuan: ${err.message}`);
+          }
+        }
+      } catch {
+        trusted = false;
+      }
+    }
+
+    this.trustDecision = trusted;
+    if (!trusted) {
+      const safePath = sanitizeTerminalText(this.configPath, {
+        preserveNewlines: false,
+      });
+      const safeGlobal = sanitizeTerminalText(this.globalConfigPath, {
+        preserveNewlines: false,
+      });
+      console.warn(
+        `[Hooks] Hooks proyek tidak dijalankan: ${safePath} belum dipercaya. ` +
+          `Jalankan bAIwor di terminal interaktif untuk menyetujui, atau pindahkan hook ke ${safeGlobal}.`
+      );
+    }
+    return trusted;
   }
 
   #loadHooks() {
@@ -121,6 +314,12 @@ export class HookManager {
     this.hooks.push(hook);
     this.#saveHooks();
     this.#registerListeners();
+    // File berubah karena aksi eksplisit pengguna/pemanggil. Muat ulang hash
+    // agar tidak dianggap perubahan liar, tetapi konten baru tetap harus
+    // melewati trust gate sekali lagi.
+    this.loadedHash = this.#hashConfig();
+    this.trustDecision = null;
+    this.changeWarned = false;
   }
 
   /**
@@ -137,6 +336,9 @@ export class HookManager {
     this.#saveHooks();
     this.listeners.clear();
     this.#registerListeners();
+    this.loadedHash = this.#hashConfig();
+    this.trustDecision = null;
+    this.changeWarned = false;
   }
 
   /**
@@ -247,6 +449,7 @@ export class HookManager {
    */
   async #executeHook(hook, context) {
     const timeout = hook.timeout || 30000;
+    const isPreTool = context.event === 'pre-tool-execute';
 
     // Inject context sebagai environment variables
     const env = {
@@ -269,6 +472,7 @@ export class HookManager {
 
       let stdout = '';
       let stderr = '';
+      let timedOut = false;
 
       child.stdout.on('data', (data) => {
         stdout += data.toString();
@@ -279,20 +483,42 @@ export class HookManager {
       });
 
       const timer = setTimeout(() => {
-        child.kill('SIGTERM');
-        resolve({
-          allowed: true,
+        timedOut = true;
+        killHookProcess(child);
+        // Pre-hook adalah lapisan kebijakan: bila tidak bisa diselesaikan,
+        // jangan diam-diam meloloskan tool (fail-closed). Post-hook tetap
+        // tidak memblokir hasil tool.
+        const timeoutResult = {
+          allowed: !isPreTool,
+          reason: isPreTool
+            ? `[Hooks] Timeout setelah ${timeout}ms — tool diblokir (fail-closed).`
+            : undefined,
           output: `[Hooks] Timeout setelah ${timeout}ms`,
           exitCode: 124,
+        };
+
+        // Tunggu proses benar-benar berhenti (terutama di Windows, tempat
+        // cwd proses bisa menahan penghapusan folder test) dengan batas 500ms.
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve(timeoutResult);
+        };
+        const fallback = setTimeout(finish, 500);
+        child.once('close', () => {
+          clearTimeout(fallback);
+          finish();
         });
       }, timeout);
 
       child.on('close', (code) => {
         clearTimeout(timer);
+        if (timedOut) return;
         const output = stdout + (stderr ? `\n${stderr}` : '');
 
         // Untuk pre-hook, parse output untuk menentukan apakah diizinkan
-        if (context.event === 'pre-tool-execute') {
+        if (isPreTool) {
           const blocked = output.toLowerCase().includes('block:') || code !== 0;
           resolve({
             allowed: !blocked,
@@ -312,8 +538,12 @@ export class HookManager {
 
       child.on('error', (err) => {
         clearTimeout(timer);
+        if (timedOut) return;
         resolve({
-          allowed: true,
+          allowed: !isPreTool,
+          reason: isPreTool
+            ? `[Hooks] Gagal menjalankan hook: ${err.message}`
+            : undefined,
           output: `[Hooks] Error: ${err.message}`,
           exitCode: 1,
         });
@@ -331,6 +561,13 @@ export class HookManager {
   async trigger(event, context) {
     const hooks = this.listeners.get(event) || [];
     if (hooks.length === 0) {
+      return { allowed: true, results: [] };
+    }
+
+    // Hooks proyek adalah kode dari repo yang mungkin tidak dipercaya.
+    // Jangan jalankan apa pun sebelum pengguna menyetujui hash file ini.
+    const trusted = await this.#ensureTrust();
+    if (!trusted) {
       return { allowed: true, results: [] };
     }
 

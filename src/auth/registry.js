@@ -1,22 +1,4 @@
 export const PROVIDERS = {
-  'google-antigravity': {
-    id: 'google-antigravity',
-    name: 'Google Antigravity',
-    desc: 'Jembatan Antigravity CLI lokal (agy) — tanpa browser OAuth',
-    method: 'agy',
-    defaultModel: 'gemini-3.8-flash-high',
-    models: [
-      'gemini-3.8-flash-high',
-      'claude-sonnet-4-6',
-      'claude-opus-4-6-thinking',
-      'gpt-oss-120b-medium',
-      'gemini-3.8-flash-medium',
-      'gemini-3.8-flash-low',
-    ],
-    setupGuide:
-      'Gunakan sesi akun Google via Antigravity CLI (agy) yang terpasang di komputer Anda.',
-    baseUrl: 'local://antigravity',
-  },
   'google-gemini': {
     id: 'google-gemini',
     name: 'Google Gemini',

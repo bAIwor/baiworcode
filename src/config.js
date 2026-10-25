@@ -53,6 +53,11 @@ export const DEFAULT_CONFIG = {
   // Folder proyek yang MCP-nya sudah disetujui pengguna. Entri baru berbentuk
   // { path, hash } agar perubahan .mcp.json memicu persetujuan ulang.
   mcpTrustedProjects: [],
+  // Folder proyek yang hooks-nya (.baiwor/hooks.json) sudah disetujui.
+  // Hook menjalankan shell command, jadi file proyek tidak boleh dieksekusi
+  // hanya karena repo di-clone. Entri { path, hash } memaksa persetujuan ulang
+  // setiap kali isi file berubah.
+  hooksTrustedProjects: [],
 };
 
 export function maskSecret(str) {
@@ -307,15 +312,14 @@ export function normalizeMcpProjectPath(projectPath) {
 }
 
 /**
- * Apakah konfigurasi MCP proyek ini sudah dipercaya.
- * Entri hash hanya cocok bila isi file konfigurasi tidak berubah.
+ * Mencocokkan path proyek (dan hash opsional) pada daftar trust.
  *
+ * @param {Array} list
  * @param {string} projectPath
  * @param {string|null} [configHash]
  * @returns {boolean}
  */
-export function isMcpProjectTrusted(projectPath, configHash = null) {
-  const list = getConfig().mcpTrustedProjects;
+function isTrustedInList(list, projectPath, configHash = null) {
   if (!Array.isArray(list) || list.length === 0) return false;
   const normalized = normalizeMcpProjectPath(projectPath);
   return list.some((entry) => {
@@ -328,6 +332,28 @@ export function isMcpProjectTrusted(projectPath, configHash = null) {
   });
 }
 
+function addTrustedToList(list, projectPath, configHash) {
+  const current = Array.isArray(list) ? list : [];
+  const normalized = normalizeMcpProjectPath(projectPath);
+  const others = current.filter((entry) => {
+    const entryPath = typeof entry === 'string' ? entry : entry?.path;
+    return !entryPath || normalizeMcpProjectPath(entryPath) !== normalized;
+  });
+  return [...others, { path: path.resolve(projectPath), hash: configHash }];
+}
+
+/**
+ * Apakah konfigurasi MCP proyek ini sudah dipercaya.
+ * Entri hash hanya cocok bila isi file konfigurasi tidak berubah.
+ *
+ * @param {string} projectPath
+ * @param {string|null} [configHash]
+ * @returns {boolean}
+ */
+export function isMcpProjectTrusted(projectPath, configHash = null) {
+  return isTrustedInList(getConfig().mcpTrustedProjects, projectPath, configHash);
+}
+
 /**
  * Menyimpan persetujuan MCP untuk satu folder proyek beserta hash konfigurasi.
  *
@@ -335,16 +361,36 @@ export function isMcpProjectTrusted(projectPath, configHash = null) {
  * @param {string} configHash
  */
 export function trustMcpProject(projectPath, configHash) {
-  const current = Array.isArray(getConfig().mcpTrustedProjects)
-    ? getConfig().mcpTrustedProjects
-    : [];
-  const normalized = normalizeMcpProjectPath(projectPath);
-  const others = current.filter((entry) => {
-    const entryPath = typeof entry === 'string' ? entry : entry?.path;
-    return !entryPath || normalizeMcpProjectPath(entryPath) !== normalized;
-  });
   saveConfig({
-    mcpTrustedProjects: [...others, { path: path.resolve(projectPath), hash: configHash }],
+    mcpTrustedProjects: addTrustedToList(
+      getConfig().mcpTrustedProjects,
+      projectPath,
+      configHash
+    ),
+  });
+}
+
+/**
+ * Apakah hooks proyek sudah dipercaya. Hash harus cocok agar perubahan isi
+ * `.baiwor/hooks.json` memicu persetujuan ulang.
+ */
+export function isHooksProjectTrusted(projectPath, configHash = null) {
+  return isTrustedInList(getConfig().hooksTrustedProjects, projectPath, configHash);
+}
+
+/**
+ * Menyimpan persetujuan hooks proyek beserta hash file.
+ *
+ * @param {string} projectPath
+ * @param {string} configHash
+ */
+export function trustHooksProject(projectPath, configHash) {
+  saveConfig({
+    hooksTrustedProjects: addTrustedToList(
+      getConfig().hooksTrustedProjects,
+      projectPath,
+      configHash
+    ),
   });
 }
 

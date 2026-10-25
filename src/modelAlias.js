@@ -174,34 +174,6 @@ function resolveAgainstConfig(parsed, config) {
 function resolveBuiltinAlias(name, config) {
   const needle = name.toLowerCase();
 
-  if (needle === 'agy' || needle === 'antigravity') {
-    const prov = PROVIDERS['google-antigravity'];
-    if (prov) {
-      return { provider: prov.name, model: prov.defaultModel, type: 'agy' };
-    }
-  }
-
-  if (needle === 'sonnet') {
-    const prov = PROVIDERS['google-antigravity'];
-    if (prov) {
-      return { provider: prov.name, model: 'claude-sonnet-4-6', type: 'agy' };
-    }
-  }
-
-  if (needle === 'opus') {
-    const prov = PROVIDERS['google-antigravity'];
-    if (prov) {
-      return { provider: prov.name, model: 'claude-opus-4-6-thinking', type: 'agy' };
-    }
-  }
-
-  if (needle === 'gpt') {
-    const prov = PROVIDERS['google-antigravity'];
-    if (prov) {
-      return { provider: prov.name, model: 'gpt-oss-120b-medium', type: 'agy' };
-    }
-  }
-
   if (needle === 'gemini') {
     const prov = PROVIDERS['google-gemini'];
     if (prov) {
@@ -279,29 +251,18 @@ export function applyModelTarget(target, config) {
     return { ok: false, error: 'Target model tidak valid.' };
   }
 
-  if (target.type === 'oauth' || target.type === 'agy') {
+  if (target.type === 'oauth') {
     const prov = findOauthProvider(target.provider);
     if (!prov) {
       return { ok: false, error: `Provider '${target.provider}' tidak dikenal.` };
     }
-    const isAgy = target.type === 'agy' || prov.method === 'agy';
-    const patch = {
-      activeProvider: prov.name,
-      activeModel: target.model,
-      activeType: isAgy ? 'agy' : 'oauth',
-    };
-    if (isAgy) {
-      patch.oauth = {
-        [prov.id]: {
-          active: true,
-          method: 'agy',
-          connectedAt: Date.now(),
-        },
-      };
-    }
     return {
       ok: true,
-      patch,
+      patch: {
+        activeProvider: prov.name,
+        activeModel: target.model,
+        activeType: 'oauth',
+      },
       target: { ...target, provider: prov.name },
     };
   }

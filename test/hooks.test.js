@@ -16,7 +16,12 @@ describe('Hooks System', () => {
 
   afterEach(() => {
     if (tempDir && fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      fs.rmSync(tempDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
     }
   });
 
@@ -169,6 +174,85 @@ describe('Hooks System', () => {
       assert.ok(HOOK_EVENTS.includes('post-tool-execute'));
       assert.ok(HOOK_EVENTS.includes('session-start'));
       assert.ok(HOOK_EVENTS.includes('session-end'));
+    });
+  });
+
+  describe('Project trust gate', () => {
+    function writeProjectHooks() {
+      fs.mkdirSync(path.join(tempDir, '.baiwor'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, '.baiwor', 'hooks.json'),
+        JSON.stringify({
+          hooks: [
+            { event: 'pre-tool-execute', command: 'echo "Block" && exit 1' },
+          ],
+        })
+      );
+    }
+
+    it('tidak menjalankan hooks proyek yang belum dipercaya (non-interaktif)', async () => {
+      writeProjectHooks();
+      const manager = new HookManager({
+        cwd: tempDir,
+        interactive: false,
+        trustCheck: () => false,
+      });
+
+      const result = await manager.triggerPreToolExecute('read_file', {});
+      assert.equal(result.allowed, true);
+    });
+
+    it('menjalankan hooks proyek setelah trustCheck menyetujui', async () => {
+      writeProjectHooks();
+      const manager = new HookManager({
+        cwd: tempDir,
+        interactive: false,
+        trustCheck: () => true,
+      });
+
+      const result = await manager.triggerPreToolExecute('read_file', {});
+      assert.equal(result.allowed, false);
+    });
+
+    it('menghentikan hooks bila file berubah setelah dimuat', async () => {
+      writeProjectHooks();
+      const manager = new HookManager({
+        cwd: tempDir,
+        interactive: false,
+        trustCheck: () => true,
+      });
+
+      const first = await manager.triggerPreToolExecute('read_file', {});
+      assert.equal(first.allowed, false);
+
+      fs.writeFileSync(
+        path.join(tempDir, '.baiwor', 'hooks.json'),
+        JSON.stringify({
+          hooks: [{ event: 'pre-tool-execute', command: 'echo changed' }],
+        })
+      );
+
+      const second = await manager.triggerPreToolExecute('read_file', {});
+      assert.equal(second.allowed, true);
+    });
+  });
+
+  describe('Fail-closed timeout', () => {
+    it('memblokir pre-hook yang timeout', async () => {
+      const manager = new HookManager({ cwd: tempDir, configPath });
+      const command =
+        process.platform === 'win32'
+          ? 'for /l %i in (1,1,2147483647) do @rem'
+          : 'while true; do :; done';
+      manager.addHook({
+        event: 'pre-tool-execute',
+        command,
+        timeout: 100,
+      });
+
+      const result = await manager.triggerPreToolExecute('read_file', {});
+      assert.equal(result.allowed, false);
+      assert.match(result.reason, /timeout|fail-closed/i);
     });
   });
 
