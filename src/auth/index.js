@@ -1,7 +1,5 @@
-import chalk from 'chalk';
 import { theme } from '../theme.js';
 import * as p from '@clack/prompts';
-import { spinner } from '../spinner.js';
 import { getConfig, saveConfig, maskSecret } from '../config.js';
 import { PROVIDERS } from './registry.js';
 import { runDeviceFlow } from './device.js';
