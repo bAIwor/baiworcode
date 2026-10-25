@@ -15,7 +15,7 @@ export const VERSION = '1.0.0-beta.5';
 export const WEBSITE = 'https://baiwor.my.id';
 export const BONUS_WEBSITE = 'https://agentik.my.id';
 
-/** User-Agent untuk panggilan API (OpenAI-compatible & OAuth). */
+/** User-Agent untuk panggilan API (OpenAI-compatible). */
 export const USER_AGENT = `${APP_NAME.replace(/\s+/g, '-')}/${VERSION}`;
 export const CLI_USER_AGENT = `bAIwor-cli/${VERSION}`;
 

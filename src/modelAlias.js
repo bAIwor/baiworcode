@@ -1,7 +1,6 @@
 import chalk from 'chalk';
 import { theme } from './theme.js';
 import { getConfig, saveConfig } from './config.js';
-import { PROVIDERS } from './auth/registry.js';
 
 /**
  * Sistem model aliases untuk bAIwor Code.
@@ -9,7 +8,7 @@ import { PROVIDERS } from './auth/registry.js';
  * Ide intinya:
  *   1. Alias bernama  — `/model fav`, `/model step` → switch langsung tanpa menu.
  *   2. Short form     — `provider/model`, mis. `stepfun/step-5-preview` atau
- *      `google-gemini/gemini-2.0-flash`.
+ *      `agentik/gemini-3.8-flash-high`.
  *   3. Alias boleh membawa kredensial sendiri (baseUrl + apiKey) lewat bentuk
  *      objek di config.json, jadi endpoint baru bisa langsung dipakai.
  *
@@ -61,16 +60,6 @@ function findCustomProvider(config, name) {
   return (
     (config?.customProviders || []).find(
       (cp) => cp && cp.name && cp.name.toLowerCase() === needle
-    ) || null
-  );
-}
-
-function findOauthProvider(name) {
-  if (!name) return null;
-  const needle = String(name).toLowerCase();
-  return (
-    Object.values(PROVIDERS).find(
-      (p) => p.name.toLowerCase() === needle || p.id.toLowerCase() === needle
     ) || null
   );
 }
@@ -129,9 +118,8 @@ export function parseAliasValue(value) {
 }
 
 /**
- * Menjawab target terhadap config yang ada. Urutan:
- *   custom provider tersimpan → provider OAuth registry → provider custom
- *   baru (hanya bila alias membawa baseUrl + apiKey sendiri).
+ * Menjawab target terhadap config yang ada: custom provider tersimpan, atau
+ * provider custom baru bila alias membawa baseUrl + apiKey sendiri.
  */
 function resolveAgainstConfig(parsed, config) {
   const cp = findCustomProvider(config, parsed.provider);
@@ -144,11 +132,6 @@ function resolveAgainstConfig(parsed, config) {
       apiKey: parsed.apiKey || cp.apiKey,
       apiKeyRef: parsed.apiKeyRef || null,
     };
-  }
-
-  const prov = findOauthProvider(parsed.provider);
-  if (prov) {
-    return { provider: prov.name, model: parsed.model, type: 'oauth' };
   }
 
   // Provider custom belum tersimpan: hanya boleh lewat alias bentuk panjang
@@ -168,18 +151,10 @@ function resolveAgainstConfig(parsed, config) {
 }
 
 /**
- * Alias bawaan (deterministik, tidak bergantung config pengguna selain
- * keberadaan provider-nya): `gemini` dan `agentik`.
+ * Alias bawaan deterministik untuk provider sponsor `agentik`.
  */
 function resolveBuiltinAlias(name, config) {
   const needle = name.toLowerCase();
-
-  if (needle === 'gemini') {
-    const prov = PROVIDERS['google-gemini'];
-    if (prov) {
-      return { provider: prov.name, model: prov.defaultModel, type: 'oauth' };
-    }
-  }
 
   if (needle === 'agentik') {
     const cp = findCustomProvider(config, 'agentik');
@@ -199,7 +174,7 @@ function resolveBuiltinAlias(name, config) {
 
 /**
  * Resolusi utama: alias pengguna → short form `provider/model` → alias bawaan.
- * @returns {{provider:string, model:string, type:'custom'|'oauth', baseUrl?:string, apiKey?:string, source:'alias'|'shortform'|'builtin', alias?:string}|null}
+ * @returns {{provider:string, model:string, type:'custom', baseUrl?:string, apiKey?:string, source:'alias'|'shortform'|'builtin', alias?:string}|null}
  */
 export function resolveModelTarget(input, config) {
   if (!input || typeof input !== 'string') return null;
@@ -249,22 +224,6 @@ export function resolveModelTarget(input, config) {
 export function applyModelTarget(target, config) {
   if (!target || !target.provider || !target.model) {
     return { ok: false, error: 'Target model tidak valid.' };
-  }
-
-  if (target.type === 'oauth') {
-    const prov = findOauthProvider(target.provider);
-    if (!prov) {
-      return { ok: false, error: `Provider '${target.provider}' tidak dikenal.` };
-    }
-    return {
-      ok: true,
-      patch: {
-        activeProvider: prov.name,
-        activeModel: target.model,
-        activeType: 'oauth',
-      },
-      target: { ...target, provider: prov.name },
-    };
   }
 
   // Custom provider
@@ -471,14 +430,6 @@ export function renderSwitchResult(res) {
   const lines = [
     `✓ Model aktif: ${theme.info.bold(t.model)} ${theme.muted('·')} provider ${theme.info.bold(t.provider)}${via}`,
   ];
-  if (t.type === 'oauth') {
-    const prov = findOauthProvider(t.provider);
-    const authData = getConfig().oauth?.[prov?.id];
-    const loggedIn = Boolean(authData && (authData.accessToken || authData.apiKey));
-    if (!loggedIn) {
-      lines.push(theme.warning('  ⚠ Belum login ke provider ini — ketik /login sebelum mengobrol.'));
-    }
-  }
   return lines.join('\n');
 }
 

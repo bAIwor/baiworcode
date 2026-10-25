@@ -19,7 +19,6 @@ export const DEFAULT_CONFIG = {
       model: 'gemini-3.8-flash-high',
     },
   ],
-  oauth: {},
   // Model aliases bAIwor Code: nama pendek → "provider/model" atau objek
   // { model, provider, baseUrl?, apiKey? }. Dikelola via /model alias ...
   modelAliases: {},
@@ -176,8 +175,8 @@ export function getConfig() {
     //  - JSON rusak (SyntaxError): file bisa dicadangkan lalu ditulis ulang
     //    dengan default.
     //  - Error I/O (EACCES/EPERM/EBUSY): file TIDAK boleh disentuh sama
-    //    sekali. Menimpanya dengan default akan menghapus seluruh token
-    //    OAuth, API key, dan MCP server milik pengguna.
+    //    sekali. Menimpanya dengan default akan menghapus seluruh API key
+    //    dan MCP server milik pengguna.
     const isParseError = err instanceof SyntaxError;
 
     if (!isParseError) {
@@ -417,28 +416,6 @@ export function saveConfig(partialConfig) {
 export function saveConfigStrict(partialConfig) {
   const current = getConfig();
   const merged = { ...current, ...partialConfig };
-
-  // Merge khusus key oauth: digabung PER provider id, bukan diganti utuh.
-  // Patch parsial (mis. hanya { clientId }) tidak boleh menghapus accessToken
-  // atau apiKey yang sudah tersimpan. Patch yang membawa `method` dianggap
-  // sesi baru (login ulang / refresh token) sehingga diganti utuh, supaya
-  // kredensial lama tidak tercampur — mis. apiKey lama tertinggal saat
-  // pengguna beralih ke login OAuth.
-  if (partialConfig && typeof partialConfig.oauth === 'object' && partialConfig.oauth !== null) {
-    merged.oauth = { ...(current.oauth || {}) };
-    for (const [id, patch] of Object.entries(partialConfig.oauth)) {
-      if (patch === null || patch === undefined) {
-        delete merged.oauth[id];
-        continue;
-      }
-      if (typeof patch !== 'object') {
-        continue;
-      }
-      merged.oauth[id] = 'method' in patch
-        ? { ...patch }
-        : { ...(merged.oauth[id] || {}), ...patch };
-    }
-  }
 
   writeAtomicConfig(merged);
   return merged;

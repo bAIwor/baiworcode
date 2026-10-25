@@ -25,11 +25,25 @@ export function setSubagentProgressHandler(fn) {
 
 /**
  * Konfigurasi subagent Punakawan terisolasi:
+ * - semAIr  : Arsitek & Pamomong Strategi (READ-ONLY: merancang rencana & membedah kebutuhan).
  * - pAItruk : Scout & Penjelajah (Murni read-only: membaca, mencari berkas, webfetch/websearch).
  * - gAIreng : Auditor & Verifikator (Uji mutu: run_command, diagnostics, inspeksi berkas).
  * - bAIwor  : Master Builder (Pekerja sub-tugas kode terarah).
  */
 export const SUBAGENT_ROLES = {
+  semAIr: {
+    name: 'semAIr',
+    title: 'Arsitek & Pamomong Strategi',
+    emoji: '👑',
+    allowedTools: ['read_file', 'list_directory', 'search_files', 'websearch', 'webfetch'],
+    systemPrompt: `Kamu adalah semAIr — Sang Arsitek & Pamomong Strategi tim Punakawan bAIwor Code.
+Peranmu merancang rencana kerja dan membedah kebutuhan (READ-ONLY).
+Aturan ketat:
+1. Kamu HANYA boleh membaca dan mencari berkas (read_file, search_files, list_directory, websearch, webfetch) untuk memahami konteks sebelum menyusun rencana.
+2. Dilarang keras mengubah berkas atau menjalankan perintah penulisan.
+3. Susun laporan akhir berupa rencana terstruktur: tujuan, urutan langkah, berkas yang perlu disentuh, serta risiko dan asumsi — untuk agen utama.
+Jawab lugas, to-the-point, dan jujur (blakasuta).`,
+  },
   pAItruk: {
     name: 'pAItruk',
     title: 'Scout & Penjelajah',
@@ -79,9 +93,11 @@ Jawab lugas, to-the-point, dan jujur (blakasuta).`,
 
 /**
  * Batas putaran bawaan per peran. pAItruk mendapat jatah lebih longgar karena
- * tugas eksplorasi memang membaca banyak berkas sebelum bisa menyimpulkan.
+ * tugas eksplorasi memang membaca banyak berkas sebelum bisa menyimpulkan;
+ * semAIr juga agak longgar karena harus membedah konteks sebelum merancang.
  */
 export const DEFAULT_MAX_TURNS_BY_ROLE = {
+  semAIr: 10,
   pAItruk: 12,
   gAIreng: 8,
   bAIwor: 8,
@@ -94,7 +110,7 @@ export const PARALLEL_CONCURRENCY = 3;
  * Menjalankan SATU subagent Punakawan dalam loop terisolasi.
  *
  * @param {Object} args
- * @param {string} args.role - 'pAItruk' | 'gAIreng' | 'bAIwor'
+ * @param {string} args.role - 'semAIr' | 'pAItruk' | 'gAIreng' | 'bAIwor'
  * @param {string} args.task - Deskripsi tugas
  * @param {string} [args.context] - Konteks tambahan
  * @param {number} [args.max_turns] - Batas putaran (1-20; default per peran, lihat DEFAULT_MAX_TURNS_BY_ROLE)
@@ -446,10 +462,8 @@ export async function handleDelegateTask(args = {}, options = {}) {
     };
   }
 
-  // Resolve kredensial sekali saja untuk semua subagent paralel. Ini juga
-  // mencegah beberapa refresh OAuth berjalan bersamaan (rotasi token bisa
-  // membuat salah satunya gagal). Handler progres (eksplisit atau global)
-  // diteruskan ke setiap subagent.
+  // Resolve kredensial sekali saja untuk semua subagent paralel. Handler
+  // progres (eksplisit atau global) diteruskan ke setiap subagent.
   const progressFn = options.onProgress || subagentProgressHandler;
   let sharedOptions = progressFn ? { ...options, onProgress: progressFn } : options;
   if (!options.completionFn && !options.credentials) {

@@ -8,10 +8,17 @@ import {
 import '../src/tools/index.js';
 
 describe('Child Subagent Delegation Engine (delegate_task)', () => {
-  it('harus mendefinisikan 3 peran Punakawan utama dengan konfigurasi tool yang tepat', () => {
+  it('harus mendefinisikan 4 peran Punakawan utama dengan konfigurasi tool yang tepat', () => {
+    assert.ok(SUBAGENT_ROLES.semAIr);
     assert.ok(SUBAGENT_ROLES.pAItruk);
     assert.ok(SUBAGENT_ROLES.gAIreng);
     assert.ok(SUBAGENT_ROLES.bAIwor);
+
+    // semAIr harus read-only murni (arsitek perencana, bukan eksekutor)
+    assert.ok(SUBAGENT_ROLES.semAIr.allowedTools.includes('read_file'));
+    assert.ok(SUBAGENT_ROLES.semAIr.allowedTools.includes('search_files'));
+    assert.ok(!SUBAGENT_ROLES.semAIr.allowedTools.includes('write_file'));
+    assert.ok(!SUBAGENT_ROLES.semAIr.allowedTools.includes('run_command'));
 
     // pAItruk harus read-only murni
     assert.ok(SUBAGENT_ROLES.pAItruk.allowedTools.includes('read_file'));

@@ -41,6 +41,15 @@ import {
   buildAutoRepairPrompt,
   buildDiagnosticWarningMessage,
 } from './selfHealing.js';
+import {
+  selectPresenter,
+  formatPresenterBadge,
+  formatHandoffLine,
+  getLastPresenter,
+  getWorkPhaseLabel,
+} from './presenter.js';
+import { setActivePresenter } from '../statusLine.js';
+import { TOOL_ACTORS } from '../agents/punakawan.js';
 
 export { conversationSession };
 
@@ -155,7 +164,7 @@ export async function handleUserChat(promptText) {
     credentials = await resolveActiveCredentials();
   } catch (err) {
     console.log(chalk.yellow(`\n  ⚠️  ${err.message}`));
-    console.log(chalk.gray(`     Ketik ${chalk.cyan('/model')} untuk mengatur model atau ${chalk.cyan('/login')} untuk login provider.\n`));
+    console.log(chalk.gray(`     Ketik ${chalk.cyan('/model')} untuk mengatur model atau provider.\n`));
     return { ok: false, aborted: false };
   }
 
@@ -277,6 +286,12 @@ export async function handleUserChat(promptText) {
   let completedNaturally = false;
   let stuckLoop = false;
   const toolSignatureCounts = new Map();
+
+  // Rotasi Punakawan: seluruh tool yang dipanggil pada giliran pengguna ini
+  // menentukan anggota mana yang menyampaikan jawaban akhir.
+  const turnToolNames = [];
+  let turnPresenter = null;
+  let presenterBadgePrinted = false;
 
   // Mode izin dibaca saat giliran dimulai. Peralihan yang terjadi di tengah
   // giliran (lewat prompt) tidak mengubah aturan main yang sedang berjalan.
@@ -457,6 +472,35 @@ export async function handleUserChat(promptText) {
   };
 
   /**
+   * Menetapkan penyampai jawaban giliran ini (rotasi Punakawan) dan mencetak
+   * badge penutup sekali saja. Dipanggil saat jawaban akhir selesai — baik
+   * jawaban natural maupun kesimpulan paksa dari requestFinalAnswer.
+   * Bila penyampai berganti dari giliran sebelumnya, baris serah terima 🔄
+   * dicetak lebih dulu agar pergantian anggota terlihat sebagai koordinasi tim.
+   */
+  const noteTurnPresenter = () => {
+    if (!turnPresenter) {
+      const previous = getLastPresenter();
+      turnPresenter = selectPresenter({ toolNames: turnToolNames });
+      setActivePresenter(turnPresenter);
+      if (
+        previous &&
+        turnPresenter &&
+        previous !== turnPresenter &&
+        process.stdout.isTTY
+      ) {
+        const handoff = formatHandoffLine(previous, turnPresenter);
+        if (handoff) process.stdout.write(handoff + '\n');
+      }
+    }
+    if (!presenterBadgePrinted && turnPresenter && process.stdout.isTTY) {
+      presenterBadgePrinted = true;
+      process.stdout.write(formatPresenterBadge(turnPresenter) + '\n');
+    }
+    return turnPresenter;
+  };
+
+  /**
    * Giliran penutup: mengirim riwayat tanpa definisi tool agar model menuliskan
    * kesimpulan, bukan memanggil tool lagi. Hasilnya tetap sebuah jawaban akhir,
    * jadi kerja yang sudah dilakukan tidak berakhir tanpa keputusan.
@@ -482,7 +526,7 @@ export async function handleUserChat(promptText) {
       wrap = await runModelTurn({
         messages,
         tools: [],
-        spinnerText: 'bAIwor sedang menyusun kesimpulan akhir...',
+        spinnerText: '👑 semAIr menyusun kesimpulan akhir...',
       });
       finalText = (wrap?.content || '').trim();
     } catch (err) {
@@ -495,6 +539,7 @@ export async function handleUserChat(promptText) {
     if (finalText) {
       conversationSession.addAssistantMessage(finalText, null, wrap?.reasoning || undefined);
       process.stdout.write('\n\n');
+      noteTurnPresenter();
       return;
     }
 
@@ -562,7 +607,7 @@ export async function handleUserChat(promptText) {
         });
         if (autoCompactRes.triggered) {
           process.stdout.write(
-            chalk.cyan(`\n  ⚡ [Auto-Compact] Konteks percakapan mencapai ${autoCompactRes.percentBefore}% (~${autoCompactRes.tokensBefore} token).\n     Rangkuman dibuat otomatis (hemat ${autoCompactRes.savedTokens} token). Snapshot tersimpan.\n\n`)
+            chalk.cyan(`\n  ⚡ [Auto-Compact] Konteks percakapan mencapai ${autoCompactRes.percentBefore}% (~${autoCompactRes.tokensBefore} token).\n     Rangkuman dibuat otomatis oleh 👑 semAIr (hemat ${autoCompactRes.savedTokens} token). Snapshot tersimpan.\n\n`)
           );
         }
       } catch {}
@@ -588,10 +633,10 @@ export async function handleUserChat(promptText) {
         // function-calling ke provider. Sebelumnya tool MCP hanya disebut
         // di system prompt sehingga model tidak pernah bisa memanggilnya.
         tools: filterToolsForAgentMode(getDefinitions(), agentMode),
-        spinnerText:
-          currentTurn === 1
-            ? 'bAIwor sedang merancang strategi...'
-            : 'bAIwor sedang menimbang & mengolah hasil tool...',
+        // Fase spinner mengikuti progres kerja giliran (rancang → telusur →
+        // bangun → uji) berdasarkan tool terakhir yang dipakai, sehingga
+        // keempat Punakawan terlihat bergantian sepanjang tugas besar.
+        spinnerText: getWorkPhaseLabel(turnToolNames),
       });
       // Giliran pertama sudah terbukti berjalan → mulai simpan sesi SECARA
       // INKREMENTAL. Sejak titik ini setiap pesan (assistant/tool) ditulis ke
@@ -640,6 +685,9 @@ export async function handleUserChat(promptText) {
         for (const tc of result.tool_calls) {
           const fnName = tc.function?.name || 'unknown_tool';
           const rawArgs = tc.function?.arguments || '{}';
+          // Catat niat pemanggilan (termasuk yang gagal/diblokir) — jenis
+          // pekerjaan giliran ini menentukan penyampai jawabannya.
+          turnToolNames.push(fnName);
 
           let parsedArgs = {};
           try {
@@ -649,7 +697,10 @@ export async function handleUserChat(promptText) {
           }
 
           const shouldSuspend = toolMayPrompt(fnName, parsedArgs);
-          const liveIndex = live.addTool(fnName, parsedArgs, { actor: 'bAIwor' });
+          // Atribusi aktor mengikuti peta tool → Punakawan; tool eksternal
+          // (mis. MCP) dieksekusi oleh agen utama bAIwor.
+          const toolActor = TOOL_ACTORS[fnName] || 'bAIwor';
+          const liveIndex = live.addTool(fnName, parsedArgs, { actor: toolActor });
           if (shouldSuspend) live.suspend();
 
           // Penjaga mode Plan: tool tulis sudah tidak dikirim ke model di mode
@@ -729,7 +780,7 @@ export async function handleUserChat(promptText) {
 
           const event = {
             name: fnName,
-            actor: 'bAIwor',
+            actor: toolActor,
             args: parsedArgs,
             durationMs,
             output: toolResult.output,
@@ -863,6 +914,8 @@ export async function handleUserChat(promptText) {
 
       process.stdout.write('\n\n');
 
+      noteTurnPresenter();
+
       completedNaturally = true;
       break;
     }
@@ -898,9 +951,9 @@ export async function handleUserChat(promptText) {
 
     // Tangani HTTP Error secara ramah
     if (err.status === 401 || err.status === 403) {
-      console.log(chalk.red.bold(`  ❌ Autentikasi Gagal (${err.status}): Kredensial tidak valid atau token telah kedaluwarsa.`));
+      console.log(chalk.red.bold(`  ❌ Autentikasi Gagal (${err.status}): Kredensial tidak valid atau kedaluwarsa.`));
       console.log(chalk.gray(`     Provider : ${credentials.provider} (${credentials.type})`));
-      console.log(chalk.gray(`     Solusi   : Ketik ${chalk.cyan('/model')} untuk memeriksa API Key atau ${chalk.cyan('/login')} untuk login ulang.\n`));
+      console.log(chalk.gray(`     Solusi   : Ketik ${chalk.cyan('/model')} untuk memeriksa API Key.\n`));
     } else if (err.status === 429) {
       console.log(theme.warning.bold('  ⏳ Hmmm kena limit! Ok deh ganti /model\n'));
     } else if (err.status >= 500) {
@@ -951,5 +1004,5 @@ export async function handleUserChat(promptText) {
     process.removeListener('SIGINT', sigintHandler);
   }
 
-  return { ok: true, aborted: false };
+  return { ok: true, aborted: false, presenter: turnPresenter };
 }

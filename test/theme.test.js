@@ -56,10 +56,8 @@ describe('Theme: Palette', () => {
 
   it('harus tidak punya hex liar di luar palette (audit token CLI)', () => {
     // Audit nyata: pindai seluruh src/ dan pastikan tidak ada warna hex yang
-    // ditulis langsung di luar theme.js. Pengecualian hanya untuk CSS inline
-    // di halaman HTML auth/pkce.js (bukan terminal).
+    // ditulis langsung di luar theme.js.
     const srcDir = path.join(REPO_ROOT, 'src');
-    const allowlist = new Set([path.join('auth', 'pkce.js')]);
     const offenders = [];
 
     const walk = (dir) => {
@@ -71,7 +69,7 @@ describe('Theme: Palette', () => {
         }
         if (!entry.name.endsWith('.js')) continue;
         const rel = path.relative(srcDir, full);
-        if (rel === 'theme.js' || allowlist.has(rel)) continue;
+        if (rel === 'theme.js') continue;
 
         const content = fs.readFileSync(full, 'utf8');
         const matches = content.match(/#[0-9a-fA-F]{6}\b/g) || [];

@@ -1,6 +1,11 @@
 import { createPainter } from '../colors.js';
 import { palette } from '../theme.js';
-import { PUNAKAWAN_COLORS, SQUAD_ROLE_EMOJIS } from '../agents/punakawan.js';
+import {
+  PUNAKAWAN_COLORS,
+  SQUAD_ROLE_EMOJIS,
+  TOOL_ACTORS,
+  formatPunakawanLabel,
+} from '../agents/punakawan.js';
 import { sanitizeTerminalText } from './wrapText.js';
 
 const DEFAULT_SUMMARY_LEN = 80;
@@ -35,32 +40,11 @@ const TOOL_TINTS = {
   instabox_exec: palette.primary, // oranye aksen — cloud sandbox MicroVM
 };
 
-/**
- * Pemetaan peran Tim Punakawan AI untuk setiap kategori tool:
- * - pAItruk : Riset & Penelusuran berkas (read_file, list_directory, search_files)
- * - bAIwor  : Master Builder eksekutor kode (write_file, edit_file)
- * - gAIreng : Quality Gate & Auditor penguji perintah (run_command)
- * - semAIr  : Arsitek & Pamomong strategi (todo_list, delegate_task, ask_user)
- */
-export const PUNAKAWAN_ROLES = {
-  read_file: 'pAItruk',
-  list_directory: 'pAItruk',
-  search_files: 'pAItruk',
-  webfetch: 'pAItruk',
-  websearch: 'pAItruk',
-  webautomate: 'pAItruk',
-  write_file: 'bAIwor',
-  edit_file: 'bAIwor',
-  patch_file: 'bAIwor',
-  run_command: 'gAIreng',
-  diagnostics: 'gAIreng',
-  todo_list: 'semAIr',
-  delegate_task: 'semAIr',
-  ask_user: 'semAIr',
-  instabox_exec: 'bAIwor',
-};
-
 // Warna & ikon peran berasal dari sumber tunggal di agents/punakawan.js.
+// Atribusi tool → aktor memakai TOOL_ACTORS (bukan salinan lokal) agar tidak
+// ada dua peta yang bisa menyimpang. Alias ini dipertahankan untuk konsumen
+// lama yang masih mengimpor PUNAKAWAN_ROLES dari modul timeline.
+export const PUNAKAWAN_ROLES = TOOL_ACTORS;
 // Kategori aksi tetap dibedakan lewat warna nama tool (lihat TOOL_TINTS).
 export { PUNAKAWAN_COLORS };
 
@@ -369,12 +353,14 @@ export function renderTimeline(
     if (lineCount > 0) meta.push(c.gray(`${lineCount} baris`));
     if (ev.extraMeta) meta.push(c.gray(ev.extraMeta));
 
-    const punakawan = ev.actor || PUNAKAWAN_ROLES[ev.name];
+    const punakawan = ev.actor || TOOL_ACTORS[ev.name];
     // Nama karakter Punakawan selalu kuning emas (seragam) agar identitas aktor
     // langsung terbaca; warna kategori tetap dipegang oleh nama tool di
-    // sampingnya.
+    // sampingnya. Ikon di kiri nama membuat "siapa" terbaca sekilas.
     const actorTint = c.hex(PUNAKAWAN_COLORS[punakawan] || palette.gold);
-    const actorPrefix = punakawan ? `${actorTint(c.bold(punakawan))} ${c.gray('·')} ` : '';
+    const actorPrefix = punakawan
+      ? `${actorTint(c.bold(formatPunakawanLabel(punakawan)))} ${c.gray('·')} `
+      : '';
 
     // Nama tool memakai warna kategorinya; saat gagal ditonjolkan merah agar
     // mudah dipindai — nama Punakawan tetap emas, hanya aksinya yang menyala.
@@ -535,9 +521,9 @@ export function renderTimelineCompact(
       const toolName = (failed ? c.hex(palette.error) : tint)(c.bold(toolLabel(ev.name)));
 
       // Aktor Punakawan tetap tampil (kuning emas) agar "siapa yang bertindak" tetap jelas.
-      const punakawan = ev.actor || PUNAKAWAN_ROLES[ev.name];
+      const punakawan = ev.actor || TOOL_ACTORS[ev.name];
       const actorPart = punakawan
-        ? `${c.hex(PUNAKAWAN_COLORS[punakawan] || palette.gold)(c.bold(punakawan))} ${dot} `
+        ? `${c.hex(PUNAKAWAN_COLORS[punakawan] || palette.gold)(c.bold(formatPunakawanLabel(punakawan)))} ${dot} `
         : '';
 
       const meta = [c.gray(isRunning ? '…' : formatDuration(ev.durationMs))];

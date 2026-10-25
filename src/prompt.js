@@ -215,8 +215,6 @@ export const COMMANDS = [
   { name: '/mcp', desc: 'Kelola MCP server eksternal (Tavily, Firecrawl, dll.)' },
   { name: '/model', desc: 'Pilih model: /model (menu) · /model <alias|provider/model>' },
   { name: '/provider', desc: 'Alias untuk perintah /model' },
-  { name: '/login', desc: 'Login ke Google Gemini OAuth' },
-  { name: '/logout', desc: 'Logout dari sesi Google Gemini OAuth' },
   { name: '/image', desc: 'Kirim gambar/screenshot ke AI: /image <path> [pertanyaan]' },
   { name: '/undo', desc: 'Batalkan seluruh perubahan berkas pada putaran (turn) terakhir' },
   { name: '/clear', desc: 'Bersihkan layar & reset riwayat percakapan' },

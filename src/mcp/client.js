@@ -22,8 +22,8 @@ const activeSessions = new Map(); // serverName -> McpSession
 /**
  * Environment yang aman diwariskan ke server MCP stdio.
  *
- * Sebelumnya seluruh `process.env` diteruskan, sehingga API key/OAuth token
- * pengguna ikut terbaca oleh server MCP pihak ketiga. Hanya variabel sistem
+ * Sebelumnya seluruh `process.env` diteruskan, sehingga API key pengguna
+ * ikut terbaca oleh server MCP pihak ketiga. Hanya variabel sistem
  * yang dibutuhkan untuk menemukan executable dan berjalan normal yang
  * diwariskan; kredensial harus dideklarasikan eksplisit di `env` server.
  */

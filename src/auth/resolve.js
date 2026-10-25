@@ -1,7 +1,5 @@
 import chalk from 'chalk';
 import { getConfig } from '../config.js';
-import { PROVIDERS } from './registry.js';
-import { getAccessToken } from './index.js';
 import { USER_AGENT } from '../branding.js';
 
 const ENV_REF_RE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g;
@@ -44,14 +42,6 @@ export function findMissingEnvRefs(value) {
  */
 export function hasActiveCredentials(config = getConfig()) {
   try {
-    if (config.activeType === 'oauth') {
-      const prov = Object.values(PROVIDERS).find(
-        (p) => p.name.toLowerCase() === (config.activeProvider || '').toLowerCase()
-      );
-      if (!prov) return false;
-      const token = config.oauth?.[prov.id];
-      return Boolean(token && (token.accessToken || token.apiKey));
-    }
     if (config.activeType === 'custom') {
       const cp = (config.customProviders || []).find(
         (c) => (c?.name || '').toLowerCase() === (config.activeProvider || '').toLowerCase()
@@ -66,7 +56,7 @@ export function hasActiveCredentials(config = getConfig()) {
 }
 
 /**
- * Menghubungkan kredensial provider aktif (Custom API Key atau OAuth Bearer Token)
+ * Menghubungkan kredensial provider custom yang aktif (API key + baseUrl).
  * Disiapkan untuk eksekusi chat streaming pada Tahap 3A.
  */
 export async function resolveActiveCredentials() {
@@ -129,40 +119,6 @@ export async function resolveActiveCredentials() {
         'Content-Type': 'application/json',
         'User-Agent': customHeaders['User-Agent'] || USER_AGENT,
         ...customHeaders,
-      },
-      model: activeModel,
-    };
-  }
-
-  if (config.activeType === 'oauth') {
-    const prov = Object.values(PROVIDERS).find(
-      (p) => p.name.toLowerCase() === (config.activeProvider || '').toLowerCase()
-    );
-
-    if (!prov) {
-      throw new Error(`OAuth provider '${config.activeProvider}' tidak dikenal.`);
-    }
-
-    const token = await getAccessToken(prov.id);
-    if (!token) {
-      throw new Error(
-        `Token login untuk ${prov.name} tidak ditemukan atau telah kedaluwarsa. Ketik /login untuk masuk kembali.`
-      );
-    }
-
-    const activeModel =
-      config.activeModel && config.activeModel !== 'Not configured'
-        ? config.activeModel
-        : prov.defaultModel;
-
-    return {
-      provider: prov.name,
-      type: 'oauth',
-      baseUrl: prov.baseUrl,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': USER_AGENT,
       },
       model: activeModel,
     };

@@ -90,7 +90,7 @@ baiworcode
 ```bash
 /model
 ```
-Pilih **Agentik AI** (paling praktis, ada bonus token gratis di [agentik.my.id](https://agentik.my.id)), atau **+ Kustom API (manual URL)** untuk memakai API OpenAI-compatible pilihanmu. Untuk login Google Gemini OAuth, gunakan perintah `/login`.
+Pilih **Agentik AI** (paling praktis, ada bonus token gratis di [agentik.my.id](https://agentik.my.id)), atau **+ Kustom API (manual URL)** untuk memakai API OpenAI-compatible pilihanmu.
 
 **3. Langsung ngobrol**
 
@@ -123,12 +123,18 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Maskot Wajah Topeng Bawor presisi tinggi (19 kolom × 7 baris, simetris dan anti-menceng).
   - Banner 3D ASCII Shadow Merah-Putih.
   - Kotak informasi terminal dinamis anti-pecah (*visual column aware*).
-  - Area input dibingkai dua garis pemisah, dengan baris status yang ikut bergerak saat kamu mengetik — `~ │ Safe │ ✦ <model> · <provider> │ Konteks 92% tersisa`. Label mode izin memakai warna pastel Google (Safe biru, Auto hijau, Plan kuning, YOLO merah).
-  - Kedua garis memakai jumlah tanda pisah yang sama dan hanya berbeda empat kolom, memberi kesan undakan. Baris status menyesuaikan diri bila terminal sempit: rincian token, nama provider, dan keterangan akses dikorbankan berurutan agar tidak pernah melewati lebar terminal dan merusak kotak layout.
+  - Area input dibingkai dua garis pemisah, dengan baris status yang ikut bergerak saat kamu mengetik — `~ │ 👑 semAIr │ Safe │ ✦ <model> · <provider> │ Konteks 92% tersisa`. Label mode izin memakai warna pastel Google (Safe biru, Auto hijau, Plan kuning, YOLO merah); chip karakter menampilkan penyampai jawaban terakhir.
+  - Kedua garis memakai jumlah tanda pisah yang sama dan hanya berbeda empat kolom, memberi kesan undakan. Baris status menyesuaikan diri bila terminal sempit: chip karakter, rincian token, nama provider, dan keterangan akses dikorbankan berurutan agar tidak pernah melewati lebar terminal dan merusak kotak layout.
+  - **Callout GitHub berwarna + ikon** — `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, dan `> [!CAUTION]` di jawaban dirender langsung sebagai blok berwarna bertanda 📘 💡 ❗ ⚠️ 🔥 (bukan blockquote polos), lengkap dengan judul kustom dan garis penutup; dirender secara streaming sebelum jawaban selesai.
+- **🎭 Rotasi Penyampai Punakawan**:
+  - Jawaban akhir tidak selalu disampaikan bAIwor: anggota yang "bicara" ditentukan oleh **jenis pekerjaan giliran** — perencanaan → 👑 semAIr, eksplorasi/penjelasan kode → 🔭 pAItruk, implementasi → 🔨 bAIwor, verifikasi/test → ⚖️ gAIreng — lalu bertukar alami saat kamu berganti jenis pekerjaan.
+  - Giliran obrolan murni (tanpa tool) memakai **gilir-bilir (round-robin)** keempat anggota, jadi keempatnya selalu terlihat hadir.
+  - Setiap jawaban ditutup **badge penyampai** bergaya emas (`── 👑 semAIr · Arsitek & Pamomong Strategi ──`), dan banner pembuka menampilkan **piket harian**: sapaan satu anggota yang berganti deterministik tiap hari.
+  - Rotasi murni lapisan presentasi — perilaku kerja dan system prompt agen tidak berubah.
 - **Timeline Aktivitas**:
   - Setiap tool yang dijalankan dicatat sebagai pohon: nama tool, durasi, dan jumlah baris output.
   - **Nama tool diwarnai per kategori** agar jenis langkah langsung terbaca sekilas — baca (cyan) untuk `read_file`/`webfetch`, jelajah (biru) untuk `list_directory`/`search_files`/`websearch`, tulis & ubah (hijau) untuk `write_file`/`edit_file`/`patch_file`, jalankan `run_command` (merah), rencana `todo_list` dan pemeriksaan `diagnostics` (oranye tua). Batang pohon ikut mengambil warna tool-nya.
-  - Setiap langkah juga menampilkan **nama Punakawan** pelakunya (semAIr, bAIwor, pAItruk, gAIreng) dengan satu warna kuning emas yang seragam — jadi jelas "siapa" yang bertindak, sementara warna nama tool menunjukkan "aksi apa" yang dilakukan.
+  - Setiap langkah juga menampilkan **nama Punakawan** pelakunya (semAIr, bAIwor, pAItruk, gAIreng) dengan satu warna kuning emas yang seragam — jadi jelas "siapa" yang bertindak, sementara warna nama tool menunjukkan "aksi apa" yang dilakukan. Nama aktor selalu didahului **ikon karakternya** (👑 🔨 🔭 ⚖️) agar terbaca sekilas.
   - Pohon digambar **secara langsung**: langkah muncul satu per satu begitu selesai, sementara langkah yang sedang berjalan ditandai penanda berputar (`⠋`) amber dan durasi `…` — jadi progres terlihat mengalir, bukan menunggu semua tool usai.
   - Prompt persetujuan perintah menyembunyikan blok aktivitas dulu agar tampilan tidak rusak, lalu menggambarnya kembali.
   - Tool yang gagal ditandai merah agar mudah dipindai sekilas, dan keluarannya ikut diringkas.
@@ -151,9 +157,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - bAIwor otomatis mematuhi standar arsitektur, konvensi penamaan, dan batasan teknologi yang kamu tetapkan untuk proyekmu tanpa perlu diingatkan berulang kali.
 - **Sistem Keahlian & Plugin (.baiwor/skills)**:
   - Kelola instruksi spesifik domain dan modul keahlian di `.baiwor/skills/` untuk memperkaya wawasan bAIwor dalam menangani alur kerja khusus timmu.
-- **Arsitektur Autentikasi & Provider**:
-  - **Google Gemini OAuth** via PKCE (loopback + S256) — login tanpa menyimpan API key di disk.
-  - **Agentik AI** sebagai provider bawaan (endpoint OpenAI-compatible + bonus token).
+- **Arsitektur Provider**:
+  - **Agentik AI** sebagai provider sponsor/bawaan (endpoint OpenAI-compatible + bonus token).
   - Dukungan **Custom OpenAI-compatible endpoints** lengkap dengan fetch otomatis `/models` dan ganti model aktif.
   - Konfigurasi tersimpan otomatis & atomik di `~/.baiwor/config.json` dengan proteksi backup bila file korup.
 - **Mesin Chat Streaming & Agentic Loop**:
@@ -177,7 +182,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - `diagnostics` — deteksi & jalankan pemeriksaan mutu proyek (script `lint`/`typecheck`/`check`, atau `tsc`/`eslint`) supaya bAIwor memverifikasi pekerjaannya sebelum menyatakan selesai.
   - **Self-Healing Diagnostics Loop** — setelah bAIwor selesai mengedit berkas, sistem otomatis menjalankan pemeriksaan diagnostik (lint/typecheck). Jika ada error syntax atau tipe, model langsung diberi konteks error dan diminta memperbaiki secara otomatis (maksimal 2x retry) sebelum memberikan jawaban akhir. Jika auto-repair gagal, pengguna mendapat peringatan jelas dengan rincian error.
   - `todo_list` — susun rencana tugas untuk pekerjaan besar dan lacak progresnya.
-  - `delegate_task` & `ask_user` — orkestrasi subagent (satu tugas atau **mode paralel hingga 6 tugas, 3 berjalan bersamaan**) dan konfirmasi interaktif.
+  - `delegate_task` & `ask_user` — orkestrasi subagent (satu tugas atau **mode paralel hingga 6 tugas, 3 berjalan bersamaan**) dan konfirmasi interaktif. Empat peran Punakawan bisa didelegasikan: 👑 semAIr (perencanaan read-only), 🔭 pAItruk (eksplorasi), ⚖️ gAIreng (verifikasi), 🔨 bAIwor (kode terarah).
   - Mode paralel cocok untuk eksplorasi/audit independen: setiap subagent Punakawan punya histori, tool, dan laporan terisolasi; hasilnya disintesis kembali ke agen utama.
 - **🔗 Hooks System (Event-Driven Automation)**:
   - Otomatis menjalankan shell command saat event tertentu terjadi: `pre-tool-execute`, `post-tool-execute`, `session-start`, `session-end`.
@@ -215,7 +220,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Persistence ke `~/.baiwor/cron-tasks.json`.
 - **🤖 Custom Agent Creator**:
   - Buat custom agents dengan konfigurasi spesifik: system prompt kustom, tool access yang dibatasi, model/temperature/max_tokens override.
-  - **Default agents**: Punakawan Squad (pAItruk 🔭, gAIreng ⚖️, bAIwor 🔨) sudah predefined.
+  - **Default agents**: Punakawan Squad (semAIr 👑, pAItruk 🔭, gAIreng ⚖️, bAIwor 🔨) sudah predefined.
   - **Custom agents**: Disimpan di `.baiwor/agents/*.json` dan bisa dipanggil via `delegate_task`.
   - **Tool filtering**: Otomatis filter tool definitions berdasarkan `allowedTools` agent.
   - API: `createAgent`, `updateAgent`, `deleteAgent`, `getAgent`, `listAgents`, `filterToolsForAgent`.
@@ -241,13 +246,11 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `/doctor` — Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox cloud
 - `/skill [list|info]` — Kelola modul keahlian & plugin (`.baiwor/skills` dan bawaan)
 - `/rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
-- `/status` — Status konfigurasi, provider aktif, **latency**, dan sesi login
+- `/status` — Status konfigurasi, provider aktif, dan **latency**
 - `/tinyfish [status|search|fetch|key]` — Kelola integrasi TinyFish Web Intelligence
 - `/mcp [list|tools|add|remove|key|refresh]` — Kelola server & tool Model Context Protocol (MCP). Tanpa argumen membuka menu interaktif.
 - `/model [target]` — Ganti model AI & provider. Tanpa argumen membuka menu; dengan argumen switch langsung: `/model <alias>` atau `/model <provider>/<model>`. Kelola alias: `/model alias list|add|remove`
 - `/provider [target]` — Alias untuk perintah `/model`
-- `/login` — Login ke provider OAuth (Google Gemini)
-- `/logout` — Logout dari sesi provider OAuth
 - `/undo` — Batalkan seluruh perubahan berkas pada putaran (turn) terakhir secara aman tanpa merusak riwayat Git
 - `/scan [secrets|deps|all] [path]` — **Guardian Security Scan**: pindai hardcoded secret (`/scan secrets`), audit dependency rentan npm/yarn/pnpm/pip (`/scan deps`), atau keduanya (`/scan all`, default). Nilai secret yang ditemukan selalu disensor pada laporan; temuan di folder test/fixture diberi label terpisah agar tidak menutupi secret asli.
 - `/clear` — Bersihkan layar & reset riwayat percakapan
@@ -263,12 +266,10 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `baiworcode rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
 - `baiworcode doctor` — Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox cloud
 - `baiworcode update [sandbox] [--yes]` — Perbarui bAIwor Code ke versi terbaru dari GitHub (verifikasi origin + konfirmasi; `--yes` untuk skrip)
-- `baiworcode status` — Status konfigurasi dan sesi login
+- `baiworcode status` — Status konfigurasi dan provider aktif
 - `baiworcode mcp` — Jalankan bAIwor Code sebagai MCP Server (stdio) untuk berbagai klien MCP eksternal
 - `baiworcode model [target]` — Tanpa argumen: menu kelola model/provider. Dengan argumen: switch langsung (`baiworcode model step`, `baiworcode model stepfun/step-5-preview`, `baiworcode model alias add ...`)
 - `baiworcode provider [target]` — Alias untuk perintah `model`
-- `baiworcode login [provider]` — Login langsung ke provider OAuth
-- `baiworcode logout [provider]` — Logout langsung dari provider OAuth
 
 ### ⚡ Model Aliases — Switch Model Sekali Ketik
 
@@ -277,7 +278,6 @@ Selain menu interaktif, model & provider bisa di-switch langsung pakai nama pend
 ```bash
 baiworcode model step                        # lewat alias tersimpan
 baiworcode model stepfun/step-5-preview      # short form: provider/model
-baiworcode model gemini                      # alias bawaan (Google Gemini)
 baiworcode model agentik                     # alias bawaan (Agentik AI)
 ```
 
@@ -326,7 +326,7 @@ Di dalam mode interaktif, cara pakainya sama — cukup `/model step`, `/model al
 | `webautomate` | Menjalankan otomasi browser headless (**TinyFish Web Agent / Mako**) untuk misi interaktif web |
 | `diagnostics` | Menjalankan pemeriksaan mutu proyek (lint/typecheck/tsc/eslint) |
 | `todo_list` | Menyusun dan memperbarui daftar tugas multi-langkah, ditampilkan sebagai checklist |
-| `delegate_task` | Mendelegasikan satu tugas, atau 2-6 tugas **paralel** (maks 3 sekaligus), ke subagent Punakawan terisolasi |
+| `delegate_task` | Mendelegasikan satu tugas, atau 2-6 tugas **paralel** (maks 3 sekaligus), ke subagent Punakawan terisolasi (semAIr/pAItruk/gAIreng/bAIwor) |
 | `ask_user` | Mengajukan pertanyaan atau mengonfirmasi pilihan interaktif kepada pengguna |
 | `instabox_exec` | Menjalankan perintah di MicroVM Linux InstaBox (aktif bila API key sandbox dikonfigurasi) |
 

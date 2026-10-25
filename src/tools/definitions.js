@@ -351,8 +351,9 @@ export const TOOL_DEFINITIONS = [
         properties: {
           role: {
             type: 'string',
-            enum: ['pAItruk', 'gAIreng', 'bAIwor'],
-            description: 'Peran untuk mode tunggal: "pAItruk" (Scout/Read-only), "gAIreng" (Auditor: test/lint/diagnostics), atau "bAIwor" (Worker kode terarah).',
+            enum: ['semAIr', 'pAItruk', 'gAIreng', 'bAIwor'],
+            description:
+              'Peran untuk mode tunggal: "semAIr" (Arsitek: rencana/read-only), "pAItruk" (Scout/Read-only), "gAIreng" (Auditor: test/lint/diagnostics), atau "bAIwor" (Worker kode terarah).',
           },
           task: {
             type: 'string',
@@ -364,7 +365,7 @@ export const TOOL_DEFINITIONS = [
           },
           max_turns: {
             type: 'integer',
-            description: 'Batas putaran subagent mode tunggal (default: 8; pAItruk 12; max: 20).',
+            description: 'Batas putaran subagent mode tunggal (default: 8; semAIr 10; pAItruk 12; max: 20).',
           },
           tasks: {
             type: 'array',
@@ -375,7 +376,7 @@ export const TOOL_DEFINITIONS = [
               properties: {
                 role: {
                   type: 'string',
-                  enum: ['pAItruk', 'gAIreng', 'bAIwor'],
+                  enum: ['semAIr', 'pAItruk', 'gAIreng', 'bAIwor'],
                   description: 'Peran subagent untuk tugas ini.',
                 },
                 task: { type: 'string', description: 'Instruksi spesifik tugas.' },

@@ -53,7 +53,6 @@ import { validateBuiltinKeyForProvider } from '../src/mcp/apiKeys.js';
 import { runModelMenu } from '../src/modelMenu.js';
 import { handleModelCommand } from '../src/modelAlias.js';
 import { askBaiworInput, COMMANDS } from '../src/prompt.js';
-import { login, logout, authStatus } from '../src/auth/index.js';
 import { hasActiveCredentials } from '../src/auth/resolve.js';
 import { BAWOR_LOGO } from '../src/assets/baworLogo.js';
 import { handleUserChat, resetConversation, conversationSession } from '../src/chat/index.js';
@@ -77,7 +76,8 @@ import {
   extractTargetAndPrompt,
   getWorkspaceInfo,
 } from '../src/workspace.js';
-import { renderStatusLine } from '../src/statusLine.js';
+import { renderStatusLine, setActivePresenter } from '../src/statusLine.js';
+import { pickDailyGreeter, resetPresenterRotation, formatPresenterStats } from '../src/chat/presenter.js';
 import { resolveActiveCredentials } from '../src/auth/resolve.js';
 import { applyHelpStyle, helpHeader, helpFooter } from '../src/cliHelp.js';
 import { runDoctor } from '../src/doctor.js';
@@ -444,6 +444,17 @@ function showBanner() {
   console.log(' '.repeat(centerPadInTextLogo(layout, tagline)) + chalk.gray(tagline));
   console.log();
 
+  // Piket harian Punakawan (rotasi deterministik per tanggal): keempat anggota
+  // bersapa bergantian hari demi hari, bukan selalu bAIwor.
+  const piket = pickDailyGreeter();
+  const piketLine = `${piket.emoji} ${piket.name} — "${piket.greeting}"`;
+  console.log(
+    ' '.repeat(Math.max(0, centerPadInTextLogo(layout, piketLine))) +
+      chalk.yellow(piket.emoji + ' ' + chalk.bold(piket.name)) +
+      chalk.gray(` — "${piket.greeting}"`)
+  );
+  console.log();
+
   const siapDipakai = hasActiveCredentials(config);
   const readyText = siapDipakai ? '● Siap' : '○ Belum siap';
   const readyBadge = siapDipakai ? chalk.green(readyText) : chalk.yellow(readyText);
@@ -473,20 +484,17 @@ function showBanner() {
   console.log();
 
   // Onboarding singkat untuk pengguna baru: tanpa kredensial siap, percakapan
-  // pertama pasti gagal — arahkan ke /model atau /login SEBELUM mereka bingung.
+  // pertama pasti gagal — arahkan ke /model SEBELUM mereka bingung.
   if (!siapDipakai || config.activeModel === 'Not configured') {
     console.log(chalk.hex('#FBBF24').bold('  👋 Selamat datang di bAIwor Code! Ini langkah pertamamu:'));
     console.log(
-      chalk.white('     1. Ketik ') +
+      chalk.white('     Ketik ') +
         chalk.cyan('/model') +
         chalk.white(' lalu pilih ') +
         chalk.hex('#10B981')('Agentik AI') +
-        chalk.white(' — ada bonus token gratis.')
-    );
-    console.log(
-      chalk.white('     2. Atau ketik ') +
-        chalk.cyan('/login') +
-        chalk.white(' untuk masuk dengan akun Google Gemini.')
+        chalk.white(' atau ') +
+        chalk.cyan('+ Kustom API') +
+        chalk.white('.')
     );
     console.log(chalk.gray('     Setelah model aktif, langsung ketik pertanyaan atau instruksi coding apa saja.'));
     console.log();
@@ -506,8 +514,6 @@ function showBanner() {
 
 // Label pemakaian yang butuh argumen (nama di COMMANDS sengaja tanpa argumen)
 const HELP_USAGE = {
-  '/login': '/login [provider]',
-  '/logout': '/logout [provider]',
   '/permission': '/permission [safe|auto|plan|yolo]',
   '/cd': '/cd <folder>',
   '/workspace': '/workspace [folder]',
@@ -648,7 +654,6 @@ async function checkActiveProviderLatency() {
 
 async function printStatus() {
   const config = getConfig();
-  const oauthList = authStatus();
 
   const latency = await checkActiveProviderLatency();
   const latencyBadge = latency.endsWith('ms') ? chalk.green(latency) : chalk.gray(latency);
@@ -676,14 +681,13 @@ async function printStatus() {
             : 'nonaktif (tidak terdeteksi)';
   const colorBadge = chalk.level > 0 ? chalk.green(colorState) : chalk.yellow(colorState);
   console.log(`    ${chalk.dim('Warna         :')} ${colorBadge} ${chalk.dim(`(level ${chalk.level})`)}`);
-  console.log();
 
-  console.log(chalk.whiteBright.bold('  🔐 Status Sesi OAuth Providers:'));
-  for (const item of oauthList) {
-    const badge = item.loggedIn ? chalk.green('● Logged In ') : chalk.gray('○ Belum Login');
-    const tokenInfo = item.loggedIn ? chalk.gray(`[Token: ${item.maskedToken}] (${item.expiryStatus})`) : '';
-    console.log(`    ${badge} ${chalk.bold(item.name.padEnd(16))} ${chalk.dim(`(${item.method})`)} ${tokenInfo}`);
-  }
+  // Rotasi Punakawan: piket harian (banner) + rekap siapa saja yang sudah
+  // menyampaikan jawaban pada sesi berjalan.
+  const piketNow = pickDailyGreeter();
+  console.log(`    ${chalk.dim('Piket Hari Ini:')} ${chalk.yellow(`${piketNow.emoji} ${piketNow.name}`)} ${chalk.dim(`— "${piketNow.greeting}"`)}`);
+  console.log(`    ${chalk.dim('Rotasi Sesi   :')} ${chalk.white(formatPresenterStats())}`);
+  console.log();
 
   const customList = config.customProviders || [];
   if (customList.length > 0) {
@@ -1893,7 +1897,7 @@ async function startInteractive(opts = {}) {
         if (!res.compacted) {
           console.log(chalk.yellow(`\n  ℹ️  ${res.reason || 'Konteks percakapan belum perlu dirangkum.'}\n`));
         } else {
-          console.log(chalk.green.bold('\n  ✨ Konteks percakapan berhasil dirangkum oleh semAIr!'));
+          console.log(chalk.green.bold('\n  ✨ Konteks percakapan berhasil dirangkum oleh 👑 semAIr!'));
           console.log(chalk.gray(`     Token sebelum : ~${res.tokensBefore} token`));
           console.log(chalk.gray(`     Token sesudah : ~${res.tokensAfter} token`));
           console.log(chalk.gray(`     Hemat ruang   : ~${res.savedTokens} token\n`));
@@ -1989,6 +1993,8 @@ async function startInteractive(opts = {}) {
             // proyek diizinkan.
             const ok = conversationSession.loadFromDisk(targetId, { allowCrossProject: true });
             if (ok) {
+              resetPresenterRotation();
+              setActivePresenter(null);
               showResumedBanner();
             } else {
               console.log(chalk.red.bold(`\n  ❌ Sesi "${targetId}" tidak ditemukan.\n`));
@@ -2026,6 +2032,8 @@ async function startInteractive(opts = {}) {
                 // eksplisit → pencarian lintas proyek diizinkan.
                 const ok = conversationSession.loadFromDisk(pickedId, { allowCrossProject: true });
                 if (ok) {
+                  resetPresenterRotation();
+                  setActivePresenter(null);
                   showResumedBanner();
                 } else {
                   console.log(chalk.red.bold(`\n  ❌ Gagal memuat sesi "${pickedId}".\n`));
@@ -2052,6 +2060,8 @@ async function startInteractive(opts = {}) {
             if (count > 0) {
               console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus seluruh (${count}) sesi proyek ini.\n`));
               conversationSession.reset();
+              resetPresenterRotation();
+              setActivePresenter(null);
             } else {
               console.log(chalk.yellow('\n  Tidak ada sesi yang perlu dihapus.\n'));
             }
@@ -2061,6 +2071,8 @@ async function startInteractive(opts = {}) {
               console.log(chalk.green.bold(`\n  🗑️  Berhasil menghapus sesi: ${target}\n`));
               if (conversationSession.sessionId === target) {
                 conversationSession.reset();
+                resetPresenterRotation();
+                setActivePresenter(null);
               }
             } else {
               console.log(chalk.red.bold(`\n  ❌ Sesi "${target}" tidak ditemukan.\n`));
@@ -2203,12 +2215,6 @@ async function startInteractive(opts = {}) {
         }
         break;
       }
-      case '/login':
-        await login(arg || undefined);
-        break;
-      case '/logout':
-        await logout(arg || undefined);
-        break;
       case '/image': {
         if (!arg) {
           console.log(chalk.yellow('\n  ⚠️  Sertakan path gambar. Contoh: /image screenshot.png Jelaskan bug ini\n'));
@@ -2268,12 +2274,17 @@ async function startInteractive(opts = {}) {
       }
       case '/reset':
         resetConversation();
+        resetPresenterRotation();
+        setActivePresenter(null);
         break;
       case '/clear':
         conversationSession.clearHistory();
         // `/clear` menyegarkan layar sekaligus membuka sesi bersih, jadi daftar
         // tugas dari pekerjaan sebelumnya juga dibuang agar tidak muncul lagi.
         resetTodoStore();
+        // Rotasi penyampai Punakawan ikut mulai dari awal untuk sesi baru.
+        resetPresenterRotation();
+        setActivePresenter(null);
         console.clear();
         showBanner();
         break;
@@ -2568,7 +2579,7 @@ program
 
 program
   .command('status')
-  .description('Tampilkan status konfigurasi dan sesi login')
+  .description('Tampilkan status konfigurasi dan provider aktif')
   .action(async () => {
     await printStatus();
     process.exit(0);
@@ -2625,22 +2636,6 @@ program
   });
 
 program
-  .command('login [provider]')
-  .description('Login ke Google Gemini OAuth')
-  .action(async (provider) => {
-    await login(provider);
-    process.exit(0);
-  });
-
-program
-  .command('logout [provider]')
-  .description('Logout dari sesi Google Gemini OAuth')
-  .action(async (provider) => {
-    await logout(provider);
-    process.exit(0);
-  });
-
-program
   .command('mcp [action] [target...]')
   .description('Kelola server MCP atau jalankan bAIwor Code sebagai MCP Server (stdio)')
   .option('--serve', 'Jalankan sebagai MCP Server (stdio)')
@@ -2674,7 +2669,7 @@ for (const command of program.commands) {
 // Subperintah CLI yang sah
 const KNOWN_CLI_COMMANDS = new Set([
   'session', 'skill', 'rules', 'status', 'doctor',
-  'update', 'model', 'provider', 'login', 'logout', 'mcp'
+  'update', 'model', 'provider', 'mcp'
 ]);
 
 // Commander 13 hanya mendukung SATU short flag dan bawaannya huruf besar (-V).

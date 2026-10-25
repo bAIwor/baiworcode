@@ -74,12 +74,70 @@ export const PUNAKAWAN_COLORS = {
 /**
  * Ikon peran subagent untuk pohon aktivitas paralel (Punakawan Squad).
  */
-export const SQUAD_ROLE_EMOJIS = {
-  bAIwor: '🔨',
-  pAItruk: '🔍',
-  gAIreng: '⚖️',
-  semAIr: '👑',
+// Diturunkan dari PUNAKAWAN_ROLES agar ikon tidak pernah menyimpang dari
+// sumber tunggal metadata karakter.
+export const SQUAD_ROLE_EMOJIS = Object.fromEntries(
+  Object.entries(PUNAKAWAN_ROLES).map(([name, role]) => [name, role.emoji])
+);
+
+/**
+ * Pemetaan tool → anggota Punakawan pelakunya. Single source of truth: dipakai
+ * timeline (atribusi aktor), presenter (menentukan penyampai jawaban), dan
+ * turunannya. Menambah tool baru cukup mendaftarkan di sini.
+ */
+export const TOOL_ACTORS = {
+  read_file: 'pAItruk',
+  list_directory: 'pAItruk',
+  search_files: 'pAItruk',
+  webfetch: 'pAItruk',
+  websearch: 'pAItruk',
+  webautomate: 'pAItruk',
+  write_file: 'bAIwor',
+  edit_file: 'bAIwor',
+  patch_file: 'bAIwor',
+  run_command: 'gAIreng',
+  diagnostics: 'gAIreng',
+  todo_list: 'semAIr',
+  delegate_task: 'semAIr',
+  ask_user: 'semAIr',
+  instabox_exec: 'bAIwor',
 };
+
+/**
+ * Identitas penyampai jawaban (presenter) per anggota: gelar singkat untuk
+ * badge penutup jawaban dan sapaan piket harian untuk banner.
+ */
+export const PRESENTER_INFO = {
+  semAIr: {
+    tagline: 'Arsitek & Pamomong Strategi',
+    greeting: 'Rencana sing cetha, gaweane dadi enteng.',
+  },
+  bAIwor: {
+    tagline: 'Master Builder',
+    greeting: 'Kodene tak gawekne, tinggal cek hasilne.',
+  },
+  pAItruk: {
+    tagline: 'Scout & Penjelajah',
+    greeting: 'Tak telusuri dulu jejak kodene.',
+  },
+  gAIreng: {
+    tagline: 'Auditor & Verifikator',
+    greeting: 'Beri-selesai mesti tak uji dhisik.',
+  },
+};
+
+/**
+ * Label aktor dengan ikon di kiri nama (mis. "🔭 pAItruk") agar "siapa yang
+ * bertindak" terbaca sekilas tanpa membaca nama.
+ *
+ * @param {string} name
+ * @returns {string} Label berikon; string kosong bila peran tidak dikenal.
+ */
+export function formatPunakawanLabel(name) {
+  const role = PUNAKAWAN_ROLES[name];
+  if (!role) return '';
+  return `${role.emoji} ${role.name}`;
+}
 
 /**
  * Mengambil metadata peran Punakawan berdasarkan nama atau alias peran generik.

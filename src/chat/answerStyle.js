@@ -45,6 +45,22 @@ const KEYWORDS = new Set([
   'long','short','byte','echo','then','fi','done','esac','local','source',
 ]);
 
+/**
+ * Callout GitHub (GFM alerts) — `> [!NOTE]`, `> [!TIP]`, dst. — dirender
+ * sebagai blok berwarna dengan ikon, bukan blockquote polos. System prompt
+ * meminta model memakai callout ini, jadi menanganinya memberi dampak visual
+ * langsung di hampir setiap jawaban.
+ */
+const CALLOUT_SPECS = {
+  NOTE: { icon: '📘', label: 'NOTE', hex: palette.info },
+  INFO: { icon: '📘', label: 'INFO', hex: palette.info },
+  TIP: { icon: '💡', label: 'TIP', hex: palette.success },
+  IMPORTANT: { icon: '❗', label: 'IMPORTANT', hex: palette.accent },
+  WARNING: { icon: '⚠️', label: 'WARNING', hex: palette.warning },
+  CAUTION: { icon: '🔥', label: 'CAUTION', hex: palette.error },
+};
+const CALLOUT_RULE_WIDTH = 32;
+
 const TOKEN_RE =
   /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d+(?:\.\d+)?\b)|\b([A-Za-z_$][\w$]*)\b/g;
 
@@ -103,6 +119,14 @@ export class AnswerStyler {
     this.codeBuf = '';
     this.fence = '```';
     this.fenceHeader = false;
+    // Status blockquote/callout: bar ditunda sampai jelas apakah baris quote
+    // membuka callout ([!NOTE] dst.) atau kutipan biasa.
+    this.quoteLineStart = false;
+    this.quoteIndent = '';
+    this.quoteLead = '';
+    this.calloutProbe = null;
+    this.callout = null;
+    this.calloutTitlePending = false;
   }
 
   /** Menelan sepotong token keluaran model, mengembalikan teks siap cetak. */
@@ -123,6 +147,8 @@ export class AnswerStyler {
       if (this.atLineStart) {
         const c = s[i];
         if (c === '\n') {
+          // Baris kosong mengakhiri blok callout yang sedang aktif.
+          if (this.callout) out.push(this.closeCalloutRule(), '\n');
           out.push(this.prefixBuf, '\n');
           this.prefixBuf = '';
           this.resetLine();
@@ -138,6 +164,17 @@ export class AnswerStyler {
       }
       const c = s[i++];
       if (c === '\n') {
+        // Baris quote tanpa konten (atau probe callout yang tidak jadi):
+        // tetap cetak barnya dulu agar kutipan kosong tetap terlihat.
+        if (this.quoteLineStart) {
+          if (this.calloutProbe || this.quoteLead) {
+            this.pending = this.quoteLead + (this.calloutProbe || '') + this.pending;
+            this.calloutProbe = null;
+            this.quoteLead = '';
+          }
+          this.emitQuoteBar(out);
+          this.quoteLineStart = false;
+        }
         this.resolvePendingAtEol(out);
         this.flushRun(out);
         out.push('\n');
@@ -161,8 +198,19 @@ export class AnswerStyler {
         this.codeBuf = '';
       }
     } else {
+      if (this.quoteLineStart) {
+        if (this.calloutProbe || this.quoteLead) {
+          this.pending = this.quoteLead + (this.calloutProbe || '') + this.pending;
+          this.calloutProbe = null;
+          this.quoteLead = '';
+        }
+        this.emitQuoteBar(out);
+        this.quoteLineStart = false;
+      }
       this.resolvePendingAtEol(out);
       this.flushRun(out);
+      // Stream berakhir di tengah callout: tutup bloknya agar rapi.
+      if (this.callout) out.push('\n' + this.closeCalloutRule());
     }
     return out.join('');
   }
@@ -180,6 +228,29 @@ export class AnswerStyler {
 
   // ---- internal ----
 
+  /**
+   * Mencetak bar pembuka baris blockquote: bar emas kutipan biasa, atau bar
+   * warna callout bila sedang di dalam blok callout. Tanpa spasi tambahan —
+   * spasi konten sesudah ">" dikembalikan lewat quoteLead agar tidak dobel.
+   */
+  emitQuoteBar(out) {
+    if (this.callout) {
+      const tint = chalk.hex(this.callout.hex);
+      out.push(`${this.quoteIndent}${tint('│')}`);
+      this.lineBase = { colorHex: this.callout.hex };
+    } else {
+      out.push(`${this.quoteIndent}${QUOTE('│')}`);
+      this.lineBase = QUOTE_BASE;
+    }
+  }
+
+  /** Garis penutup blok callout (sekalian mematikan status callout). */
+  closeCalloutRule() {
+    const hex = this.callout.hex;
+    this.callout = null;
+    return chalk.hex(hex).dim('─'.repeat(CALLOUT_RULE_WIDTH));
+  }
+
   resetLine() {
     this.atLineStart = true;
     this.prefixBuf = '';
@@ -188,6 +259,11 @@ export class AnswerStyler {
     this.lineBase = null;
     this.inline = { bold: false, italic: false, strike: false, code: false };
     this.lastChar = '';
+    this.quoteLineStart = false;
+    this.quoteIndent = '';
+    this.quoteLead = '';
+    this.calloutProbe = null;
+    this.calloutTitlePending = false;
   }
 
   styleRun() {
@@ -224,13 +300,22 @@ export class AnswerStyler {
     this.prefixBuf = '';
     this.atLineStart = false;
 
+    // Baris non-quote mengakhiri blok callout yang sedang aktif.
+    if (this.callout && verdict !== 'quote') {
+      out.push(this.closeCalloutRule(), '\n');
+    }
+
     if (verdict === 'heading') {
       this.lineBase = HEADING_BASE;
       return;
     }
     if (verdict === 'quote') {
+      // Bar quote DITUNDA: baris bisa jadi pembuka callout ([!TIP] dst.),
+      // dan markernya baru terbaca setelah prefix "> " ini. Barnya dicetak
+      // oleh emitQuoteBar() begitu jenis baris pasti.
       const m = buf.match(/^(\s*)>/);
-      out.push(`${m ? m[1] : ''}${QUOTE('│')}`);
+      this.quoteIndent = m ? m[1] : '';
+      this.quoteLineStart = true;
       this.lineBase = QUOTE_BASE;
       return;
     }
@@ -262,6 +347,71 @@ export class AnswerStyler {
     for (;;) {
       const p = this.pending;
       if (!p.length) return;
+
+      // Awal isi baris blockquote: Lewati dulu spasi setelah ">", lalu tentukan
+      // kutipan biasa atau callout ([!TIP] dst.).
+      if (this.quoteLineStart) {
+        if (this.calloutProbe === null && p[0] === ' ') {
+          this.quoteLead += ' ';
+          this.pending = p.slice(1);
+          continue;
+        }
+        if (this.calloutProbe !== null || p[0] === '[') {
+          this.calloutProbe = (this.calloutProbe || '') + p[0];
+          this.pending = p.slice(1);
+          const probe = this.calloutProbe;
+          const hit = probe.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|INFO)\](\s?)/i);
+          if (hit) {
+            const spec = CALLOUT_SPECS[hit[1].toUpperCase()];
+            const paint = chalk.hex(spec.hex);
+            this.quoteLead = '';
+            out.push(`${this.quoteIndent}${paint.bold(`${spec.icon} ${spec.label}`)}`);
+            // Marker selalu membuka blok callout baru (termasuk marker kedua
+            // dalam satu blockquote) — tint blok mengikuti marker terakhir.
+            this.callout = { hex: spec.hex };
+            if (this.pending.length) {
+              out.push(paint(' ── '));
+              this.lineBase = { colorHex: spec.hex, bold: true };
+            } else {
+              this.lineBase = null;
+              // Judul kustom bisa menyusul di potongan stream berikutnya.
+              this.calloutTitlePending = true;
+            }
+            this.quoteLineStart = false;
+            this.calloutProbe = null;
+            continue;
+          }
+          // Masih bisa jadi marker callout yang belum lengkap: tunggu karakter berikutnya.
+          if (/^\[!?[A-Za-z]*$/.test(probe)) return;
+          // Tidak jadi callout — kembalikan karakter probe sebagai teks quote biasa.
+          this.pending = this.quoteLead + probe + this.pending;
+          this.quoteLead = '';
+          this.calloutProbe = null;
+          this.emitQuoteBar(out);
+          this.quoteLineStart = false;
+          continue;
+        }
+        this.pending = this.quoteLead + this.pending;
+        this.quoteLead = '';
+        this.emitQuoteBar(out);
+        this.quoteLineStart = false;
+        continue;
+      }
+
+      // Judul kustom callout menyusul setelah marker (streaming): karakter
+      // pertama judul menyalakan pemisah " ── " dan gaya tebal.
+      if (this.calloutTitlePending) {
+        if (!p.length) return;
+        if (p[0] === ' ') {
+          this.pending = p.slice(1); // spasi pemisah — telan
+          continue;
+        }
+        const paint = chalk.hex(this.callout.hex);
+        out.push(paint(' ── '));
+        this.lineBase = { colorHex: this.callout.hex, bold: true };
+        this.calloutTitlePending = false;
+        continue;
+      }
 
       // Di dalam `kode` sebaris: semua karakter literal kecuali backtick penutup.
       if (this.inline.code) {

@@ -163,7 +163,7 @@ describe('LiveActivity: Punakawan Squad (delegate_task paralel)', () => {
     assert.ok(last.includes('(2 berjalan)'), 'jumlah berjalan harus dihitung');
     assert.ok(last.includes('├──'), 'cabang pohon pertama');
     assert.ok(last.includes('└──'), 'cabang pohon terakhir');
-    assert.ok(last.includes('🔍'), 'ikon pAItruk');
+    assert.ok(last.includes('🔭'), 'ikon pAItruk');
     assert.ok(last.includes('⚖️'), 'ikon gAIreng');
     assert.ok(last.includes('(turn 1)'), 'turn subagent pertama');
     assert.ok(last.includes('(turn 2)'), 'turn subagent kedua');

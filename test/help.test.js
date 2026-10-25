@@ -31,7 +31,7 @@ describe('CLI --help berwarna', () => {
     assert.match(out, /OPSI/);
     assert.match(out, /PERINTAH/);
     assert.match(out, /status/);
-    assert.match(out, /login/);
+    assert.match(out, /model/);
     assert.match(out, /CONTOH CEPAT/);
   });
 

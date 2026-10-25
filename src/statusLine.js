@@ -3,11 +3,12 @@ import { theme } from './theme.js';
 import { permissionModeLabel, permissionModeColor } from './chat/permissionMode.js';
 import { conversationSession } from './chat/conversation.js';
 import { getContextUsage, formatContextIndicator } from './chat/context.js';
+import { PUNAKAWAN_ROLES, formatPunakawanLabel } from './agents/punakawan.js';
 
 /**
  * Baris status di bawah area input:
  *
- *   ~ │ Safe │ ✦ <model> · <provider> │ Konteks 92% tersisa
+ *   ~ │ 👑 semAIr │ Safe │ ✦ <model> · <provider> │ Konteks 92% tersisa
  *
  * Label mode izin tunggal (safe/auto/plan/yolo) dengan warna pastel Google —
  * menggantikan dua label lama (Build/Plan + Safe/Full access) yang membingungkan.
@@ -16,6 +17,24 @@ import { getContextUsage, formatContextIndicator } from './chat/context.js';
  * keduanya harus menampilkan angka yang sama, dan menyalin logikanya di dua
  * berkas hanya membuka celah agar keduanya cepat berbeda.
  */
+
+/**
+ * Penyampai jawaban terakhir (rotasi Punakawan). Ditampilkan sebagai chip agar
+ * pengguna melihat keempat anggota bergantian menyampaikan jawaban; pada
+ * terminal sempit chip ini yang pertama dikorbankan.
+ */
+let activePresenter = null;
+
+/**
+ * @param {string|null} key Kunci karakter ('bAIwor' | 'semAIr' | 'pAItruk' | 'gAIreng')
+ */
+export function setActivePresenter(key) {
+  activePresenter = PUNAKAWAN_ROLES[key] ? key : null;
+}
+
+export function getActivePresenter() {
+  return activePresenter;
+}
 
 /** Lebar minimum agar baris tetap terbaca di terminal sempit. */
 const MIN_WIDTH = 40;
@@ -104,8 +123,13 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
 
   const bar = theme.muted('│');
 
-  const build = ({ detail, withProvider, withPermission = true, withPrefix }) => {
+  const build = ({ detail, withProvider, withPermission = true, withPrefix, withPresenter = false }) => {
     const parts = [theme.info('~')];
+    // Chip penyampai jawaban terakhir (rotasi Punakawan) — dikorbankan pertama
+    // saat terminal sempit karena murni informasi identitas.
+    if (withPresenter && activePresenter) {
+      parts.push(bar, theme.warning(formatPunakawanLabel(activePresenter)));
+    }
     // Mode izin tunggal selalu tampil (kecuali di bentuk paling ringkas):
     // pengguna harus langsung tahu kalau sedang di Plan (read-only) atau
     // YOLO (tanpa bertanya). Warna pastel: biru/hijau/kuning/merah.
@@ -123,6 +147,7 @@ export function renderStatusLine({ prefix = '', indent = '  ', maxWidth = null }
   const budget = Math.max(20, (maxWidth ?? terminalWidth()) - indent.length);
 
   const levels = [
+    { detail: true, withProvider: true, withPermission: true, withPrefix: true, withPresenter: true },
     { detail: true, withProvider: true, withPermission: true, withPrefix: true },
     { detail: false, withProvider: true, withPermission: true, withPrefix: true },
     { detail: false, withProvider: false, withPermission: true, withPrefix: true },

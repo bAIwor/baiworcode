@@ -10,7 +10,7 @@ const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '
  * `block()` yang menyalakan raw mode dan membuat readline di `process.stdin`.
  * Pada Windows ConPTY, toggle raw mode / readline tambahan itu ikut memicu race
  * yang meninggalkan stdin dalam keadaan salah -> terminal membeku (persis yang
- * terjadi pada alur login/logout & /model).
+ * terjadi pada alur /model).
  *
  * Versi ini hanya menulis ke stdout dan tidak pernah menyentuh stdin.
  * API-nya kompatibel: `start(message)` · `message(text)` · `stop(finalMessage)`.

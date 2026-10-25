@@ -15,7 +15,7 @@ import { expandEnvSecret, findMissingEnvRefs } from '../src/auth/resolve.js';
 
 /**
  * Config contoh yang meniru ~/.baiwor/config.json pengguna nyata
- * (Agentik + StepFun sebagai custom provider, Gemini lewat OAuth registry).
+ * (Agentik + StepFun sebagai custom provider).
  */
 function makeConfig(overrides = {}) {
   return {
@@ -36,7 +36,6 @@ function makeConfig(overrides = {}) {
         model: 'step-5-preview',
       },
     ],
-    oauth: {},
     modelAliases: {},
     ...overrides,
   };
@@ -142,17 +141,6 @@ test('resolveModelTarget: short form ke custom provider (case-insensitive)', () 
   assert.equal(target.source, 'shortform');
 });
 
-test('resolveModelTarget: short form ke provider OAuth by id dan by name', () => {
-  const byId = resolveModelTarget('google-gemini/gemini-2.0-flash', makeConfig());
-  assert.equal(byId.provider, 'Google Gemini');
-  assert.equal(byId.type, 'oauth');
-  assert.equal(byId.model, 'gemini-2.0-flash');
-
-  const byName = resolveModelTarget('Google Gemini/gemini-1.5-pro', makeConfig());
-  assert.equal(byName.provider, 'Google Gemini');
-  assert.equal(byName.model, 'gemini-1.5-pro');
-});
-
 test('resolveModelTarget: alias pengguna (short form & objek)', () => {
   const config = makeConfig({
     modelAliases: {
@@ -179,24 +167,20 @@ test('resolveModelTarget: alias pengguna (short form & objek)', () => {
   assert.equal(theta.baseUrl, 'https://theta.example.com/v1');
 });
 
-test('resolveModelTarget: alias pengguna menutupi alias bawaan', () => {
+test('resolveModelTarget: alias pengguna menutupi alias bawaan agentik', () => {
   const config = makeConfig({
-    modelAliases: { gemini: 'stepfun/step-5-preview' },
+    modelAliases: { agentik: 'stepfun/step-5-preview' },
   });
-  const target = resolveModelTarget('gemini', config);
+  const target = resolveModelTarget('agentik', config);
   assert.equal(target.provider, 'StepFun');
   assert.equal(target.source, 'alias');
 });
 
-test('resolveModelTarget: alias bawaan gemini & agentik', () => {
-  const gemini = resolveModelTarget('gemini', makeConfig());
-  assert.equal(gemini.provider, 'Google Gemini');
-  assert.equal(gemini.model, 'gemini-2.0-flash');
-  assert.equal(gemini.source, 'builtin');
-
+test('resolveModelTarget: alias bawaan agentik', () => {
   const agentik = resolveModelTarget('agentik', makeConfig());
   assert.equal(agentik.provider, 'Agentik');
   assert.equal(agentik.model, 'gemini-3.8-flash-medium');
+  assert.equal(agentik.source, 'builtin');
 });
 
 test('resolveModelTarget: yang tidak dikenali mengembalikan null', () => {
@@ -249,16 +233,6 @@ test('applyModelTarget: provider baru tanpa kredensial ditolak', () => {
   const res = applyModelTarget({ provider: 'Nvidia', model: 'x', type: 'custom' }, makeConfig());
   assert.equal(res.ok, false);
   assert.match(res.error, /belum tersimpan/);
-});
-
-test('applyModelTarget: provider OAuth', () => {
-  const res = applyModelTarget(
-    { provider: 'Google Gemini', model: 'gemini-2.0-flash', type: 'oauth' },
-    makeConfig()
-  );
-  assert.equal(res.ok, true);
-  assert.equal(res.patch.activeProvider, 'Google Gemini');
-  assert.equal(res.patch.activeType, 'oauth');
 });
 
 test('applyModelTarget: alias boleh membawa API key baru untuk provider tersimpan', () => {

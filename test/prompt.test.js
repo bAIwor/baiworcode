@@ -131,7 +131,7 @@ describe('Prompt: Dropdown Perintah', () => {
   it('harus menyaring perintah sesuai yang diketik', () => {
     const out = render('/he', 'initial', { dropdownOpen: true });
     assert.ok(out.includes('/help'));
-    assert.ok(!out.includes('/logout'), 'perintah yang tidak cocok tidak boleh muncul');
+    assert.ok(!out.includes('/tinyfish'), 'perintah yang tidak cocok tidak boleh muncul');
   });
 
   it('harus menandai perintah terpilih dengan ❯', () => {
