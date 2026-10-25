@@ -61,6 +61,8 @@ describe('webTool: proteksi SSRF', () => {
       '::ffff:127.0.0.1',
       '::ffff:7f00:1',
       '0:0:0:0:0:ffff:a9fe:a9fe',
+      '64:ff9b::7f00:1',
+      '64:ff9b::a9fe:a9fe',
     ]) {
       assert.equal(isPrivateAddress(ip), true, ip);
     }

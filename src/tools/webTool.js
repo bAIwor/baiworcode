@@ -83,6 +83,7 @@ export function isPrivateAddress(ip) {
     if (/^fe[89ab][0-9a-f]:/.test(address)) return true; // fe80::/10
     if (/^ff[0-9a-f]{2}:/.test(address)) return true; // multicast
     if (/^2001:db8:/.test(address)) return true; // dokumentasi
+    if (/^64:ff9b:/i.test(address)) return true; // NAT64 (64:ff9b::/96) dapat membungkus IPv4 privat
     // IPv4-mapped IPv6, baik bentuk titik (::ffff:127.0.0.1) maupun heksadesimal
     // (::ffff:7f00:1 / 0:0:0:0:0:ffff:a9fe:a9fe).
     const mapped = address.match(/(?:^|:)ffff:([0-9a-f:.]+)$/i);

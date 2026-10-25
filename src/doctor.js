@@ -15,6 +15,7 @@ import { listActiveMcpSessions, loadMcpConfig } from './mcp/index.js';
 import { getInstaboxStatus } from './tools/instaboxTool.js';
 import { isHomeDirectory } from './tools/searchTool.js';
 import { modelsEndpoint } from './modelUrl.js';
+import { expandEnvSecret, findMissingEnvRefs } from './auth/resolve.js';
 import { APP_NAME, VERSION } from './branding.js';
 
 /**
@@ -93,23 +94,34 @@ export async function runDoctor() {
   if (config.customProviders && Array.isArray(config.customProviders)) {
     const activeCp = config.customProviders.find((cp) => cp.name === provider);
     if (activeCp && activeCp.baseUrl) {
-      try {
-        const start = Date.now();
-        const probeUrl = modelsEndpoint(activeCp.baseUrl);
-        const testRes = await globalThis.fetch(probeUrl, {
-          headers: activeCp.apiKey ? { Authorization: `Bearer ${activeCp.apiKey}` } : {},
-          signal: AbortSignal.timeout(5000),
-        });
-        const lat = Date.now() - start;
-        if (testRes.ok) {
-          check(true, `Koneksi API (${provider})`, `Terhubung (${lat}ms, HTTP ${testRes.status})`);
-        } else if (testRes.status === 401 || testRes.status === 403) {
-          check(false, `Koneksi API (${provider})`, `HTTP ${testRes.status} — API key ditolak/tidak berhak`, true);
-        } else {
-          check(false, `Koneksi API (${provider})`, `HTTP ${testRes.status} dari ${probeUrl}`, true);
+      const missingRefs = findMissingEnvRefs(activeCp.apiKey);
+      if (missingRefs.length > 0) {
+        check(
+          false,
+          `Koneksi API (${provider})`,
+          `API key memakai environment variable yang belum diset: ${missingRefs.join(', ')}`,
+          true
+        );
+      } else {
+        try {
+          const start = Date.now();
+          const probeUrl = modelsEndpoint(activeCp.baseUrl);
+          const apiKey = expandEnvSecret(activeCp.apiKey);
+          const testRes = await globalThis.fetch(probeUrl, {
+            headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+            signal: AbortSignal.timeout(5000),
+          });
+          const lat = Date.now() - start;
+          if (testRes.ok) {
+            check(true, `Koneksi API (${provider})`, `Terhubung (${lat}ms, HTTP ${testRes.status})`);
+          } else if (testRes.status === 401 || testRes.status === 403) {
+            check(false, `Koneksi API (${provider})`, `HTTP ${testRes.status} — API key ditolak/tidak berhak`, true);
+          } else {
+            check(false, `Koneksi API (${provider})`, `HTTP ${testRes.status} dari ${probeUrl}`, true);
+          }
+        } catch (err) {
+          check(false, `Koneksi API (${provider})`, `Gagal terhubung: ${err.message}`, true);
         }
-      } catch (err) {
-        check(false, `Koneksi API (${provider})`, `Gagal terhubung: ${err.message}`, true);
       }
     }
   }

@@ -39,7 +39,7 @@ baiworcode/
     ├── mcp/
     │   ├── client.js               # Klien MCP (Model Context Protocol) untuk koneksi ke MCP Server eksternal (TinyFish)
     │   ├── index.js                # Ekspor modul integrasi MCP
-    │   └── server.js               # MCP Server bawaan untuk mengekspos 15 tools bAIwor ke host luar
+    │   └── server.js               # MCP Server stdio: default read-only, tool tulis/perintah via opt-in eksplisit
     ├── rules/
     │   └── ruleManager.js          # Pemuat aturan proyek custom (BAIWORS.md dan .baiwor/rules/*.md)
     ├── skills/

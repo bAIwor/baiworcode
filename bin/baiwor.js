@@ -2639,6 +2639,10 @@ program
   .command('mcp [action] [target...]')
   .description('Kelola server MCP atau jalankan bAIwor Code sebagai MCP Server (stdio)')
   .option('--serve', 'Jalankan sebagai MCP Server (stdio)')
+  .option(
+    '--allow-dangerous',
+    'MCP server: izinkan tool tulis/perintah (setara BAIWOR_MCP_ALLOW_DANGEROUS=1)'
+  )
   .action(async (action, targets, options = {}) => {
     // Jalankan sebagai MCP Server stdio bila pengguna memintanya eksplisit
     // (`--serve` / `mcp serve`) atau bila pemanggil terdeteksi sebagai klien
@@ -2653,7 +2657,7 @@ program
     });
 
     if (mode === 'serve') {
-      startMcpServer();
+      startMcpServer({ allowDangerous: Boolean(options.allowDangerous) });
       return;
     }
     const arg = [action, ...(targets || [])].filter(Boolean).join(' ');

@@ -242,7 +242,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `baiworcode doctor` — Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox cloud
 - `baiworcode update [sandbox] [--yes]` — Perbarui bAIwor Code ke versi terbaru dari GitHub (verifikasi origin + konfirmasi; `--yes` untuk skrip)
 - `baiworcode status` — Status konfigurasi dan provider aktif
-- `baiworcode mcp` — Jalankan bAIwor Code sebagai MCP Server (stdio) untuk berbagai klien MCP eksternal
+- `baiworcode mcp` — Jalankan bAIwor Code sebagai MCP Server (stdio). Default read-only; `--allow-dangerous` (atau `BAIWOR_MCP_ALLOW_DANGEROUS=1`) membuka tool tulis/perintah
 - `baiworcode model [target]` — Tanpa argumen: menu kelola model/provider. Dengan argumen: switch langsung (`baiworcode model step`, `baiworcode model stepfun/step-5-preview`, `baiworcode model alias add ...`)
 - `baiworcode provider [target]` — Alias untuk perintah `model`
 
@@ -357,9 +357,11 @@ bAIwor Code dapat terhubung ke berbagai server MCP (baik via **remote HTTP** mau
 Contoh nyata — email untuk agen lewat [AgentMail](https://docs.agentmail.to/integrations/mcp): jalankan `/mcp add agentmail`, pilih *URL jarak jauh*, isi `https://mcp.agentmail.to/mcp`, pilih header `x-api-key`, lalu tempel kunci dari console.agentmail.to. Setelah tersambung, tool seperti `create_inbox` dan `send_email` langsung bisa diminta dengan bahasa sehari-hari.
 
 #### 2. Sebagai MCP Server (Gunakan bAIwor Code di Klien MCP Eksternal)
-bAIwor Code dapat bertindak sebagai server MCP berstandar stdio JSON-RPC 2.0 untuk mengekspos **15 tools bawaan bAIwor Code** ke berbagai aplikasi klien MCP eksternal:
+bAIwor Code dapat bertindak sebagai server MCP berstandar stdio JSON-RPC 2.0 untuk mengekspos **tool bawaan bAIwor Code** ke berbagai aplikasi klien MCP eksternal. Defaultnya **mode aman read-only** (`read_file`, `list_directory`, `search_files`, `webfetch`, `websearch`, `todo_list`); tool tulis/perintah hanya aktif bila operator membukanya secara eksplisit.
 ```bash
-baiworcode mcp
+baiworcode mcp                                   # mode aman (read-only)
+baiworcode mcp --serve --allow-dangerous         # semua 15 tool (tulis + perintah)
+# atau set BAIWOR_MCP_ALLOW_DANGEROUS=1
 ```
 Contoh konfigurasi di file konfigurasi MCP klien Anda:
 ```json
