@@ -185,13 +185,16 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - `delegate_task` & `ask_user` — orkestrasi subagent (satu tugas atau **mode paralel hingga 6 tugas, 3 berjalan bersamaan**) dan konfirmasi interaktif. Empat peran Punakawan bisa didelegasikan: 👑 semAIr (perencanaan read-only), 🔭 pAItruk (eksplorasi), ⚖️ gAIreng (verifikasi), 🔨 bAIwor (kode terarah).
   - Mode paralel cocok untuk eksplorasi/audit independen: setiap subagent Punakawan punya histori, tool, dan laporan terisolasi; hasilnya disintesis kembali ke agen utama.
 - **🔗 Hooks System (Event-Driven Automation)**:
-  - Otomatis menjalankan shell command saat event tertentu terjadi: `pre-tool-execute`, `post-tool-execute`, `session-start`, `session-end`.
+  - Otomatis menjalankan shell command pada event `pre-tool-execute` dan `post-tool-execute` (lifecycle `session-start`/`session-end` sudah didefinisikan tetapi belum tersambung ke CLI).
   - **Pre-hook** bisa memblokir eksekusi tool (misal: validasi command berbahaya sebelum `run_command`).
   - **Post-hook** untuk logging/notifikasi setelah tool selesai (misal: auto-format setelah `edit_file`).
   - Konfigurasi fleksibel di `.baiwor/hooks.json` (per-proyek) atau `~/.baiwor/hooks.json` (global).
   - **Trust gate**: hooks proyek tidak dijalankan sampai pengguna menyetujui isi file (hash SHA-256). Perubahan pada `.baiwor/hooks.json` memicu persetujuan ulang; sesi non-interaktif melewati hooks proyek yang belum dipercaya.
   - Kondisi opsional untuk trigger selektif (misal: hanya untuk tool tertentu).
   - Timeout default 30 detik per hook; pre-hook yang timeout **memblokir** tool (fail-closed).
+
+> **Status modul internal:** Workflows, Goals/Tasks, Cron, dan Custom Agent Creator tersedia sebagai modul dengan test unit, tetapi **belum tersambung ke slash command/CLI**. Jangan anggap fitur ini siap pakai sampai integrasinya dirilis.
+
 - **🔄 Workflows (Multi-Stage Orchestration)**:
   - Skrip JavaScript untuk orkestrasi multi-agent deterministik dengan fase (pipeline/parallel).
   - API sederhana: `agent()`, `parallel()`, `pipeline()`, `phase()` untuk membangun alur kerja kompleks.
@@ -220,7 +223,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Persistence ke `~/.baiwor/cron-tasks.json`.
 - **🤖 Custom Agent Creator**:
   - Buat custom agents dengan konfigurasi spesifik: system prompt kustom, tool access yang dibatasi, model/temperature/max_tokens override.
-  - **Default agents**: Punakawan Squad (semAIr 👑, pAItruk 🔭, gAIreng ⚖️, bAIwor 🔨) sudah predefined.
+  - **Default agents** (modul `agentCreator`): pAItruk 🔭, gAIreng ⚖️, bAIwor 🔨. Subagent live di `delegate_task` juga mendukung semAIr 👑.
   - **Custom agents**: Disimpan di `.baiwor/agents/*.json` dan bisa dipanggil via `delegate_task`.
   - **Tool filtering**: Otomatis filter tool definitions berdasarkan `allowedTools` agent.
   - API: `createAgent`, `updateAgent`, `deleteAgent`, `getAgent`, `listAgents`, `filterToolsForAgent`.

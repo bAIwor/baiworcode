@@ -768,8 +768,6 @@ export async function streamChatCompletion({
       abortErr.name = 'AbortError';
       abortErr.partialContent = fullContent;
       abortErr.partialReasoning = fullReasoning;
-      const finalToolCalls = accumulatedToolCalls.filter(Boolean);
-      abortErr.partialToolCalls = finalToolCalls.length > 0 ? finalToolCalls : null;
       throw abortErr;
     }
     if (err.name === 'TimeoutError') {
@@ -778,8 +776,6 @@ export async function streamChatCompletion({
       // (mis. menyimpan ke histori) dan pesan error jelas berada di bagian mana.
       err.partialContent = fullContent;
       err.partialReasoning = fullReasoning;
-      const finalToolCalls = accumulatedToolCalls.filter(Boolean);
-      err.partialToolCalls = finalToolCalls.length > 0 ? finalToolCalls : null;
     }
     throw err;
   }

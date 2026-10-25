@@ -9,7 +9,7 @@ import { runDependencyAudit, formatDependencyAuditReport } from './dependencyAud
  * - Dependency audit (vulnerable packages)
  * - Basic SAST (pattern-based vulnerability detection)
  *
- * Bisa dipanggil via tool `security_scan` atau command `/security-scan`.
+ * Dipanggil dari command `/scan` (lihat src/security/scanCommand.js).
  */
 
 /**

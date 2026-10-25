@@ -58,24 +58,24 @@ export function hasActiveCredentials(config = getConfig()) {
 /**
  * Menghubungkan kredensial provider custom yang aktif (API key + baseUrl).
  * Disiapkan untuk eksekusi chat streaming pada Tahap 3A.
+ *
+ * @param {Object} [config] - Opsional untuk pengujian; default config tersimpan.
  */
-export async function resolveActiveCredentials() {
-  const config = getConfig();
-
+export async function resolveActiveCredentials(config = getConfig()) {
   if (config.activeType === 'custom') {
     const cp = (config.customProviders || []).find(
-      (c) => c.name.toLowerCase() === (config.activeProvider || '').toLowerCase()
+      (c) => (c?.name || '').toLowerCase() === (config.activeProvider || '').toLowerCase()
     );
 
     if (!cp) {
       throw new Error(`Custom provider '${config.activeProvider}' tidak ditemukan dalam konfigurasi.`);
     }
 
-    if (!cp.baseUrl || !cp.baseUrl.trim()) {
+    if (typeof cp.baseUrl !== 'string' || !cp.baseUrl.trim()) {
       throw new Error(`Base URL untuk provider '${cp.name}' belum dikonfigurasi. Ketik /model untuk mengatur.`);
     }
 
-    if (!cp.apiKey || !cp.apiKey.trim()) {
+    if (typeof cp.apiKey !== 'string' || !cp.apiKey.trim()) {
       throw new Error(`API Key untuk provider '${cp.name}' belum dikonfigurasi. Silakan simpan API key di ~/.baiwor/config.json atau atur via /model.`);
     }
     const missingEnvRefs = findMissingEnvRefs(cp.apiKey);
@@ -86,7 +86,11 @@ export async function resolveActiveCredentials() {
     }
     const apiKey = expandEnvSecret(cp.apiKey);
     const customHeaders = Object.fromEntries(
-      Object.entries(cp.headers || {}).map(([key, value]) => [
+      Object.entries(
+        cp.headers && typeof cp.headers === 'object' && !Array.isArray(cp.headers)
+          ? cp.headers
+          : {}
+      ).map(([key, value]) => [
         key,
         typeof value === 'string' ? expandEnvSecret(value) : value,
       ])

@@ -145,7 +145,8 @@ export async function requestFileChangeApproval({
 
     const answer = await p.confirm({
       message: `${actionLabel} "${filePath}"? Izinkan perubahan ini?`,
-      initialValue: true,
+      // Default aman: Enter tanpa membaca tidak boleh menimpa berkas.
+      initialValue: false,
     });
 
     if (p.isCancel(answer) || !answer) {
