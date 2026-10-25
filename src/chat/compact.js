@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { estimateMessagesTokens, getContextUsage } from './context.js';
+import { estimateMessagesTokens, getContextUsage, clearRealTokenUsage } from './context.js';
 
 /**
  * Membentuk teks riwayat percakapan yang siap dikirimkan ke model untuk dirangkum.
@@ -144,6 +144,9 @@ export async function compactConversation(
     },
     ...(preservedUser ? [preservedUser] : []),
   ];
+  // Isi percakapan diganti rangkuman — snapshot usage provider lama tidak lagi
+  // mewakili riwayat ini, bahkan bila kebetulan jumlah pesannya sama.
+  clearRealTokenUsage();
 
   const tokensAfter = estimateMessagesTokens(conversation.messages);
   const savedTokens = Math.max(0, tokensBefore - tokensAfter);

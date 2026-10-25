@@ -67,6 +67,28 @@ export function getWorkPhaseLabel(toolNames = []) {
 }
 
 /**
+ * Menentukan penyampai dari daftar tool yang dipakai (murni, tanpa memutasi
+ * state rotasi/statistik). Mengembalikan null bila tidak ada tool yang dikenal
+ * — pemanggil bisa memakai null itu sebagai sinyal "giliran obrolan murni".
+ * Dipakai selectPresenter dan sambutan resume (menyimpulkan siapa yang terakhir
+ * bekerja dari riwayat).
+ *
+ * @param {string[]} toolNames
+ * @returns {string|null}
+ */
+export function presenterForToolNames(toolNames = []) {
+  const actors = new Set();
+  for (const name of toolNames) {
+    const actor = TOOL_ACTORS[name];
+    if (actor) actors.add(actor);
+  }
+  for (const candidate of TOOL_PRIORITY) {
+    if (actors.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
  * Menghitung penyampai jawaban untuk satu giliran pengguna.
  *
  * @param {Object} [options]
@@ -76,21 +98,8 @@ export function getWorkPhaseLabel(toolNames = []) {
  *   'gAIreng'), atau null bila tidak bisa ditentukan.
  */
 export function selectPresenter({ toolNames = [] } = {}) {
-  const actors = new Set();
-  for (const name of toolNames) {
-    const actor = TOOL_ACTORS[name];
-    if (actor) actors.add(actor);
-  }
-
-  let presenter = null;
-  if (actors.size > 0) {
-    for (const candidate of TOOL_PRIORITY) {
-      if (actors.has(candidate)) {
-        presenter = candidate;
-        break;
-      }
-    }
-  } else {
+  let presenter = presenterForToolNames(toolNames);
+  if (!presenter) {
     // Giliran obrolan murni: round-robin keempat anggota.
     presenter = CHAT_ROTATION[chatRotationIndex % CHAT_ROTATION.length];
     chatRotationIndex++;
@@ -153,10 +162,16 @@ export function formatPresenterStats({ useColor = true } = {}) {
 
 /**
  * Mengembalikan rotasi obrolan murni ke awal (dipakai /clear dan pengujian).
+ * Statistik penyampai sengaja TIDAK dihapus: kuitansi /exit merangkum seluruh
+ * sesi duduk, dan /clear hanya mengganti percakapan — bukan sesi duduknya.
  */
 export function resetPresenterRotation() {
   chatRotationIndex = 0;
   lastPresenter = null;
+}
+
+/** Menghapus statistik penyampai (dipakai pengujian / awal sesi baru). */
+export function resetPresenterStats() {
   for (const key of Object.keys(presenterStats)) presenterStats[key] = 0;
 }
 

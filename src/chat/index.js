@@ -25,7 +25,7 @@ import { createOutputWriter } from './outputWriter.js';
 import { classifyCommand } from '../tools/sandbox.js';
 import { resolveSafePath } from '../tools/handlers.js';
 import { setSubagentProgressHandler, MAX_PARALLEL_TASKS } from '../tools/subagentTool.js';
-import { getContextUsage, formatContextWarning } from './context.js';
+import { getContextUsage, formatContextWarning, noteRealTokenUsage } from './context.js';
 import { autoCompactConversation } from './compact.js';
 import { parseDeliverAssetsContent, renderDeliverableCard } from './deliverables.js';
 import { getTimelineMode, getPermissionMode } from '../config.js';
@@ -48,6 +48,7 @@ import {
   getLastPresenter,
   getWorkPhaseLabel,
 } from './presenter.js';
+import { recordUserTurn, recordToolCall } from './sessionStats.js';
 import { setActivePresenter } from '../statusLine.js';
 import { TOOL_ACTORS } from '../agents/punakawan.js';
 import { fenceToolMessages } from './toolOutputFence.js';
@@ -151,6 +152,8 @@ export function resetConversation() {
 export async function handleUserChat(promptText) {
   const query = (promptText || '').trim();
   if (!query) return { ok: true, aborted: false };
+  // Statistik sesi untuk kuitansi /exit: satu prompt masuk = satu giliran.
+  recordUserTurn();
 
   // Mulai snapshotting berkas untuk putaran ini (/undo support)
   beginTurnSnapshot();
@@ -468,6 +471,14 @@ export async function handleUserChat(promptText) {
         writeStyled(flushed);
       }
       writer.flush();
+      // Usage token ASLI dari provider (bila dikirim): dipakai penghitung
+      // konteks sebagai basis — angka jauh lebih jujur ketimbang estimasi.
+      if (result?.usage?.prompt_tokens != null) {
+        noteRealTokenUsage({
+          promptTokens: result.usage.prompt_tokens,
+          messageCount: messages.length,
+        });
+      }
       return { ...(result || {}), printed };
     } finally {
       stopThinkingSpinner();
@@ -698,6 +709,7 @@ export async function handleUserChat(promptText) {
           } catch {
             parsedArgs = { raw: rawArgs };
           }
+          recordToolCall(fnName, parsedArgs);
 
           const shouldSuspend = toolMayPrompt(fnName, parsedArgs);
           // Atribusi aktor mengikuti peta tool → Punakawan; tool eksternal

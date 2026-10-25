@@ -123,7 +123,7 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Maskot Wajah Topeng Bawor presisi tinggi (19 kolom × 7 baris, simetris dan anti-menceng).
   - Banner 3D ASCII Shadow Merah-Putih.
   - Kotak informasi terminal dinamis anti-pecah (*visual column aware*).
-  - Area input dibingkai dua garis pemisah, dengan baris status yang ikut bergerak saat kamu mengetik — `~ │ 👑 semAIr │ Safe │ ✦ <model> · <provider> │ Konteks 92% tersisa`. Label mode izin memakai warna pastel Google (Safe biru, Auto hijau, Plan kuning, YOLO merah); chip karakter menampilkan penyampai jawaban terakhir.
+  - Area input dibingkai dua garis pemisah, dengan baris status yang ikut bergerak saat kamu mengetik — `~ │ 👑 semAIr │ Safe │ ✦ <model> · <provider> │ Konteks ▓▓▓▓▓▓▓▓░░ 82%`. Label mode izin memakai warna pastel Google (Safe biru, Auto hijau, Plan kuning, YOLO merah); chip karakter menampilkan penyampai jawaban terakhir.
   - Kedua garis memakai jumlah tanda pisah yang sama dan hanya berbeda empat kolom, memberi kesan undakan. Baris status menyesuaikan diri bila terminal sempit: chip karakter, rincian token, nama provider, dan keterangan akses dikorbankan berurutan agar tidak pernah melewati lebar terminal dan merusak kotak layout.
   - **Callout GitHub berwarna + ikon** — `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, dan `> [!CAUTION]` di jawaban dirender langsung sebagai blok berwarna bertanda 📘 💡 ❗ ⚠️ 🔥 (bukan blockquote polos), lengkap dengan judul kustom dan garis penutup; dirender secara streaming sebelum jawaban selesai.
 - **🎭 Rotasi Penyampai Punakawan**:
@@ -141,11 +141,14 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
   - Daftar tugas dari `todo_list` dirender sebagai checklist di bawah node-nya, lengkap dengan progres `3/5 selesai`.
   - Saat keluaran dialihkan (`baiworcode "prompt" > hasil.txt`), animasi dilewati dan pohon dicetak sekali tanpa karakter escape.
 - **Anggun Konteks**:
-  - Indikator `Konteks 92% tersisa` tampil di banner awal dan sekali lagi setelah setiap jawaban.
+  - Indikator meter `Konteks ▓▓▓▓▓▓▓▓░░ 82%` tampil di banner awal dan sekali lagi setelah setiap jawaban; warna meter bergerak hijau → emas → peach → merah saat konteks menyempit.
   - Riwayat dipangkas otomatis berdasarkan perkiraan **token**, bukan jumlah pesan — hasil `read_file` yang berukuran besar tidak lagi membuat request ditolak provider.
   - Pesan `tool` tidak pernah dilepas dari pesan `assistant` yang memanggilnya, karena pasangan yang terpotong akan membuat provider menolak request.
   - Peringatan muncul dan menyarankan `/clear` saat konteks tinggal sedikit.
-  - **Angkanya adalah estimasi** (sekitar 4 karakter per token), bukan hitungan token dari provider: sebagian endpoint tidak mengirim `usage`, dan model kustom tidak punya angka jendela konteks yang bisa dikutip dengan jujur. Karena itu label selalu ditandai `≈`.
+  - **Angka token memakai `usage` ASLI dari provider** bila endpoint mengirimkannya di chunk akhir stream (DeepSeek, Groq, vLLM, dsb.) — angka itu dipakai sebagai basis dan tampil tanpa `≈`. Bila provider tidak mengirim `usage`, penghitung kembali ke estimasi (±4 karakter/token) dan label `≈` ditampilkan. Karena itu `≈` hanya muncul saat angkanya memang masih estimasi.
+- **Kuitansi Sesi**:
+  - Saat `/exit` (atau Ctrl+C/EOF), di bawah pesan perpisahan muncul kotak ringkasan: durasi sesi duduk, jumlah giliran, panggilan tool, berkas yang diedit/ditulis, dan distribusi penyampai Punakawan.
+  - Kuitansi bersifat aditif — pesan perpisahan lama tetap tampil — dan dilewati bila belum ada aktivitas. `/clear` hanya mengganti percakapan, jadi hitungan sesi duduk tetap utuh.
 - **Navigasi Perintah Cerdas (Slash Commands & Subcommands)**:
   - Ketik `/` untuk memunculkan menu dropdown perintah secara real-time.
   - Navigasi cepat dengan tombol panah (`↑` / `↓`).

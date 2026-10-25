@@ -1,5 +1,5 @@
 import { getSystemPrompt } from './systemPrompt.js';
-import { estimateMessagesTokens, resolveContextWindow } from './context.js';
+import { estimateMessagesTokens, resolveContextWindow, clearRealTokenUsage } from './context.js';
 import { REASONING_CONTENT_PLACEHOLDER } from './reasoningPlaceholder.js';
 import {
   generateSessionId,
@@ -32,6 +32,8 @@ export class Conversation {
     // Sesi baru = tidak ada persistensi inkremental yang menempel dari sesi lama.
     this.incrementalSave = null;
     this.incrementalStarted = false;
+    // Snapshot usage provider milik percakapan lama tidak berlaku lagi.
+    clearRealTokenUsage();
     this.messages = [
       {
         role: 'system',
@@ -346,6 +348,7 @@ export class Conversation {
     // baru dimuat; handleUserChat akan mengaktifkannya kembali bila perlu.
     this.incrementalSave = null;
     this.incrementalStarted = false;
+    clearRealTokenUsage();
     return true;
   }
 
@@ -369,6 +372,7 @@ export class Conversation {
     this.messages = normalizeLoadedMessages(data.messages);
     this.incrementalSave = null;
     this.incrementalStarted = false;
+    clearRealTokenUsage();
     return true;
   }
 }

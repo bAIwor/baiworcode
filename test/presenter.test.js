@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   selectPresenter,
   resetPresenterRotation,
+  resetPresenterStats,
   formatPresenterBadge,
   pickDailyGreeter,
   PRESENTER_INFO,
@@ -22,6 +23,7 @@ import { setActivePresenter, getActivePresenter, renderStatusLine } from '../src
 describe('Rotasi Penyampai Jawaban Punakawan', () => {
   beforeEach(() => {
     resetPresenterRotation();
+    resetPresenterStats();
     setActivePresenter(null);
   });
 
@@ -199,10 +201,17 @@ describe('Rotasi Penyampai Jawaban Punakawan', () => {
       assert.ok(formatPresenterStats({ useColor: false }).includes('belum ada jawaban'));
     });
 
-    it('reset meng-nol-kan seluruh statistik', () => {
+    it('reset statistik meng-nol-kan seluruh hitungan', () => {
       selectPresenter({ toolNames: [] });
-      resetPresenterRotation();
+      resetPresenterStats();
       assert.deepEqual(getPresenterStats(), { semAIr: 0, pAItruk: 0, bAIwor: 0, gAIreng: 0 });
+    });
+
+    it('reset rotasi tidak menghapus statistik — kuitansi tetap utuh setelah /clear', () => {
+      selectPresenter({ toolNames: ['edit_file'] });
+      resetPresenterRotation();
+      assert.equal(getPresenterStats().bAIwor, 1);
+      assert.equal(getLastPresenter(), null);
     });
   });
 

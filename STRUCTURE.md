@@ -22,7 +22,7 @@ baiworcode/
     │   ├── answerStyle.js          # Parser dan penata gaya markdown streaming untuk terminal TTY
     │   ├── client.js               # HTTP client SSE streaming OpenAI-compatible dengan auto-retry & error-recovery
     │   ├── compact.js              # Engine perangkuman riwayat cerdas (/compact dan auto-compact)
-    │   ├── context.js              # Penghitung estimasi token, resolusi context window, dan pemangkasan pesan
+    │   ├── context.js              # Penghitung konteks: usage ASLI provider bila ada, estimasi (≈) sebagai cadangan
     │   ├── conversation.js         # Pengelola status memori percakapan aktif
     │   ├── deliverables.js         # Parser tag <deliver-assets> dan perender kartu OSC 8 clickable link
     │   ├── index.js                # Orkestrator utama Agentic Loop interaksi LLM dan eksekusi tool
@@ -32,6 +32,7 @@ baiworcode/
     │   ├── presenter.js            # Rotasi penyampai jawaban Punakawan (work-type + round-robin, badge & piket harian)
     │   ├── reasoningPlaceholder.js # Pengaman kompatibilitas reasoning_content untuk API provider
     │   ├── sessionManager.js       # Manajer persistensi sesi percakapan ke format JSONL di disk
+    │   ├── sessionStats.js         # Statistik sesi duduk (giliran, tool, berkas) untuk kuitansi /exit
     │   ├── systemPrompt.js         # Generator prompt sistem bAIwor (Punakawan Banyumasan & instruksi kerja)
     │   ├── timeline.js             # Visualisasi riwayat pemanggilan tool (compact, detail, tree)
     │   ├── todoReminder.js         # Logika injeksi pengingat daftar tugas (<planning-reminder> & <task-reminder>)

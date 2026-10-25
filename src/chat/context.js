@@ -1,17 +1,15 @@
 import { createPainter } from '../colors.js';
+import { palette } from '../theme.js';
 /**
- * Estimasi pemakaian context window.
+ * Estimasi pemakaian context window — dengan penajam usage provider.
  *
- * bAIwor Code sengaja TIDAK mengambil `usage` dari API. Sebagian besar
- * endpoint OpenAI-compatible hanya mengirim hitungan token kalau diminta lewat
- * `stream_options: { include_usage: true }`, dan tidak semuanya mendukungnya.
- * Lebih jauh, model kustom seperti `gemini-3.8-flash-high` tidak punya angka
- * context window yang bisa kita kutip dengan jujur.
- *
- * Jadi angka di sini adalah ESTIMASI dari jumlah karakter, bukan hasil hitungan.
- * Nilainya cocok untuk memberi gambaran berapa konteks yang tersisa, bukan untuk
- * keputusan presisi. Karena itu setiap label memakai tanda `≈` dan tidak pernah
- * disajikan sebagai fakta pasti.
+ * Dasarnya tetap estimasi karakter (±4 karakter/token) karena tidak semua
+ * endpoint mengirim hitungan token. Namun bila provider MENGIRIM `usage` di
+ * chunk SSE terakhir (DeepSeek, Groq, vLLM, dsb. — ditangkap pasif oleh
+ * client tanpa meminta stream_options), angka ASLI itu dipakai sebagai basis:
+ * exact saat jumlah pesan belum berubah, dan basis + estimasi delta saat
+ * riwayat bertambah. Label `≈` hanya muncul saat angka masih mengandung
+ * estimasi; angka real ditampilkan tanpa `≈`.
  */
 
 /** Rata-rata karakter per token untuk teks Latin/Indonesia. */
@@ -140,17 +138,63 @@ export function estimateMessagesTokens(messages) {
 }
 
 /**
+ * Snapshot usage terakhir yang dilaporkan provider. `prompt_tokens` adalah
+ * hitungan token ASLI dari request terakhir — pasangan `messageCount` menyimpan
+ * panjang daftar pesan saat angka itu diambil, sehingga angka tetap sahih
+ * selama riwayat hanya bertambah (basis real + estimasi delta).
+ */
+let realUsage = null;
+
+/**
+ * Mencatat usage asli dari provider (dipanggil setelah tiap model turn).
+ *
+ * @param {{promptTokens:number, messageCount:number}} info
+ */
+export function noteRealTokenUsage({ promptTokens, messageCount } = {}) {
+  if (!Number.isFinite(promptTokens) || promptTokens <= 0) return;
+  if (!Number.isFinite(messageCount) || messageCount < 0) return;
+  realUsage = { promptTokens: Math.round(promptTokens), messageCount };
+}
+
+/**
+ * Membuang snapshot usage real. Dipanggil saat percakapan diganti/direset,
+ * saat riwayat di-compact, atau oleh pengujian.
+ */
+export function clearRealTokenUsage() {
+  realUsage = null;
+}
+
+/**
  * Menghitung potongan pemakaian context.
  *
  * @param {Array<object>} messages
  * @param {{model?:string, contextWindow?:number}} [options]
- * @returns {{used:number, total:number, remaining:number, percentLeft:number, percentUsed:number, overBudget:boolean}}
+ * @returns {{used:number, total:number, remaining:number, percentLeft:number, percentUsed:number, overBudget:boolean, source:'real'|'blended'|'estimate'}}
  */
 export function getContextUsage(messages, { model = null, contextWindow = null } = {}) {
   const total = Number.isFinite(contextWindow) && contextWindow > 0
     ? contextWindow
     : resolveContextWindow(model);
-  const used = estimateMessagesTokens(messages);
+  const estimated = estimateMessagesTokens(messages);
+
+  let used = estimated;
+  let source = 'estimate';
+  if (realUsage) {
+    if (messages.length === realUsage.messageCount) {
+      // Riwayat persis seperti saat provider menghitung → angka exact.
+      used = realUsage.promptTokens;
+      source = 'real';
+    } else if (messages.length > realUsage.messageCount) {
+      // Riwayat bertambah (hasil tool dsb.): basis real + estimasi tambahan.
+      const delta = estimateMessagesTokens(messages.slice(realUsage.messageCount));
+      used = realUsage.promptTokens + delta;
+      source = 'blended';
+    } else {
+      // Riwayat menyusut (trim/compact/clear) → angka lama tak berlaku lagi.
+      realUsage = null;
+    }
+  }
+
   const remaining = Math.max(0, total - used);
   const percentLeft = total > 0 ? Math.round((remaining / total) * 100) : 0;
 
@@ -161,14 +205,36 @@ export function getContextUsage(messages, { model = null, contextWindow = null }
     percentLeft,
     percentUsed: 100 - percentLeft,
     overBudget: used > total,
+    source,
   };
 }
 
+/** Jumlah sel meter konteks. */
+const METER_CELLS = 10;
+
 /**
- * Format label untuk status bar / baris konteks.
- * Angka dibulatkan ke ribuan terdekat agar tidak memberi presisi palsu.
+ * Warna meter per tingkat sisa konteks: lega → sempit.
+ * @param {number} percentLeft
+ * @returns {string} hex palet tema
+ */
+function meterToneHex(percentLeft) {
+  if (percentLeft > 60) return palette.success; // hijau mint — lega
+  if (percentLeft > 30) return palette.warning; // emas — mulai waspada
+  if (percentLeft > 15) return palette.primary; // peach — menipis
+  return palette.error; // merah — kritis
+}
+
+/**
+ * Format label untuk status bar / baris konteks, dengan meter gradient:
  *
- * @param {{used:number,total:number,percentLeft:number,overBudget?:boolean}} usage
+ *   Konteks ▓▓▓▓▓▓▓▓░░ 82%
+ *
+ * Bar menunjukkan porsi TERSISA dan berubah warna (hijau → emas → peach →
+ * merah) saat konteks menyempit. Angka dibulatkan ke ribuan terdekat agar
+ * tidak memberi presisi palsu; tanda `≈` hanya tampil bila angka masih
+ * mengandung estimasi (angka real dari provider tampil tanpa `≈`).
+ *
+ * @param {{used:number,total:number,percentLeft:number,overBudget?:boolean,source?:string}} usage
  * @param {{useColor?:boolean, detail?:boolean}} [options]
  * @returns {string}
  */
@@ -179,15 +245,15 @@ export function formatContextIndicator(usage, { useColor = true, detail = true }
   const k = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
   const percent = Math.max(0, Math.min(100, usage.percentLeft ?? 0));
 
-  let tone;
-  if (usage.overBudget || percent <= 10) tone = c.red;
-  else if (percent <= 25) tone = c.yellow;
-  else tone = c.green;
+  const tone = c.hex(meterToneHex(percent));
+  const filled = Math.round((percent / 100) * METER_CELLS);
+  const meter = '▓'.repeat(filled) + '░'.repeat(Math.max(0, METER_CELLS - filled));
 
-  const base = tone(`Konteks ${percent}% tersisa`);
+  const base = tone(`Konteks ${meter} ${percent}%`);
   // Rincian token adalah bagian pertama yang dikorbankan saat terminal sempit.
   if (!detail) return base;
-  return `${base} ${c.gray(`≈ ${k(usage.used)}/${k(usage.total)} token`)}`;
+  const approx = usage.source === 'real' ? '' : '≈ ';
+  return `${base} ${c.gray(`${approx}${k(usage.used)}/${k(usage.total)} token`)}`;
 }
 
 /**

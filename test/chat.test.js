@@ -740,3 +740,120 @@ describe('Sanitasi sesi yang dimuat (normalizeLoadedMessages)', () => {
     assert.equal(conv.getMessages().filter((m) => m.role === 'tool').length, 0);
   });
 });
+
+describe('Usage provider: angka token asli untuk indikator konteks', () => {
+  it('menangkap usage dari chunk SSE akhir tanpa choices (Chat Completions)', async () => {
+    const server = http.createServer((req, res) => {
+      req.resume();
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+      res.write('data: {"choices":[{"delta":{"content":"Halo"}}]}\n\n');
+      // Chunk usage OpenAI include_usage: choices kosong, usage terisi.
+      res.write(
+        'data: {"choices":[],"usage":{"prompt_tokens":321,"completion_tokens":12,"total_tokens":333}}\n\n'
+      );
+      res.write('data: [DONE]\n\n');
+      res.end();
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    try {
+      const result = await streamChatCompletion({
+        credentials: {
+          baseUrl: `http://127.0.0.1:${port}/v1`,
+          headers: {},
+          model: 'test-model',
+        },
+        messages: [{ role: 'user', content: 'test' }],
+      });
+
+      assert.equal(result.content, 'Halo');
+      assert.deepEqual(result.usage, {
+        prompt_tokens: 321,
+        completion_tokens: 12,
+        total_tokens: 333,
+      });
+    } finally {
+      server.close();
+    }
+  });
+
+  it('memetakan input_tokens/output_tokens Responses API ke prompt/completion', async () => {
+    const server = http.createServer((req, res) => {
+      req.resume();
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+      const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+      send({ type: 'response.output_text.delta', delta: 'Halo' });
+      send({
+        type: 'response.completed',
+        response: {
+          usage: { input_tokens: 200, output_tokens: 8, total_tokens: 208 },
+          output: [
+            { type: 'message', id: 'msg_1', content: [{ type: 'output_text', text: 'Halo' }] },
+          ],
+        },
+      });
+      res.write('data: [DONE]\n\n');
+      res.end();
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    try {
+      const result = await streamChatCompletion({
+        credentials: {
+          baseUrl: `http://127.0.0.1:${port}/v1`,
+          headers: { 'Content-Type': 'application/json' },
+          model: 'custom-responses-model',
+        },
+        messages: [{ role: 'user', content: 'test' }],
+      });
+
+      assert.equal(result.content, 'Halo');
+      assert.equal(result.usage.prompt_tokens, 200);
+      assert.equal(result.usage.completion_tokens, 8);
+      assert.equal(result.usage.total_tokens, 208);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('tanpa usage dari provider, result tidak mengarang angka', async () => {
+    const server = http.createServer((req, res) => {
+      req.resume();
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+      res.write('data: {"choices":[{"delta":{"content":"Halo"}}]}\n\n');
+      res.write('data: [DONE]\n\n');
+      res.end();
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    try {
+      const result = await streamChatCompletion({
+        credentials: {
+          baseUrl: `http://127.0.0.1:${port}/v1`,
+          headers: {},
+          model: 'test-model',
+        },
+        messages: [{ role: 'user', content: 'test' }],
+      });
+
+      assert.equal(result.usage, undefined);
+    } finally {
+      server.close();
+    }
+  });
+});

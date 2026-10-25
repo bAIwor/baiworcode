@@ -465,6 +465,11 @@ export async function streamChatCompletion({
   let hasStarted = false;
   let fullContent = '';
   let fullReasoning = '';
+  // Usage token ASLI dari provider (bila dikirim di chunk akhir). Ditangkap
+  // secara pasif — tanpa meminta stream_options — supaya endpoint ketat yang
+  // menolak field tambahan tidak terganggu; provider yang mengirim usage
+  // (DeepSeek, Groq, dsb.) langsung memenuhi angka konteks yang jujur.
+  let capturedUsage = null;
   const accumulatedToolCalls = [];
   const responsesState = isResponsesApi ? createResponsesState() : null;
 
@@ -566,6 +571,14 @@ export async function streamChatCompletion({
       }
 
       if (type === 'response.completed') {
+        const respUsage = parsed.response?.usage;
+        if (respUsage && typeof respUsage === 'object') {
+          capturedUsage = {
+            prompt_tokens: respUsage.input_tokens ?? respUsage.prompt_tokens,
+            completion_tokens: respUsage.output_tokens ?? respUsage.completion_tokens,
+            total_tokens: respUsage.total_tokens,
+          };
+        }
         const finalText = applyResponsesFinalResponse(responsesState, parsed.response);
         if (finalText) {
           if (!fullContent) {
@@ -598,6 +611,12 @@ export async function streamChatCompletion({
 
     const choice = parsed?.choices?.[0];
     const delta = choice?.delta;
+
+    // Chunk usage sering datang TANPA choices (OpenAI include_usage) — tangkap
+    // lebih dulu supaya tidak telanjur keluar di guard di bawah.
+    if (parsed?.usage && typeof parsed.usage === 'object') {
+      capturedUsage = parsed.usage;
+    }
 
     if (!delta && !choice?.message) return;
 
@@ -656,6 +675,27 @@ export async function streamChatCompletion({
     }
   };
 
+  /**
+   * Hasil akhir dari satu stream. Semua jalur keluar (chunk `[DONE]`,
+   * `response.completed`, atau stream yang berakhir tanpa penanda) harus lewat
+   * sini supaya `usage` yang ditangkap tidak hilang di jalur normal.
+   */
+  const buildFinalResult = () => {
+    if (isResponsesApi) {
+      const result = buildResponsesResult(responsesState, fullContent, fullReasoning);
+      if (capturedUsage) result.usage = capturedUsage;
+      return result;
+    }
+    const finalToolCalls = accumulatedToolCalls.filter(Boolean);
+    return {
+      content: fullContent,
+      reasoning: fullReasoning,
+      tool_calls: finalToolCalls.length > 0 ? finalToolCalls : null,
+      completed: true,
+      usage: capturedUsage || undefined,
+    };
+  };
+
   try {
     while (true) {
       /**
@@ -711,16 +751,7 @@ export async function streamChatCompletion({
           const jsonStr = line.slice(5).trim();
           if (jsonStr === '[DONE]') {
             try { await reader.cancel(); } catch {}
-            if (isResponsesApi) {
-              return buildResponsesResult(responsesState, fullContent, fullReasoning);
-            }
-            const finalToolCalls = accumulatedToolCalls.filter(Boolean);
-            return {
-              content: fullContent,
-              reasoning: fullReasoning,
-              tool_calls: finalToolCalls.length > 0 ? finalToolCalls : null,
-              completed: true,
-            };
+            return buildFinalResult();
           }
 
           let parsed;
@@ -736,7 +767,7 @@ export async function streamChatCompletion({
 
           if (isResponsesApi && responsesState.completed) {
             try { await reader.cancel(); } catch {}
-            return buildResponsesResult(responsesState, fullContent, fullReasoning);
+            return buildFinalResult();
           }
         }
       }
@@ -755,9 +786,7 @@ export async function streamChatCompletion({
         }
       }
     }
-    if (isResponsesApi) {
-      return buildResponsesResult(responsesState, fullContent, fullReasoning);
-    }
+    return buildFinalResult();
   } catch (err) {
     if (!err.partialContent && fullContent) {
       err.partialContent = fullContent;
@@ -779,16 +808,4 @@ export async function streamChatCompletion({
     }
     throw err;
   }
-
-  if (isResponsesApi) {
-    return buildResponsesResult(responsesState, fullContent, fullReasoning);
-  }
-
-  const finalToolCalls = accumulatedToolCalls.filter(Boolean);
-  return {
-    content: fullContent,
-    reasoning: fullReasoning,
-    tool_calls: finalToolCalls.length > 0 ? finalToolCalls : null,
-    completed: true,
-  };
 }

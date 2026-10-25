@@ -64,7 +64,7 @@ import {
   permissionModeColor,
 } from '../src/chat/permissionMode.js';
 import { compactConversation } from '../src/chat/compact.js';
-import { listAllProjectsSessions, deleteSession, deleteAllSessions } from '../src/chat/sessionManager.js';
+import { listAllProjectsSessions, deleteSession, deleteAllSessions, listSessions } from '../src/chat/sessionManager.js';
 import { discoverSkills, getSkill } from '../src/skills/skillManager.js';
 import { discoverRules } from '../src/rules/ruleManager.js';
 import { resetTodoStore } from '../src/tools/todoTool.js';
@@ -77,7 +77,18 @@ import {
   getWorkspaceInfo,
 } from '../src/workspace.js';
 import { renderStatusLine, setActivePresenter } from '../src/statusLine.js';
-import { pickDailyGreeter, resetPresenterRotation, formatPresenterStats } from '../src/chat/presenter.js';
+import {
+  pickDailyGreeter,
+  resetPresenterRotation,
+  formatPresenterStats,
+  presenterForToolNames,
+} from '../src/chat/presenter.js';
+import {
+  getSessionSummary,
+  formatDuration,
+  formatRelativeTime,
+} from '../src/chat/sessionStats.js';
+import { formatPunakawanLabel } from '../src/agents/punakawan.js';
 import { resolveActiveCredentials } from '../src/auth/resolve.js';
 import { applyHelpStyle, helpHeader, helpFooter } from '../src/cliHelp.js';
 import { runDoctor } from '../src/doctor.js';
@@ -585,8 +596,9 @@ function showHelp() {
   console.log(`    ${dim('Daftar tugas dari todo_list (semAIr) tampil sebagai checklist di bawah node-nya.')}`);
   console.log(`    ${dim('Ingin lebih ringkas? Ketik')} ${chalk.cyan('/timeline compact')} ${dim('— satu baris per langkah.')}`);
   console.log(`    ${dim('Kembali ke tampilan penuh kapan saja dengan')} ${chalk.cyan('/timeline detail')}${dim('.')}`);
-  console.log(`    ${dim('Baris "Konteks X% tersisa" muncul setelah setiap jawaban. Angka itu perkiraan,')}`);
-  console.log(`    ${dim('dan riwayat dipangkas otomatis bila mulai penuh — pakai /compact atau /clear.')}`);
+  console.log(`    ${dim('Baris status konteks (meter ▓░ + persen) muncul setelah setiap jawaban. Angka token')}`);
+  console.log(`    ${dim('memakai hitungan ASLI provider bila tersedia; selain itu estimasi bertanda ≈.')}`);
+  console.log(`    ${dim('Riwayat dipangkas otomatis bila mulai penuh — pakai /compact atau /clear.')}`);
   console.log();
   console.log(gold.bold('  ⌨️  Pintasan Papan Ketik:'));
   console.log(`    ${chalk.cyan('Shift+Tab')}  ${dim('─ siklus mode izin: Safe → Auto → Plan → YOLO (label berwarna pastel)')}`);
@@ -745,17 +757,94 @@ function showExitMessage() {
   console.log(
     chalk.gray('  🎁 Bonus token/credit: ') +
       chalk.cyan(BONUS_WEBSITE) +
-      chalk.dim(' (kode kupon "baiworcode")\n')
+      chalk.dim(' (kode kupon "baiworcode")')
   );
+
+  // Kuitansi sesi: ringkasan kerja sesi duduk ini — ditampilkan hanya bila
+  // memang ada aktivitas, supaya keluar cepat tetap bersih.
+  try {
+    printSessionReceipt();
+  } catch {}
   process.exit(0);
+}
+
+/** Kotak ringkasan sesi (kuitansi) di bawah pesan perpisahan /exit. */
+function printSessionReceipt() {
+  const s = getSessionSummary();
+  if (s.userTurns === 0 && s.toolCalls === 0) return;
+
+  const rows = [];
+  rows.push(['⏱  Durasi', formatDuration(s.durationMs)]);
+  rows.push(['💬 Giliran', `${s.userTurns} pertanyaan`]);
+  if (s.toolCalls > 0) rows.push(['🔨 Tool', `${s.toolCalls} panggilan`]);
+  const fileBits = [];
+  if (s.editedCount > 0) fileBits.push(`${s.editedCount} diedit`);
+  if (s.writtenCount > 0) fileBits.push(`${s.writtenCount} ditulis`);
+  if (fileBits.length > 0) rows.push(['📝 Berkas', fileBits.join(' · ')]);
+  const presenters = Object.entries(s.presenters).filter(([, n]) => n > 0);
+  if (presenters.length > 0) {
+    rows.push([
+      '🎭 Penyampai',
+      presenters.map(([name, n]) => `${formatPunakawanLabel(name)} ${n}`).join(' · '),
+    ]);
+  }
+
+  const width = 40;
+  console.log();
+  console.log(chalk.gray(`  ╭─ 🧾 Kuitansi Sesi ${'─'.repeat(Math.max(2, width - 20))}`));
+  for (const [label, value] of rows) {
+    // padEnd 12 menjaga titik dua sejajar meski emoji dihitung 1 code unit.
+    console.log(`${chalk.gray('  │')} ${chalk.dim(label.padEnd(12))}${chalk.gray(':')} ${chalk.white(value)}`);
+  }
+  console.log(chalk.gray(`  ╰${'─'.repeat(width)}`));
+  console.log();
 }
 
 function showResumedBanner() {
   const title = conversationSession.sessionTitle || conversationSession.sessionId;
   const turns = conversationSession.getUserTurnCount();
-  console.log(chalk.cyan.bold('\n  🔄 Melanjutkan Sesi Percakapan Sebelumnya:'));
+  console.log(chalk.cyan.bold('\n  👋 Sugeng rawuh malih — Melanjutkan Sesi Sebelumnya:'));
   console.log(chalk.white(`     Judul  : `) + chalk.green.bold(title));
   console.log(chalk.gray(`     ID     : ${conversationSession.sessionId} · ${turns} turn interaksi`));
+
+  // Waktu terakhir sesi aktif, dari header daftar sesi proyek ini.
+  try {
+    const meta = listSessions({ includeMessages: false }).find(
+      (s) => s.id === conversationSession.sessionId
+    );
+    if (meta?.updatedAt) {
+      console.log(chalk.gray(`     Aktif  : terakhir ${formatRelativeTime(new Date(meta.updatedAt).getTime())}`));
+    }
+  } catch {}
+
+  // Ringkasan "berhenti di mana": berkas tersentuh & penyampai giliran terakhir.
+  try {
+    const all = conversationSession.messages || [];
+    const filePaths = new Set();
+    const lastTurnTools = [];
+    for (let i = all.length - 1; i >= 0; i--) {
+      const m = all[i];
+      if (m?.role === 'user') break; // batas giliran pengguna terakhir
+      if (m?.role !== 'assistant' || !Array.isArray(m.tool_calls)) continue;
+      for (const tc of m.tool_calls) {
+        const name = tc?.function?.name || '';
+        lastTurnTools.push(name);
+        if (name === 'write_file' || name === 'edit_file' || name === 'patch_file') {
+          try {
+            const args = JSON.parse(tc.function?.arguments || '{}');
+            if (typeof args.file_path === 'string' && args.file_path) filePaths.add(args.file_path);
+          } catch {}
+        }
+      }
+    }
+    const stopBits = [];
+    const lastPresenter = presenterForToolNames(lastTurnTools);
+    if (lastPresenter) stopBits.push(`di tangan ${formatPunakawanLabel(lastPresenter)}`);
+    if (filePaths.size > 0) stopBits.push(`${filePaths.size} berkas disentuh`);
+    if (stopBits.length > 0) {
+      console.log(chalk.gray(`     Berhenti : ${stopBits.join(' · ')}`));
+    }
+  } catch {}
 
   const msgs = conversationSession.messages.filter((m) => m && (m.role === 'user' || m.role === 'assistant'));
   if (msgs.length > 0) {

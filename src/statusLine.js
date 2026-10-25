@@ -8,7 +8,7 @@ import { PUNAKAWAN_ROLES, formatPunakawanLabel } from './agents/punakawan.js';
 /**
  * Baris status di bawah area input:
  *
- *   ~ │ 👑 semAIr │ Safe │ ✦ <model> · <provider> │ Konteks 92% tersisa
+ *   ~ │ 👑 semAIr │ Safe │ ✦ <model> · <provider> │ Konteks ▓▓▓▓▓▓▓▓░░ 82%
  *
  * Label mode izin tunggal (safe/auto/plan/yolo) dengan warna pastel Google —
  * menggantikan dua label lama (Build/Plan + Safe/Full access) yang membingungkan.

@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CHARS_PER_TOKEN,
@@ -10,6 +10,8 @@ import {
   getContextUsage,
   formatContextIndicator,
   formatContextWarning,
+  noteRealTokenUsage,
+  clearRealTokenUsage,
 } from '../src/chat/context.js';
 import { Conversation } from '../src/chat/conversation.js';
 
@@ -150,12 +152,30 @@ describe('Context: Pemakaian Konteks', () => {
 describe('Context: Format Label', () => {
   const usage = getContextUsage([{ role: 'user', content: 'x'.repeat(4000) }], { contextWindow: 10_000 });
 
-  it('harus menampilkan persentase sisa konteks', () => {
-    assert.match(formatContextIndicator(usage, { useColor: false }), /Konteks \d+% tersisa/);
+  it('harus menampilkan persentase sisa konteks dengan meter', () => {
+    const out = formatContextIndicator(usage, { useColor: false });
+    assert.match(out, /Konteks [▓░]+ \d+%/);
   });
 
-  it('harus menandai angka sebagai perkiraan', () => {
+  it('harus menandai angka sebagai perkiraan (≈) selama masih estimasi', () => {
     assert.match(formatContextIndicator(usage, { useColor: false }), /≈/);
+  });
+
+  it('angka REAL dari provider tampil tanpa tanda ≈', () => {
+    noteRealTokenUsage({ promptTokens: 2500, messageCount: 1 });
+    const real = getContextUsage([{ role: 'user', content: 'x'.repeat(4000) }], { contextWindow: 10_000 });
+    assert.equal(real.source, 'real');
+    const out = formatContextIndicator(real, { useColor: false, detail: true });
+    assert.ok(!out.includes('≈'), `tidak boleh memuat ≈: ${out}`);
+    assert.match(out, /2\.5k\/10k token/);
+    clearRealTokenUsage();
+  });
+
+  it('meter terisi penuh saat konteks lega dan kosong saat habis', () => {
+    const lega = { percentLeft: 100, used: 0, total: 100, source: 'estimate' };
+    const habis = { percentLeft: 0, used: 100, total: 100, overBudget: true, source: 'estimate' };
+    assert.match(formatContextIndicator(lega, { useColor: false, detail: false }), /Konteks ▓{10} 100%/);
+    assert.match(formatContextIndicator(habis, { useColor: false, detail: false }), /Konteks ░{10} 0%/);
   });
 
   it('harus membulatkan angka besar ke satuan ribuan', () => {
@@ -175,6 +195,58 @@ describe('Context: Format Label', () => {
   it('harus mengembalikan string kosong untuk masukan tidak valid', () => {
     assert.equal(formatContextIndicator(null, { useColor: false }), '');
     assert.equal(formatContextWarning(undefined, { useColor: false }), '');
+  });
+});
+
+describe('Context: Usage Real dari Provider', () => {
+  beforeEach(() => clearRealTokenUsage());
+
+  it('jumlah pesan sama persis → angka exact (source real)', () => {
+    noteRealTokenUsage({ promptTokens: 7_500, messageCount: 2 });
+    const usage = getContextUsage(
+      [
+        { role: 'user', content: 'x'.repeat(4000) },
+        { role: 'assistant', content: 'y'.repeat(4000) },
+      ],
+      { contextWindow: 10_000 }
+    );
+    assert.equal(usage.source, 'real');
+    assert.equal(usage.used, 7500);
+    assert.equal(usage.percentLeft, 25);
+  });
+
+  it('riwayat bertambah → basis real + estimasi delta (source blended)', () => {
+    noteRealTokenUsage({ promptTokens: 5_000, messageCount: 1 });
+    const usage = getContextUsage(
+      [
+        { role: 'user', content: 'x'.repeat(4000) },
+        { role: 'user', content: 'y'.repeat(4000) }, // +≈1000 token estimasi
+      ],
+      { contextWindow: 10_000 }
+    );
+    assert.equal(usage.source, 'blended');
+    assert.ok(usage.used >= 5900 && usage.used <= 6100, `used=${usage.used}`);
+  });
+
+  it('riwayat menyusut (trim/clear) → usage real dibuang, kembali estimasi', () => {
+    noteRealTokenUsage({ promptTokens: 9_000, messageCount: 3 });
+    const usage = getContextUsage([{ role: 'user', content: 'kecil' }], { contextWindow: 10_000 });
+    assert.equal(usage.source, 'estimate');
+  });
+
+  it('masukan tidak valid diabaikan', () => {
+    noteRealTokenUsage({ promptTokens: -5, messageCount: 1 });
+    noteRealTokenUsage({ promptTokens: 100 });
+    const usage = getContextUsage([{ role: 'user', content: 'a' }], { contextWindow: 1000 });
+    assert.equal(usage.source, 'estimate');
+  });
+
+  it('reset/ganti percakapan membuang snapshot usage lama walau jumlah pesan sama', () => {
+    const conv = new Conversation();
+    noteRealTokenUsage({ promptTokens: 9_000, messageCount: conv.getMessages().length });
+    conv.reset(); // /clear, /reset, dan resume semuanya lewat jalur ini
+    const usage = getContextUsage(conv.getMessages(), { contextWindow: 10_000 });
+    assert.equal(usage.source, 'estimate');
   });
 });
 

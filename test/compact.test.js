@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Conversation } from '../src/chat/conversation.js';
+import { noteRealTokenUsage, getContextUsage } from '../src/chat/context.js';
 import {
   formatHistoryForSummary,
   buildDeterministicSummary,
@@ -69,6 +70,23 @@ describe('Context Compactor: Perangkuman Riwayat Cerdas (/compact)', () => {
       const last = conv.messages[conv.messages.length - 1];
       assert.equal(last.role, 'user');
       assert.equal(last.content, 'PERMINTAAN AKTIF YANG TIDAK BOLEH HILANG');
+    });
+
+    it('membuang snapshot usage provider setelah rangkuman mengganti riwayat', async () => {
+      const conv = new Conversation();
+      conv.addUserMessage('permintaan lama');
+      conv.addAssistantMessage('jawaban lama');
+      conv.addUserMessage('prompt aktif');
+      // Sebelum & sesudah compact sama-sama 4 pesan — tanpa invalidasi
+      // eksplisit, snapshot usage lama akan dikira masih sahih.
+      noteRealTokenUsage({ promptTokens: 9_000, messageCount: conv.messages.length });
+      const res = await compactConversation(conv, { preserveLastUserPrompt: true });
+      assert.equal(res.compacted, true);
+      assert.equal(conv.messages.length, 4);
+      assert.equal(
+        getContextUsage(conv.messages, { contextWindow: 100_000 }).source,
+        'estimate'
+      );
     });
 
     it('harus berhasil merangkum dengan summarizeFn kustom', async () => {
