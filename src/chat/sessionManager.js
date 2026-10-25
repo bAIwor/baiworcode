@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import { CONFIG_DIR } from '../config.js';
 import { estimateMessagesTokens } from './context.js';
+import { redactSecretsInText } from '../security/secretDetector.js';
 
 export const SESSIONS_DIR_NAME = 'sessions';
 
@@ -21,6 +22,65 @@ export function sanitizeSessionId(raw) {
   if (typeof raw !== 'string') return null;
   const id = raw.trim().replace(/\.(jsonl?)$/i, '');
   return SESSION_ID_RE.test(id) ? id : null;
+}
+
+function redactJsonValue(value) {
+  if (typeof value === 'string') return redactSecretsInText(value);
+  if (Array.isArray(value)) return value.map(redactJsonValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, redactJsonValue(item)])
+    );
+  }
+  return value;
+}
+
+function redactToolCallsForStorage(toolCalls) {
+  if (!Array.isArray(toolCalls)) return toolCalls;
+  return toolCalls.map((call) => {
+    const rawArgs = call?.function?.arguments;
+    if (typeof rawArgs !== 'string') return call;
+    try {
+      const parsed = JSON.parse(rawArgs);
+      return {
+        ...call,
+        function: {
+          ...call.function,
+          arguments: JSON.stringify(redactJsonValue(parsed)),
+        },
+      };
+    } catch {
+      return {
+        ...call,
+        function: { ...call.function, arguments: redactSecretsInText(rawArgs) },
+      };
+    }
+  });
+}
+
+/**
+ * Salinan pesan untuk disk: secret disensor, tetapi objek di memori tidak
+ * berubah. Session replay memakai versi tersensor; rahasia tidak tersimpan
+ * permanen di JSONL.
+ */
+export function redactMessageForStorage(message) {
+  if (!message || typeof message !== 'object') return message;
+  const copy = { ...message };
+  if (typeof copy.content === 'string') {
+    copy.content = redactSecretsInText(copy.content);
+  } else if (Array.isArray(copy.content)) {
+    copy.content = copy.content.map((part) => {
+      if (typeof part === 'string') return redactSecretsInText(part);
+      if (part && typeof part === 'object' && typeof part.text === 'string') {
+        return { ...part, text: redactSecretsInText(part.text) };
+      }
+      return part;
+    });
+  }
+  if (Array.isArray(copy.tool_calls)) {
+    copy.tool_calls = redactToolCallsForStorage(copy.tool_calls);
+  }
+  return copy;
 }
 
 /**
@@ -180,7 +240,8 @@ export function saveSession(sessionData, { projectPath = process.cwd(), baseConf
   const header = JSON.stringify({
     type: 'session',
     id: payload.id,
-    title: payload.title,
+    // Judul diturunkan dari pesan pertama, jadi bisa ikut memuat secret.
+    title: redactSecretsInText(payload.title),
     projectPath: payload.projectPath,
     createdAt: payload.createdAt,
     updatedAt: payload.updatedAt,
@@ -191,7 +252,7 @@ export function saveSession(sessionData, { projectPath = process.cwd(), baseConf
 
   const lines = [header];
   for (const msg of messages) {
-    lines.push(JSON.stringify({ type: 'message', message: msg }));
+    lines.push(JSON.stringify({ type: 'message', message: redactMessageForStorage(msg) }));
   }
   const fileContent = lines.join('\n') + '\n';
 
@@ -246,7 +307,7 @@ export function appendSessionMessage(sessionId, message, { projectPath = process
 
   const record = JSON.stringify({
     type: 'message',
-    message,
+    message: redactMessageForStorage(message),
     timestamp: new Date().toISOString(),
   }) + '\n';
 

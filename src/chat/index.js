@@ -50,6 +50,7 @@ import {
 } from './presenter.js';
 import { setActivePresenter } from '../statusLine.js';
 import { TOOL_ACTORS } from '../agents/punakawan.js';
+import { fenceToolMessages } from './toolOutputFence.js';
 
 export { conversationSession };
 
@@ -518,7 +519,7 @@ export async function handleUserChat(promptText) {
     // Dikirim sebagai `user` (bukan `system` di tengah riwayat) agar diterima
     // luas oleh endpoint OpenAI-compatible yang berbeda-beda.
     const messages = [
-      ...conversationSession.getMessages(),
+      ...fenceToolMessages(conversationSession.getMessages()),
       { role: 'user', content: WRAPUP_INSTRUCTION },
     ];
 
@@ -564,7 +565,7 @@ export async function handleUserChat(promptText) {
    *   2. `<task-completion-reminder>` — masih ada item todo aktif dan intervalnya tiba.
    */
   const buildOutboundMessages = () => {
-    const base = conversationSession.getMessages();
+    const base = fenceToolMessages(conversationSession.getMessages());
     const extra = [];
     const stats = summarizeTodos(todoStore.read());
 

@@ -1,9 +1,12 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 
 import {
   assertHttpUrl,
   assertSafeFetchUrl,
+  resolvePinnedTarget,
+  pinnedFetch,
   isPrivateAddress,
   htmlToText,
   parseDuckDuckGo,
@@ -68,6 +71,55 @@ describe('webTool: proteksi SSRF', () => {
     }
     for (const ip of ['8.8.8.8', '1.1.1.1', '2001:4860:4860::8888', '::ffff:8.8.8.8']) {
       assert.equal(isPrivateAddress(ip), false, ip);
+    }
+  });
+
+  it('resolvePinnedTarget memvalidasi semua record DNS dan mengembalikan IP untuk di-pin', async () => {
+    const target = await resolvePinnedTarget('https://example.com/path', {
+      lookupFn: async () => [{ address: '93.184.216.34', family: 4 }],
+    });
+    assert.equal(target.address, '93.184.216.34');
+    assert.equal(target.url.href, 'https://example.com/path');
+
+    await assert.rejects(
+      () =>
+        resolvePinnedTarget('https://evil.test', {
+          lookupFn: async () => [{ address: '127.0.0.1', family: 4 }],
+        }),
+      /privat|SSRF/i
+    );
+    await assert.rejects(
+      () =>
+        resolvePinnedTarget('https://evil.test', {
+          lookupFn: async () => [
+            { address: '93.184.216.34', family: 4 },
+            { address: '10.0.0.1', family: 4 },
+          ],
+        }),
+      /privat|SSRF/i
+    );
+    await assert.rejects(() => resolvePinnedTarget('http://127.0.0.1/'), /privat|loopback/i);
+    await assert.rejects(() => resolvePinnedTarget('http://localhost/'), /localhost/i);
+  });
+
+  it('pinnedFetch memakai IP hasil lookup ter-pin, bukan resolusi DNS kedua', async () => {
+    const server = http.createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('pinned-ok');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address();
+
+    try {
+      const res = await pinnedFetch(`http://example.test:${port}/x`, {}, {
+        lookupFn: async () => [{ address: '127.0.0.1', family: 4 }],
+        allowPrivate: true,
+      });
+      assert.equal(res.status, 200);
+      assert.match(res.headers.get('content-type'), /text\/plain/);
+      assert.equal(Buffer.from(await res.arrayBuffer()).toString('utf8'), 'pinned-ok');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
     }
   });
 
@@ -292,6 +344,10 @@ describe('webTool: Integrasi TinyFish', () => {
     const res2 = await handleWebAutomate({ url: 'https://example.com', goal: '   ' });
     assert.equal(res2.success, false);
     assert.match(res2.output, /goal/);
+
+    const res3 = await handleWebAutomate({ url: 'http://127.0.0.1/', goal: 'x' });
+    assert.equal(res3.success, false);
+    assert.match(res3.output, /privat|SSRF|localhost/i);
   });
 
   it('handleWebAutomate mengeksekusi automasi dan mengembalikan hasil terstruktur', async () => {

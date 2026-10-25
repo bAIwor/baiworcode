@@ -220,6 +220,47 @@ export async function readMcpJson(res) {
 /**
  * Kelas penanganan koneksi MCP Session (HTTP / Stdio)
  */
+const WINDOWS_SHELL_COMMANDS = new Set(['npx', 'npm', 'pnpm', 'yarn', 'uvx', 'uv', 'bunx', 'bun']);
+const CONTROL_CHARS_RE = /[\0\r\n]/;
+
+/**
+ * Windows hanya butuh shell untuk shim .cmd/.bat (npx, uvx, dsb.). Perintah
+ * executable biasa (node, path .exe) dijalankan tanpa shell agar argumen tidak
+ * diinterpretasikan sebagai perintah shell.
+ *
+ * @param {string} command
+ * @param {NodeJS.Platform} [platform]
+ * @returns {boolean}
+ */
+export function needsWindowsShell(command, platform = process.platform) {
+  if (platform !== 'win32') return false;
+  const value = String(command || '').toLowerCase();
+  if (value.endsWith('.cmd') || value.endsWith('.bat')) return true;
+  if (/[\\/]/.test(value)) return false;
+  return WINDOWS_SHELL_COMMANDS.has(value);
+}
+
+/**
+ * Tolak karakter kontrol (NUL/newline) yang bisa memecah command/argumen
+ * menjadi perintah tambahan pada shell Windows.
+ *
+ * @param {string} command
+ * @param {Array<string|number>} [args]
+ */
+export function assertSafeStdioSpec(command, args = []) {
+  if (typeof command !== 'string' || !command.trim()) {
+    throw new Error('MCP stdio: command wajib berupa string non-kosong.');
+  }
+  if (!Array.isArray(args)) {
+    throw new Error('MCP stdio: args harus berupa array.');
+  }
+  for (const value of [command, ...args]) {
+    if (typeof value === 'string' && CONTROL_CHARS_RE.test(value)) {
+      throw new Error('MCP stdio: command/args mengandung karakter kontrol (NUL/newline).');
+    }
+  }
+}
+
 export class McpSession {
   constructor(name, config) {
     this.name = name;
@@ -322,13 +363,13 @@ export class McpSession {
   async _connectStdio() {
     const { command, args = [], env = {} } = this.config;
     if (!command) throw new Error(`Server MCP stdio '${this.name}' wajib menentukan 'command'.`);
+    assertSafeStdioSpec(command, args);
 
     const child = spawn(command, args, {
       stdio: ['pipe', 'pipe', 'inherit'],
       env: buildSafeMcpEnv(env),
-      // Windows membutuhkan shell hanya untuk shim .cmd/.bat (npx, uvx, dsb.);
-      // perintah/argumen sudah ditampilkan saat persetujuan folder proyek.
-      shell: process.platform === 'win32',
+      // Shell hanya untuk shim .cmd/.bat yang memang membutuhkannya.
+      shell: needsWindowsShell(command),
       windowsHide: true,
     });
 

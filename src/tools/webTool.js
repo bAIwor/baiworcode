@@ -12,6 +12,8 @@
  */
 
 import dns from 'node:dns/promises';
+import http from 'node:http';
+import https from 'node:https';
 import net from 'node:net';
 import { getTinyFishApiKey } from '../config.js';
 
@@ -146,6 +148,162 @@ export async function assertSafeFetchUrl(raw, options = {}) {
   }
 
   return url;
+}
+
+/**
+ * Resolve hostname sekali dan validasi SEMUA alamatnya, lalu kembalikan satu
+ * alamat untuk di-pin ke koneksi. Ini menutup TOCTOU DNS-rebinding: fetch tidak
+ * lagi melakukan resolusi kedua yang bisa diarahkan ke IP privat.
+ *
+ * @param {string} raw
+ * @param {{lookupFn?: Function, allowPrivate?: boolean}} [options]
+ * @returns {Promise<{url: URL, address: string, family: number}>}
+ */
+export async function resolvePinnedTarget(
+  raw,
+  { lookupFn = dns.lookup, allowPrivate = false } = {}
+) {
+  const url = assertHttpUrl(raw);
+  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+
+  if (!allowPrivate && (host === 'localhost' || host.endsWith('.localhost'))) {
+    throw new Error('Akses ke localhost ditolak oleh pengaman SSRF.');
+  }
+  if (net.isIP(host)) {
+    if (!allowPrivate && isPrivateAddress(host)) {
+      throw new Error(
+        `Akses ke alamat IP privat/loopback (${host}) ditolak oleh pengaman SSRF.`
+      );
+    }
+    return { url, address: host, family: net.isIPv6(host) ? 6 : 4 };
+  }
+
+  let records;
+  try {
+    records = await lookupFn(host, { all: true, verbatim: true });
+  } catch (err) {
+    throw new Error(`Gagal me-resolve DNS ${host}: ${err.message}`);
+  }
+  if (!Array.isArray(records) || records.length === 0) {
+    throw new Error(`DNS ${host} tidak mengembalikan alamat.`);
+  }
+  for (const record of records) {
+    if (!allowPrivate && record && isPrivateAddress(record.address)) {
+      throw new Error(
+        `Hostname ${host} menunjuk ke alamat privat (${record.address}); permintaan ditolak oleh pengaman SSRF.`
+      );
+    }
+  }
+
+  const first = records[0];
+  return {
+    url,
+    address: first.address,
+    family: first.family || (net.isIPv6(first.address) ? 6 : 4),
+  };
+}
+
+/** Lookup yang selalu mengembalikan IP hasil validasi, bukan DNS baru. */
+function createPinnedLookup(address, family) {
+  return function pinnedLookup(hostname, options, callback) {
+    let opts = options;
+    let cb = callback;
+    if (typeof opts === 'function') {
+      cb = opts;
+      opts = {};
+    }
+    if (opts && opts.all) cb(null, [{ address, family }]);
+    else cb(null, address, family);
+  };
+}
+
+/** Bungkus IncomingMessage agar kompatibel dengan subset Response yang dipakai. */
+function wrapNativeResponse(res, finalUrl) {
+  const status = res.statusCode || 0;
+  // Cegah unhandled 'error' saat body dibatalkan pada redirect.
+  res.on('error', () => {});
+  return {
+    status,
+    statusText: res.statusMessage || '',
+    ok: status >= 200 && status < 300,
+    url: finalUrl,
+    headers: {
+      get(name) {
+        const value = res.headers[String(name).toLowerCase()];
+        return Array.isArray(value) ? value.join(', ') : value ?? null;
+      },
+    },
+    body: {
+      async cancel() {
+        try {
+          res.destroy();
+        } catch {}
+      },
+    },
+    arrayBuffer() {
+      return new Promise((resolve, reject) => {
+        const chunks = [];
+        let total = 0;
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve(Buffer.concat(chunks));
+        };
+        const fail = (err) => {
+          if (settled) return;
+          settled = true;
+          reject(err);
+        };
+        res.on('data', (chunk) => {
+          chunks.push(chunk);
+          total += chunk.length;
+          if (total > MAX_BYTES) {
+            finish();
+            res.destroy();
+          }
+        });
+        res.on('end', finish);
+        res.on('aborted', () => fail(new Error('Respons terputus.')));
+        res.on('error', fail);
+      });
+    },
+  };
+}
+
+/**
+ * Fetch native dengan DNS ter-pin (bukan fetch global).
+ * `allowPrivate` hanya untuk pengujian koneksi ke server lokal.
+ */
+export async function pinnedFetch(
+  rawUrl,
+  init = {},
+  { lookupFn, allowPrivate = false } = {}
+) {
+  const target = await resolvePinnedTarget(rawUrl, { lookupFn, allowPrivate });
+  const mod = target.url.protocol === 'https:' ? https : http;
+
+  return await new Promise((resolve, reject) => {
+    let req;
+    try {
+      req = mod.request(
+        target.url,
+        {
+          method: init.method || 'GET',
+          headers: init.headers || {},
+          signal: init.signal,
+          lookup: createPinnedLookup(target.address, target.family),
+        },
+        (res) => resolve(wrapNativeResponse(res, target.url.href))
+      );
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    req.on('error', reject);
+    if (init.body) req.write(init.body);
+    req.end();
+  });
 }
 
 /** Membaca body respons dengan batas ukuran; stream dibatalkan setelah batas. */
@@ -373,6 +531,10 @@ export async function handleWebFetch(
   }
 
   const abort = createFetchAbort(options.signal);
+  // Produksi memakai fetch native dengan DNS ter-pin. Mock test dan mode
+  // pengembangan lokal (BAIWOR_ALLOW_PRIVATE_FETCH=1) memakai fetch global.
+  const allowLocal = process.env.BAIWOR_ALLOW_PRIVATE_FETCH === '1';
+  const fetchImpl = !skipDns && !allowLocal ? pinnedFetch : globalThis.fetch;
   try {
     const { response: res, finalUrl } = await fetchWithSafeRedirects(
       target.href,
@@ -380,7 +542,7 @@ export async function handleWebFetch(
         signal: abort.signal,
         headers: { 'user-agent': FETCH_USER_AGENT, accept: 'text/html,application/json,text/plain,*/*' },
       },
-      { skipDns, fetchImpl: globalThis.fetch }
+      { skipDns, fetchImpl }
     );
 
     const contentType = res.headers?.get?.('content-type') || '';
@@ -636,7 +798,9 @@ export async function handleWebAutomate({
 } = {}) {
   let target;
   try {
-    target = assertHttpUrl(url);
+    target = await assertSafeFetchUrl(url, {
+      skipDns: globalThis.fetch !== REAL_FETCH,
+    });
   } catch (err) {
     return { success: false, output: `Error: ${err.message}` };
   }

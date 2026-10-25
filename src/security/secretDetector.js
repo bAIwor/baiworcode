@@ -171,6 +171,49 @@ function redactSecret(value) {
   return `${value.slice(0, 4)}${'*'.repeat(Math.min(value.length - 4, 20))}`;
 }
 
+const PRIVATE_KEY_BLOCK_RE =
+  /-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |DSA )?PRIVATE KEY-----/g;
+
+const REDACTION_RULES = [
+  ...SECRET_PATTERNS.map(({ pattern }) => ({
+    pattern: new RegExp(
+      pattern.source,
+      pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`
+    ),
+  })),
+  // Bentuk .env / CLI yang tidak memakai tanda kutip: API_KEY=rahasia...
+  {
+    pattern:
+      /(?:api[_-]?key|apikey|secret|token|password|passwd|pwd)\s*[:=]\s*['"]?([A-Za-z0-9_\-./+=]{16,})['"]?/gi,
+  },
+];
+
+/**
+ * Menyensor nilai secret yang dikenali dari teks bebas. Dipakai saat menulis
+ * session JSONL ke disk: konteks percakapan di memori tetap utuh, tetapi
+ * rahasia yang terbaca tool tidak ikut tersimpan permanen.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function redactSecretsInText(text) {
+  let out = String(text ?? '');
+  if (!out) return out;
+
+  out = out.replace(PRIVATE_KEY_BLOCK_RE, '[REDACTED PRIVATE KEY]');
+  for (const rule of REDACTION_RULES) {
+    out = out.replace(rule.pattern, (...args) => {
+      const match = args[0];
+      // Capture terakhir sebelum offset+string adalah nilai secret, bila ada.
+      const groups = args.slice(1, -2);
+      const secret = groups.find((group) => typeof group === 'string' && group.length > 0);
+      if (secret) return match.replace(secret, '[REDACTED]');
+      return '[REDACTED]';
+    });
+  }
+  return out;
+}
+
 /**
  * Scan sebuah berkas untuk mendeteksi hardcoded secrets.
  *
