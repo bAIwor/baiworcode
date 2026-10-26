@@ -51,8 +51,13 @@ describe('AnswerStyler: markdown inline', () => {
 });
 
 describe('AnswerStyler: struktur baris', () => {
-  it('mengganti butir - menjadi •', () => {
-    assert.equal(render('- satu\n- dua\n'), '• satu\n• dua\n');
+  it('mengganti butir - menjadi • dan tidak mewarnai teks isi daftar secara oranye', () => {
+    const st = new AnswerStyler({ useColor: true });
+    const out = st.push('- isi teks normal\n') + st.flush();
+    assert.equal(plain(out), '• isi teks normal\n');
+    // Pastikan teks isi 'isi teks normal' tidak dibungkus warna oranye mdListItem (38;2;246;173;85)
+    assert.ok(!out.includes('isi teks normal\x1b'), 'teks isi daftar tidak boleh membawa penutup warna sendiri');
+    assert.ok(out.includes('•'), 'simbol peluru tetap ada');
   });
 
   it('mempertahankan nomor daftar', () => {
@@ -65,6 +70,68 @@ describe('AnswerStyler: struktur baris', () => {
 
   it('mengganti kutipan > menjadi garis │', () => {
     assert.equal(render('> kutipan\n'), '│ kutipan\n');
+  });
+});
+
+describe('AnswerStyler: pewarnaan label : nilai', () => {
+  const ORANGE = '38;2;246;173;85'; // palette.mdStrong — label
+
+  const colorsOf = (input) => {
+    const st = new AnswerStyler({ useColor: true });
+    return st.push(input) + st.flush();
+  };
+
+  it('mewarnai label sebelum kolon oranye, nilai sesudahnya tanpa warna', () => {
+    const out = colorsOf('- Status: selesai\n');
+    assert.equal(plain(out), '• Status: selesai\n');
+    // 'Status' membawa warna oranye, ': selesai' harus polos (putih alami).
+    assert.ok(out.includes(`${ORANGE}m`), 'label membawa warna oranye');
+    assert.ok(!/selesai\x1b\[38;2/.test(out), 'nilai tidak boleh diberi warna');
+    assert.ok(out.includes(`${ORANGE}mStatus\x1b[39m`), 'segmen label terbungkus oranye');
+    assert.ok(out.includes(': selesai'), 'teks nilai tetap utuh');
+  });
+
+  it('berlaku juga pada paragraf biasa (bukan hanya daftar)', () => {
+    const out = colorsOf('Catatan: ini penting\n');
+    assert.ok(out.includes(`${ORANGE}mCatatan\x1b[39m`), 'label paragraf diwarnai oranye');
+    assert.ok(!/penting\x1b\[38;2/.test(out), 'nilai paragraf tidak diwarnai');
+  });
+
+  it('tidak mewarnai bila tidak ada kolon pemisah', () => {
+    const out = colorsOf('- hanya teks biasa\n');
+    assert.ok(!out.includes(`${ORANGE}mhanya`), 'isi tanpa kolon tetap putih');
+  });
+
+  it('tidak terpotong pada URL dan jam (kolon tanpa spasi setelahnya)', () => {
+    const out = colorsOf('Lihat https://x.id/a pada 12:30 ya\n');
+    // Tidak ada label (kolon pertama yang memenuhi syarat tidak ada), jadi
+    // seluruh isi tetap putih.
+    assert.ok(!out.includes(ORANGE), 'URL/jam tidak memicu pewarnaan label');
+    assert.equal(plain(out), 'Lihat https://x.id/a pada 12:30 ya\n');
+  });
+
+  it('kolon pertama yang eligible jadi batas, sisanya putih', () => {
+    const out = colorsOf('- waktu: jam 12:30 dan https://x.id/a\n');
+    assert.ok(out.includes(`${ORANGE}mwaktu\x1b[39m`), 'label "waktu" oranye');
+    assert.ok(out.includes('12:30'), 'jam tetap tampil');
+    assert.ok(out.includes('https://x.id/a'), 'url tetap tampil');
+    assert.ok(!/x\.id\/a\x1b\[38;2/.test(out), 'nilai setelah batas tidak diwarnai');
+  });
+
+  it('teks tebal (bold) diwarnai oranye, nilai setelahnya putih', () => {
+    const out = colorsOf('- **Status:** selesai\n');
+    assert.equal(plain(out), '• Status: selesai\n');
+    // Bold dilabeli oranye + tebal; warna hijau tidak dipakai di sini.
+    assert.ok(out.includes(`${ORANGE}m\x1b[1mStatus:\x1b[22m\x1b[39m`), 'bold label oranye tebal');
+    assert.ok(/: selesai/.test(out.replace(ANSI, '')), 'teks nilai tetap ada');
+    assert.ok(!/selesai\x1b\[38;2/.test(out), 'nilai tidak diwarnai');
+  });
+
+  it('inline code tetap hijau walau berada dalam baris berlabel', () => {
+    const out = colorsOf('Catatan: pakai `edit_file` ya\n');
+    const GREEN = '38;2;104;211;145';
+    assert.ok(out.includes(`${ORANGE}mCatatan\x1b[39m`), 'label oranye');
+    assert.ok(out.includes(`${GREEN}medit_file\x1b[39m`), 'kode tetap hijau, tidak jadi oranye');
   });
 });
 

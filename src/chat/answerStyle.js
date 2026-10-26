@@ -23,7 +23,6 @@ import { theme, palette } from '../theme.js';
 // diproses (bukan tampil sebagai karakter literal).
 const HEADING_BASE = { colorHex: palette.mdHeading, bold: true };
 const QUOTE_BASE = { colorHex: palette.mdBlockQuote, italic: true };
-const LIST_BASE = { colorHex: palette.mdListItem };
 const BULLET = theme.bullet;
 const NUMBERED = theme.numbered;
 const QUOTE = theme.quote;
@@ -127,6 +126,10 @@ export class AnswerStyler {
     this.calloutProbe = null;
     this.callout = null;
     this.calloutTitlePending = false;
+    // Jenis baris aktif untuk aturan "label oranye : nilai putih". null berarti
+    // baris ini TIDAK di-split di kolon (heading/quote/callout/kode).
+    this.curLineKind = null;
+    this.lineSegs = [];
   }
 
   /** Menelan sepotong token keluaran model, mengembalikan teks siap cetak. */
@@ -176,6 +179,14 @@ export class AnswerStyler {
           this.quoteLineStart = false;
         }
         this.resolvePendingAtEol(out);
+        if (this.curLineKind) {
+          // Baris berlabel: kumpulkan segmen, lalu warnai label/nilai sekaligus
+          // saat akhir baris (kolon diketahui setelah teks baris lengkap).
+          this.finalizeLine(out);
+          out.push('\n');
+          this.resetLine();
+          continue;
+        }
         this.flushRun(out);
         out.push('\n');
         this.resetLine();
@@ -208,7 +219,11 @@ export class AnswerStyler {
         this.quoteLineStart = false;
       }
       this.resolvePendingAtEol(out);
-      this.flushRun(out);
+      if (this.curLineKind) {
+        this.finalizeLine(out);
+      } else {
+        this.flushRun(out);
+      }
       // Stream berakhir di tengah callout: tutup bloknya agar rapi.
       if (this.callout) out.push('\n' + this.closeCalloutRule());
     }
@@ -264,6 +279,8 @@ export class AnswerStyler {
     this.quoteLead = '';
     this.calloutProbe = null;
     this.calloutTitlePending = false;
+    this.curLineKind = null;
+    this.lineSegs = [];
   }
 
   styleRun() {
@@ -285,9 +302,118 @@ export class AnswerStyler {
 
   flushRun(out) {
     if (!this.run) return;
+    // Baris berlabel: simpan segmen mentah (teks + gaya inline) dulu; pewarnaan
+    // oranye/putih ditentukan di finalizeLine() setelah kolon baris terlihat.
+    if (this.curLineKind) {
+      this.lineSegs.push({
+        text: this.run,
+        bold: this.inline.bold,
+        italic: this.inline.italic,
+        strike: this.inline.strike,
+        code: this.inline.code,
+      });
+      this.run = '';
+      return;
+    }
     const fn = this.styleRun();
     out.push(fn ? fn(this.run) : this.run);
     this.run = '';
+  }
+
+  /**
+   * Menutup sebuah run menjadi segmen (dipanggil saat akhir baris berlabel).
+   */
+  flushSegment() {
+    if (!this.run) return;
+    this.lineSegs.push({
+      text: this.run,
+      bold: this.inline.bold,
+      italic: this.inline.italic,
+      strike: this.inline.strike,
+      code: this.inline.code,
+    });
+    this.run = '';
+  }
+
+  /**
+   * Mewarnai satu segmen. `hex` null berarti warna terminal alami (putih).
+   * Gaya inline (tebal/miring/coret) selalu dihormati.
+   */
+  paintSeg(seg, hex) {
+    let c = hex ? chalk.hex(hex) : chalk;
+    if (seg.bold) c = c.bold;
+    if (seg.italic) c = c.italic;
+    if (seg.strike) c = c.strikethrough;
+    return c(seg.text);
+  }
+
+  /**
+   * Menggambar satu baris berlabel: teks sebelum kolon-pemisah pertama diwarnai
+   * oranye (mdStrong), kolon dan sisanya putih. Kode sebaris tetap hijau. Kolon
+   * hanya dianggap pemisah bila didahului karakter non-spasi dan diikuti spasi
+   * (menjaga `https://`, `12:30`, dan titik dua dalam `kode` tidak ikut terpotong).
+   * Tanpa kolon yang memenuhi syarat, seluruh isi tetap putih seperti semula.
+   */
+  finalizeLine(out) {
+    this.flushSegment();
+    const segs = this.lineSegs;
+    if (!segs.length) return;
+
+    const plain = [];
+    const inCode = [];
+    const starts = [];
+    let cursor = 0;
+    for (const s of segs) {
+      starts.push(cursor);
+      for (const ch of s.text) {
+        plain.push(ch);
+        inCode.push(s.code);
+      }
+      cursor += s.text.length;
+    }
+
+    let colon = -1;
+    for (let i = 1; i < plain.length - 1; i += 1) {
+      if (plain[i] !== ':' || inCode[i]) continue;
+      if (/\s/.test(plain[i - 1])) continue; // label harus menempel di kolon
+      if (plain[i + 1] !== ' ') continue; // butuh spasi setelah kolon
+      colon = i;
+      break;
+    }
+
+    const ORANGE = palette.mdStrong;
+    const GREEN = palette.mdCode;
+    let line = '';
+    let pos = 0;
+    for (const seg of segs) {
+      const segStart = pos;
+      pos += seg.text.length;
+      // Kode sebaris selalu hijau — tidak pernah ikut jadi label oranye.
+      if (seg.code) {
+        line += this.paintSeg(seg, GREEN);
+        continue;
+      }
+      // Teks tebal = label/penekanan: oranye penuh, termasuk kolon di dalamnya.
+      if (seg.bold) {
+        line += this.paintSeg(seg, ORANGE);
+        continue;
+      }
+      // Run non-tebal: oranye hanya sampai kolon-pemisah pertama.
+      if (colon < 0 || segStart >= colon) {
+        line += this.paintSeg(seg, null);
+        continue;
+      }
+      if (pos <= colon) {
+        line += this.paintSeg(seg, ORANGE);
+        continue;
+      }
+      // Segmen memotong batas kolon — potong dua bagian.
+      const cut = colon - segStart;
+      line +=
+        this.paintSeg({ ...seg, text: seg.text.slice(0, cut) }, ORANGE) +
+        this.paintSeg({ ...seg, text: seg.text.slice(cut) }, null);
+    }
+    out.push(line);
   }
 
   toggle(out, name) {
@@ -307,6 +433,7 @@ export class AnswerStyler {
 
     if (verdict === 'heading') {
       this.lineBase = HEADING_BASE;
+      this.curLineKind = null; // judul tidak di-split di kolon
       return;
     }
     if (verdict === 'quote') {
@@ -317,18 +444,19 @@ export class AnswerStyler {
       this.quoteIndent = m ? m[1] : '';
       this.quoteLineStart = true;
       this.lineBase = QUOTE_BASE;
+      this.curLineKind = null; // kutipan/callout tetap pakai warna emas/callout
       return;
     }
     if (verdict === 'bullet') {
       const m = buf.match(/^(\s*)([-*+])\s/);
       out.push(`${m[1]}${BULLET('•')} `);
-      this.lineBase = LIST_BASE;
+      this.curLineKind = 'list';
       return;
     }
     if (verdict === 'numbered') {
       const m = buf.match(/^(\s*)(\d+\.)\s/);
       out.push(`${m[1]}${NUMBERED(m[2])} `);
-      this.lineBase = LIST_BASE;
+      this.curLineKind = 'list';
       return;
     }
     if (verdict === 'fence') {
@@ -337,9 +465,11 @@ export class AnswerStyler {
       this.fenceHeader = true;
       this.codeBuf = '';
       this.mode = 'code';
+      this.curLineKind = null;
       return;
     }
     this.pending += buf;
+    this.curLineKind = 'normal';
     this.parseText(out);
   }
 
