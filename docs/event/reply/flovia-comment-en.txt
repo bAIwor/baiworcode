@@ -1,0 +1,1 @@
+Flovia's MCP server now lives inside baiworcode, a terminal AI coding agent I'm building with MiniMax Code + M3.1 Flash. 24 tools, free X API included. Group buying makes this viable for solo builders. #MiniMaxCode

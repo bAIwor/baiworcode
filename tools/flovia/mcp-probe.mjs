@@ -1,28 +1,30 @@
 #!/usr/bin/env node
 /**
- * Probe resmi Flovia lewat MCP Streamable HTTP.
+ * Klien MCP minimal untuk Flovia — daftar tool, lihat schema, panggil tool.
  *
- * Usage:
  *   node tools/flovia/mcp-probe.mjs list
- *   node tools/flovia/mcp-probe.mjs call <tool> [json-args]
+ *   node tools/flovia/mcp-probe.mjs schema flovia_x
+ *   node tools/flovia/mcp-probe.mjs call flovia_x '{"action":"counts","post_id":"..."}'
  *
- * Auth: env FLOVIA_KEY (Bearer). Nilai key tidak pernah dicetak.
+ * Semua kandidat key dicoba satu per satu; yang pertama lolos autentikasi dipakai.
+ * Nilai key tidak pernah dicetak.
  */
 import process from 'node:process';
-import { resolveFloviaKey } from './key.mjs';
+import { readFileSync } from 'node:fs';
+import { collectFloviaKeys } from './key.mjs';
 
 const ENDPOINT = process.env.FLOVIA_MCP_URL || 'https://api.flovia.dev/mcp';
-const { key, source } = resolveFloviaKey();
-if (!key) {
+const candidates = collectFloviaKeys();
+if (candidates.length === 0) {
   console.error('Key Flovia tidak ditemukan (env FLOVIA_KEY / registry / ~/.baiwor/config.json).');
   process.exit(1);
 }
-console.error(`[key dari ${source}, len=${key.length}]`);
 
 let sessionId = null;
+let key = null;
 
 function parseBody(text) {
-  const trimmed = text.trim();
+  const trimmed = (text || '').trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
     try {
@@ -55,7 +57,7 @@ async function rpc(method, params, id) {
     'Content-Type': 'application/json',
     Accept: 'application/json, text/event-stream',
   };
-  if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+  if (sessionId) headers['mcp-session-id'] = sessionId;
 
   const body = { jsonrpc: '2.0', method, params };
   if (id !== undefined) body.id = id;
@@ -64,6 +66,7 @@ async function rpc(method, params, id) {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60000),
   });
 
   const sid = res.headers.get('mcp-session-id');
@@ -80,18 +83,16 @@ async function rpc(method, params, id) {
 }
 
 async function init() {
-  const res = await rpc(
+  await rpc(
     'initialize',
     {
-      protocolVersion: '2025-06-18',
+      protocolVersion: '2024-11-05',
       capabilities: {},
       clientInfo: { name: 'baiworcode-flovia-probe', version: '0.1.0' },
     },
     1
   );
-  // session ready notification
   await rpc('notifications/initialized', {}, undefined);
-  return res;
 }
 
 function print(obj) {
@@ -101,7 +102,20 @@ function print(obj) {
 const [, , cmd = 'list', ...rest] = process.argv;
 
 try {
-  await init();
+  let lastError = null;
+  for (const c of candidates) {
+    key = c.key;
+    sessionId = null;
+    try {
+      await init();
+      console.error(`[key dari ${c.source}, len=${c.key.length}]`);
+      lastError = null;
+      break;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  if (lastError) throw lastError;
 
   if (cmd === 'list') {
     const res = await rpc('tools/list', {}, 2);
@@ -110,11 +124,33 @@ try {
     for (const t of tools) {
       console.log(`- ${t.name}: ${(t.description || '').split('\n')[0].slice(0, 140)}`);
     }
+  } else if (cmd === 'schema') {
+    const name = rest[0];
+    const res = await rpc('tools/list', {}, 2);
+    const tool = (res?.result?.tools || []).find((t) => t.name === name);
+    if (!tool) {
+      console.error(`Tool '${name}' tidak ada.`);
+      process.exit(2);
+    }
+    console.log(`=== ${tool.name} ===`);
+    console.log(tool.description || '(tanpa deskripsi)');
+    console.log('');
+    console.log('inputSchema:');
+    print(tool.inputSchema || {});
   } else if (cmd === 'call') {
     const name = rest[0];
-    const args = rest[1] ? JSON.parse(rest[1]) : {};
+    let args = {};
+    if (rest[1]) {
+      // Argumen bisa ditulis langsung sebagai JSON, atau sebagai '@file.json'
+      // untuk hindari merusak tanda kutip saat diteruskan lewat shell.
+      const raw = rest[1].startsWith('@')
+        ? readFileSync(rest[1].slice(1), 'utf8')
+        : rest[1];
+      args = JSON.parse(raw);
+    }
     const res = await rpc('tools/call', { name, arguments: args }, 3);
-    print(res);
+    const content = res?.result?.content || [];
+    console.log(content.map((c) => (c.type === 'text' ? c.text : JSON.stringify(c))).join('\n'));
   } else if (cmd === 'status') {
     const res = await rpc('tools/call', { name: 'flovia_status', arguments: {} }, 3);
     print(res);

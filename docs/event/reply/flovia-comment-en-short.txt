@@ -1,0 +1,1 @@
+Flovia is now wired into baiworcode — my own CLI AI coding agent, built with MiniMax Code + M3.1 Flash. Free X API for a solo builder. #MiniMaxCode

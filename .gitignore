@@ -19,3 +19,4 @@ docs/*
 !docs/media/
 !docs/event/
 tools/event/out/
+tools/flovia/out/
