@@ -44,6 +44,8 @@ export const DEFAULT_CONFIG = {
   tavilyApiKey: '',
   // Firecrawl (scrape/crawl/map situs jadi konten bersih): API Key fc-... untuk MCP server resminya.
   firecrawlApiKey: '',
+  // Flovia (X API + riset web + data on-chain lewat MCP resmi): API Key flv-... untuk MCP server resminya.
+  floviaApiKey: '',
   // InstaBox Cloud Sandbox: API Key dan default machine ID/name
   instaboxApiKey: '',
   instaboxMachineId: 'baiwor',
@@ -510,6 +512,37 @@ export function getFirecrawlApiKey() {
 export function saveFirecrawlApiKey(key) {
   const clean = String(key || '').trim();
   saveConfigStrict({ firecrawlApiKey: clean });
+  return clean;
+}
+
+/**
+ * Mendapatkan API Key Flovia: env FLOVIA_KEY menang atas konfigurasi.
+ *
+ * Flovia menyediakan satu MCP server resmi (https://api.flovia.dev/mcp) yang
+ * memuat data X, riset web, data on-chain, dan generasi teks. Kuncinya
+ * disimpan oleh pengguna sendiri; bAIwor Code hanya membacanya.
+ *
+ * @returns {string}
+ */
+export function getFloviaApiKey() {
+  if (process.env.FLOVIA_KEY && process.env.FLOVIA_KEY.trim()) {
+    return process.env.FLOVIA_KEY.trim();
+  }
+  const config = getConfig();
+  if (typeof config.floviaApiKey === 'string' && config.floviaApiKey.trim()) {
+    return config.floviaApiKey.trim();
+  }
+  return '';
+}
+
+/**
+ * Menyimpan API Key Flovia ke ~/.baiwor/config.json.
+ * @param {string} key
+ * @returns {string}
+ */
+export function saveFloviaApiKey(key) {
+  const clean = String(key || '').trim();
+  saveConfigStrict({ floviaApiKey: clean });
   return clean;
 }
 

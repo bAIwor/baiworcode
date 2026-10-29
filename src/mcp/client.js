@@ -11,6 +11,7 @@ import {
   getTinyFishApiKey,
   getTavilyApiKey,
   getFirecrawlApiKey,
+  getFloviaApiKey,
   isMcpProjectTrusted,
   trustMcpProject,
 } from '../config.js';
@@ -599,6 +600,21 @@ export function loadMcpConfigDetailed(cwd = process.cwd()) {
       type: 'remote',
       url: 'https://mcp.firecrawl.dev/v2/mcp',
       headers: { Authorization: `Bearer ${firecrawlKey}` },
+    };
+  }
+
+  // 2c. Flovia: satu MCP server resmi yang menyediakan data X (post publik
+  //     7 hari terakhir), riset web (Exa/Firecrawl), data on-chain (Nansen,
+  //     CoinGecko, Zerion, QuickNode) dan generasi teks. Didaftarkan otomatis
+  //     bila pengguna punya FLOVIA_KEY (env) atau floviaApiKey di konfigurasi,
+  //     selama entri 'flovia' belum dibuat manual. Kunci dikirim lewat header
+  //     Authorization agar tidak tersimpan di URL maupun log server.
+  const floviaKey = getFloviaApiKey();
+  if (floviaKey && !globalConfigs.flovia) {
+    globalConfigs.flovia = {
+      type: 'remote',
+      url: 'https://api.flovia.dev/mcp',
+      headers: { Authorization: `Bearer ${floviaKey}` },
     };
   }
 

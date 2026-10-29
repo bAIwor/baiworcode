@@ -540,3 +540,39 @@ describe('MCP Client: Tavily & Firecrawl Bawaan', () => {
     }
   });
 });
+
+describe('MCP Client: Flovia Bawaan', () => {
+  it('terdaftar otomatis sebagai remote MCP saat API key tersedia', () => {
+    const sebelumnya = { ...process.env };
+    process.env.FLOVIA_KEY = 'flv-UJI-789';
+    try {
+      const configs = loadMcpConfig();
+      assert.equal(configs.flovia.url, 'https://api.flovia.dev/mcp');
+      assert.equal(configs.flovia.headers.Authorization, 'Bearer flv-UJI-789');
+    } finally {
+      process.env = sebelumnya;
+    }
+  });
+
+  it('tidak didaftarkan saat kunci kosong', () => {
+    const home = buatHomeSementara();
+    try {
+      const script = `
+        import assert from 'node:assert/strict';
+        import { loadMcpConfig } from ${JSON.stringify(
+          pathToFileURL(path.join(REPO_ROOT, 'src', 'mcp', 'client.js')).href
+        )};
+        delete process.env.FLOVIA_KEY;
+        const configs = loadMcpConfig();
+        assert.equal(configs.flovia, undefined, 'tanpa kunci, flovia tidak boleh muncul');
+      `;
+      execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+        encoding: 'utf8',
+        env: envHome(home),
+        timeout: 90_000,
+      });
+    } finally {
+      hapusHome(home);
+    }
+  });
+});
