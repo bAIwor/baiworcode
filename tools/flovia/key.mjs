@@ -23,9 +23,11 @@ const KEY_RE = /flv_[A-Za-z0-9_\-]{8,}/;
 
 function fromRegistry(hive) {
   try {
+    // 'HKCU\\Environment' harus satu argumen: reg query HKCU Environment /v X
+    // akan gagal karena 'Environment' dibaca sebagai nama key lain.
     const out = execFileSync(
       'reg',
-      ['query', hive, 'Environment', '/v', 'FLOVIA_KEY'],
+      ['query', `${hive}\\Environment`, '/v', 'FLOVIA_KEY'],
       { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }
     );
     const m = out.match(/FLOVIA_KEY\s+REG_\w+\s+([^\r\n]+)/);
