@@ -75,12 +75,15 @@ baiworcode
 
 | Berkas | Isi |
 |---|---|
+| [`media/baiworcode-demo.mp4`](media/baiworcode-demo.mp4) | Demo video 32 detik — bAIwor Code berjalan nyata di terminal |
 | [`screenshots/01-minimax-code-m31-flash.png`](screenshots/01-minimax-code-m31-flash.png) | MiniMax Code + M3.1 Flash bekerja di repo bAIwor Code |
 | [`screenshots/02-baiworcode-agent-loop.png`](screenshots/02-baiworcode-agent-loop.png) | bAIwor Code menjalankan agent loop: blok Thinking, timeline tool, badge Punakawan |
 | [`screenshots/03-baiworcode-cli.png`](screenshots/03-baiworcode-cli.png) | CLI bAIwor Code dan 15 toolnya |
 | [`screenshots/04-baiworcode-banner.png`](screenshots/04-baiworcode-banner.png) | Banner bAIwor Code — logo Bawor & sapaan Punakawan |
 
-Semua tangkapan layar diambil dari keluaran asli aplikasi — bukan rekonstruksi.
+Semua tangkapan layar dan video diambil dari keluaran asli aplikasi — bukan
+rekonstruksi. Demo video direkam lewat pseudo-terminal sungguhan, lalu
+dirakit frame per frame.
 
 ## 6. Penutup
 

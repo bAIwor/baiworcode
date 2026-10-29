@@ -16,4 +16,5 @@ config.json.bak*
 docs/*
 !docs/CREATION_NOTE.md
 !docs/screenshots/
+!docs/media/
 tools/event/out/

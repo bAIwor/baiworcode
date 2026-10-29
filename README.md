@@ -50,6 +50,12 @@ Jejaknya bisa dicek langsung di repo ini: beberapa modul secara eksplisit mengad
   <img src="docs/screenshots/04-baiworcode-banner.png" alt="Banner bAIwor Code" width="920">
 </p>
 
+**Demo 32 detik — bAIwor Code bekerja nyata di terminal:**
+
+<https://github.com/bAIwor/baiworcode/raw/main/docs/media/baiworcode-demo.mp4>
+
+<video src="docs/media/baiworcode-demo.mp4" width="920" autoplay loop muted playsinline></video>
+
 <p align="center">
   <img src="docs/screenshots/02-baiworcode-agent-loop.png" alt="bAIwor Code menjalankan agent loop di terminal" width="920">
 </p>

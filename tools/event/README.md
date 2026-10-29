@@ -24,7 +24,10 @@ Hasil akhirnya dirender ke PNG dengan Chrome headless (`render-shot.mjs`).
 | `spoof.mjs` | Preloader: memalsukan `stdout.isTTY` + `columns`, lalu mengimpor target. |
 | `tty-run.mjs` | Menjalankan CLI di bawah pseudo-TTY dan menyimpan keluaran ANSI mentah ke `.ansi`. |
 | `pty-capture.mjs` | Menjalankan TUI sungguhan di dalam PTY (ConPTY di Windows) — untuk TUI yang menolak jalan tanpa TTY. |
+| `pty-frames.mjs` | Merekam layar PTY menjadi rangkaian frame PNG (lewat Chrome DevTools Protocol). |
+| `make-video.mjs` | Merakit frame PNG menjadi video MP4 (H.264) memakai ffmpeg. |
 | `ansi-html.mjs` | Emulator terminal → grid sel bergaya → HTML. |
+| `term-html.mjs` | Pembangun HTML bergaya terminal (dipakai render-shot & pty-frames). |
 | `render-shot.mjs` | ANSI → HTML bergaya terminal → PNG via Chrome headless. |
 
 ## Pemakaian
