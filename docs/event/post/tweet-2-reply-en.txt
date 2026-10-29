@@ -1,0 +1,7 @@
+How M3.1 Flash was used:
+
+• 1M-token context → read the whole codebase at once
+• Agentic tool calling → picks its own tools, reads results, chooses next
+• Tunable reasoning → deep for security, light for routine
+
+📝github.com/bAIwor/baiworcode/blob/main/docs/CREATION_NOTE.md

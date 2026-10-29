@@ -1,0 +1,7 @@
+M3.1 Flash dipakai begini:
+
+• konteks 1 juta token → baca seluruh codebase sekaligus
+• tool calling agentik → pilih tool sendiri, baca hasil, tentukan
+• penalaran bisa diatur → dalam buat keamanan, ringan buat rutin
+
+📝github.com/bAIwor/baiworcode/blob/main/docs/CREATION_NOTE.md

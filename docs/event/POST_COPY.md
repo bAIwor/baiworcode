@@ -23,8 +23,10 @@
 | Berkas | Isi |
 |---|---|
 | `post/tweet-1-main-en.txt` | Tweet utama (English) — 278/280 karakter |
+| `post/tweet-2-reply-en.txt` | Balasan + media (English) — 275/280 karakter |
 | `post/thread-en.txt` | Thread lanjutan (English) — 6 tweet |
 | `post/tweet-1-main-id.txt` | Tweet utama (Indonesia) — 279/280 karakter |
+| `post/tweet-2-reply-id.txt` | Balasan + media (Indonesia) — 279/280 karakter |
 | `post/thread-id.txt` | Thread lanjutan (Indonesia) — 6 tweet |
 | `post/discord-submission.txt` | Teks submission Discord — 1969/2000 karakter |
 
