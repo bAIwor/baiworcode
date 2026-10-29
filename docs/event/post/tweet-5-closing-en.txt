@@ -1,0 +1,4 @@
+Full creation note (how it was built):
+github.com/bAIwor/baiworcode/blob/main/docs/CREATION_NOTE.md
+
+67 modules · 15 tools · 942 tests · 0 failing · MIT
