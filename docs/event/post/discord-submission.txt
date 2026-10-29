@@ -1,0 +1,25 @@
+**bAIwor Code — Terminal AI Coding Agent with Punakawan Personalities**
+
+🧩 **Project:** https://github.com/bAIwor/baiworcode
+📦 **npm:** https://www.npmjs.com/package/@baiworcode/baiworcode
+🌐 **Website:** https://baiwor.my.id
+📝 **Creation note:** https://github.com/bAIwor/baiworcode/blob/main/docs/CREATION_NOTE.md
+🎬 **Demo video (32s):** https://github.com/bAIwor/baiworcode/raw/main/docs/media/baiworcode-demo.mp4
+
+**What I built**
+bAIwor Code is an open-source terminal AI coding agent, built from scratch inside MiniMax Code with M3.1 Flash. You chat with it like a normal terminal assistant and it goes off to read, edit, and run commands in your project. It ships 15 built-in tools, sub-agent delegation, MCP support, and four Punakawan (Javanese shadow-puppet) personalities that rotate by which tool the agent used — semAIr plans, pAItruk explores, bAIwor builds, gAIreng audits.
+
+**How I used M3.1 Flash**
+- **1M-token context** — it read the whole codebase (67 modules, ~19.7k lines) in one window, so it reasoned about the architecture as a whole, not file by file.
+- **Agentic tool calling** — it picked its own tools, read the results, and decided the next step; the security layer (approval gate, sandbox path containment, output fencing, session-log redaction) came out of that feedback loop.
+- **Tunable reasoning depth** — deep passes for security architecture, light passes for routine code.
+- **Native multimodal** — image attachments supported as agent input.
+
+**How it was built**
+MiniMax Code was the build tool, not just a chat window: 159 commits, one author, 942 tests passing with 0 failures. The repo credits the mechanisms it adapted from MiniMax Code in `src/chat/todoTool.js` and `todoReminder.js`.
+
+**Stats:** 67 modules · 15 tools · 942 tests · 0 failing · 6 runtime dependencies · MIT license
+
+**Try it:** `npx @baiworcode/baiworcode "explain this project"`
+
+Screenshots attached. Built with MiniMax Code + M3.1 Flash. #MiniMaxCode

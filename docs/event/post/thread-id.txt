@@ -1,0 +1,49 @@
+--- TWEET 2 ---
+Kenapa tema wayangan?
+
+Karena agen yang cuma bilang "Selesai." terasa kayak alat. bAIwor Code memberi tahu siapa bicara dan kenapa — agen berputar di antara empat Punakawan sesuai toolnya.
+
+🎭 semAIr — arsitek
+🔍 pAItruk — penjelajah
+🔨 bAIwor — pembangun
+🎭 gAIreng — auditor
+
+--- TWEET 3 ---
+Yang M3.1 Flash kerjakan:
+
+• konteks 1 juta token → baca seluruh codebase (67 modul, ±19,7k baris) sekaligus
+• tool calling agentik → pilih tool sendiri, baca hasil, tentukan langkah berikutnya
+• penalaran bisa diatur → dalam untuk keamanan, ringan untuk kode rutin
+
+#MiniMaxCode
+
+--- TWEET 4 ---
+Paling saya banggakan:
+
+🔒 workspace tersandbox (realpath, symlink-safe)
+🔒 approval gate sebelum perintah berisiko
+🔒 output tool di-fence, ditandai untrusted
+🔒 secret diredaksi dari session log
+🔒 MCP server read-only by default
+
+Agen yang bisa dipercaya > agen yang pintar.
+
+--- TWEET 5 ---
+Hasilnya:
+
+✅ 942 test · 0 gagal
+✅ 159 commit
+✅ 6 dependensi runtime
+✅ lisensi MIT
+
+Provider-agnostic penuh — Gemini, Claude, model lokal, atau MiniMax.
+
+--- TWEET 6 ---
+Coba sendiri:
+
+👉 npx @baiworcode/baiworcode "jelaskan proyek ini"
+
+Repo + creation note lengkap:
+github.com/bAIwor/baiworcode
+
+Dibangun dengan MiniMax Code + M3.1 Flash — terima kasih alat-alatnya. #MiniMaxCode

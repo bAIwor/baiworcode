@@ -1,0 +1,49 @@
+--- TWEET 2 ---
+Why a shadow-puppet theme?
+
+Because an agent that only says "Done." feels like a tool. bAIwor Code tells you who is talking and why — it rotates between four Punakawan by the tool used.
+
+🎭 semAIr — architect
+🔍 pAItruk — explorer
+🔨 bAIwor — builder
+🎭 gAIreng — auditor
+
+--- TWEET 3 ---
+What M3.1 Flash did here:
+
+• 1M-token context → read the whole codebase (67 modules, ~19.7k lines) at once
+• Agentic tool calling → picked its own tools, read results, decided the next step
+• Tunable reasoning → deep passes for security, light for routine code
+
+#MiniMaxCode
+
+--- TWEET 4 ---
+The part I'm most proud of: guardrails.
+
+🔒 sandboxed workspace (realpath, symlink-aware)
+🔒 approval gate before risky commands
+🔒 tool output fenced + marked untrusted
+🔒 secrets redacted from session logs
+🔒 MCP server read-only by default
+
+Trustworthy agent > clever agent.
+
+--- TWEET 5 ---
+The result:
+
+✅ 942 tests · 0 failing
+✅ 159 commits
+✅ 6 runtime dependencies
+✅ MIT licensed
+
+Fully provider-agnostic — Gemini, Claude, local models, or MiniMax.
+
+--- TWEET 6 ---
+Try it:
+
+👉 npx @baiworcode/baiworcode "explain this project"
+
+Repo + full creation note:
+github.com/bAIwor/baiworcode
+
+Built with MiniMax Code + M3.1 Flash — thanks for the tools that made this possible. #MiniMaxCode

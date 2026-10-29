@@ -26,6 +26,7 @@ Hasil akhirnya dirender ke PNG dengan Chrome headless (`render-shot.mjs`).
 | `pty-capture.mjs` | Menjalankan TUI sungguhan di dalam PTY (ConPTY di Windows) — untuk TUI yang menolak jalan tanpa TTY. |
 | `pty-frames.mjs` | Merekam layar PTY menjadi rangkaian frame PNG (lewat Chrome DevTools Protocol). |
 | `make-video.mjs` | Merakit frame PNG menjadi video MP4 (H.264) memakai ffmpeg. |
+| `check-length.mjs` | Memeriksa panjang tweet terhadap limit X (280 karakter, URL = 23). |
 | `ansi-html.mjs` | Emulator terminal → grid sel bergaya → HTML. |
 | `term-html.mjs` | Pembangun HTML bergaya terminal (dipakai render-shot & pty-frames). |
 | `render-shot.mjs` | ANSI → HTML bergaya terminal → PNG via Chrome headless. |

@@ -17,4 +17,5 @@ docs/*
 !docs/CREATION_NOTE.md
 !docs/screenshots/
 !docs/media/
+!docs/event/
 tools/event/out/

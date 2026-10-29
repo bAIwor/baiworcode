@@ -1,0 +1,8 @@
+Saya bikin bAIwor Code — terminal AI coding agent dengan kepribadian Punakawan — di MiniMax Code pakai M3.1 Flash.
+
+67 modul · 15 tool · 942 test · 0 gagal
+
+🔗 github.com/bAIwor/baiworcode
+👉 npm i -g @baiworcode/baiworcode
+
+Dibangun dengan MiniMax Code + M3.1 Flash #MiniMaxCode
