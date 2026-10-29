@@ -1,7 +1,7 @@
 /**
  * Resolver key Flovia — SELALU baca dari sumber tepercaya, jangan pernah print nilainya.
  *
- * Urutan prioritas:
+ * Urutan prioritas untuk pemakaian tunggal:
  *   1. process.env.FLOVIA_KEY
  *   2. HKCU\Environment:FLOVIA_KEY   (dipasang via setx)
  *   3. HKLM\Environment:FLOVIA_KEY   (dipasang lewat SystemProperties)
@@ -9,7 +9,9 @@
  *   5. ~/.flovia/credentials.json / ~/.flovia/config.json (kalau ada)
  *
  * Semua sumber dibaca fresh tiap dipanggil, jadi key baru langsung terdeteksi
- * tanpa perlu restart proses agent.
+ * tanpa perlu restart proses agent. `collectFloviaKeys()` mengembalikan SEMUA
+ * kandidat — dipakai doctor untuk mencoba satu per satu, karena environment
+ * proses bisa masih memegang key lama setelah key baru dipasang di registry.
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -27,7 +29,9 @@ function fromRegistry(hive) {
       { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }
     );
     const m = out.match(/FLOVIA_KEY\s+REG_\w+\s+([^\r\n]+)/);
-    return m ? m[1].trim() : null;
+    if (!m) return null;
+    const raw = m[1].trim().replace(/^"|"$/g, '');
+    return raw.startsWith('flv_') ? raw : null;
   } catch {
     return null;
   }
@@ -64,21 +68,36 @@ function fromFloviaHome() {
   return null;
 }
 
-/** @returns {{key: string|null, source: string}} */
+/**
+ * Semua kandidat key yang ditemukan, unik berdasarkan sidik jari.
+ * @returns {Array<{key: string, source: string, fingerprint: string}>}
+ */
+export function collectFloviaKeys() {
+  const candidates = [];
+  const push = (key, source) => {
+    if (!key || !key.startsWith('flv_')) return;
+    const fp = fingerprint(key);
+    if (candidates.some((c) => c.fingerprint === fp)) return;
+    candidates.push({ key, source, fingerprint: fp });
+  };
+
+  push(process.env.FLOVIA_KEY, 'process.env.FLOVIA_KEY');
+  push(fromRegistry('HKCU'), 'HKCU\\Environment:FLOVIA_KEY');
+  push(fromRegistry('HKLM'), 'HKLM\\Environment:FLOVIA_KEY');
+  push(fromBaiworConfig(), '~/.baiwor/config.json (mcpServers.flovia)');
+  push(fromFloviaHome(), '~/.flovia/*');
+
+  return candidates;
+}
+
+/**
+ * Key utama (sumber pertama yang tersedia) — dipakai saat hanya satu key yang
+ * perlu dicoba, misalnya saat mendaftarkan MCP server.
+ * @returns {{key: string|null, source: string|null}}
+ */
 export function resolveFloviaKey() {
-  const fromEnv = process.env.FLOVIA_KEY;
-  if (fromEnv && fromEnv.trim().startsWith('flv_')) {
-    return { key: fromEnv.trim(), source: 'process.env.FLOVIA_KEY' };
-  }
-  const hu = fromRegistry('HKCU');
-  if (hu) return { key: hu, source: 'HKCU\\Environment:FLOVIA_KEY' };
-  const hlm = fromRegistry('HKLM');
-  if (hlm) return { key: hlm, source: 'HKLM\\Environment:FLOVIA_KEY' };
-  const baiwor = fromBaiworConfig();
-  if (baiwor) return { key: baiwor, source: '~/.baiwor/config.json (mcpServers.flovia)' };
-  const home = fromFloviaHome();
-  if (home) return { key: home, source: '~/.flovia/*' };
-  return { key: null, source: null };
+  const first = collectFloviaKeys()[0];
+  return first ? { key: first.key, source: first.source } : { key: null, source: null };
 }
 
 /**
