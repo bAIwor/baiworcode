@@ -13,4 +13,7 @@ config.json.bak*
 .logo-work/
 .vscode/
 .idea/
-docs/
+docs/*
+!docs/CREATION_NOTE.md
+!docs/screenshots/
+tools/event/out/

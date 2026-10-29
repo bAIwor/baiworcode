@@ -31,6 +31,37 @@ CLI coding agent pintar berbahasa Indonesia — ngobrol santai di terminal, dan 
 
 ---
 
+## 🛠️ Dibangun dengan MiniMax Code + M3.1 Flash
+
+**bAIwor Code dibuat dari nol di dalam terminal, memakai [MiniMax Code](https://www.minimax.io) dengan model `MiniMax-M3.1-Flash` (M3.1 Flash).**
+
+MiniMax Code adalah coding agent terminal; M3.1 Flash adalah model frontier-nya — konteks 1 juta token, multimodal, dan penalaran yang bisa diatur kedalamannya. Kombinasi itulah yang dipakai membangun bAIwor Code:
+
+- **Konteks 1 juta token.** Seluruh codebase (67 modul, ±19.700 baris) terbaca dalam satu jendela, jadi M3.1 Flash memahami arsitektur bAIwor Code, bukan sekadar satu berkas.
+- **Tool calling agentik.** Model memilih sendiri tool yang dipakai — baca berkas, edit, jalankan perintah — lalu membaca hasilnya dan menentukan langkah berikutnya. Persis pola yang kini dijalankan bAIwor Code untukmu.
+- **Iterasi cepat.** Satu permintaan, banyak perbaikan: dari kerangka modul, penambahan tool, sampai suite uji yang lolos — **942 test, 0 gagal**.
+
+Jejaknya bisa dicek langsung di repo ini: beberapa modul secara eksplisit mengadaptasi mekanisme MiniMax Code (lihat komentar di [`src/chat/todoTool.js`](src/chat/todoTool.js) dan [`src/chat/todoReminder.js`](src/chat/todoReminder.js)), plus 159 commit yang dikerjakan bersama agen.
+
+> [!TIP]
+> bAIwor Code sendiri **provider-agnostic** — ia mendukung endpoint OpenAI-compatible apa pun: Gemini, Claude, model lokal, atau MiniMax. Model saat membangunnya: **MiniMax Code + M3.1 Flash**. (Di tangkapan layar di bawah, bAIwor Code sengaja dijalankan memakai provider lain untuk menunjukkan sifatnya yang bebas model.)
+
+<p align="center">
+  <img src="docs/screenshots/04-baiworcode-banner.png" alt="Banner bAIwor Code" width="920">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/02-baiworcode-agent-loop.png" alt="bAIwor Code menjalankan agent loop di terminal" width="920">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/01-minimax-code-m31-flash.png" alt="MiniMax Code dengan M3.1 Flash bekerja di repo bAIwor Code" width="920">
+</p>
+
+Detail lengkap ada di [`docs/CREATION_NOTE.md`](docs/CREATION_NOTE.md).
+
+---
+
 ## 🚀 Instalasi Cepat
 
 ### ⚡ Cara Instan (One-Line Installer — Sangat Direkomendasikan untuk Pemula)
