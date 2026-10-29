@@ -27,6 +27,7 @@ baiworcode/
     │   ├── deliverables.js         # Parser tag <deliver-assets> dan perender kartu OSC 8 clickable link
     │   ├── index.js                # Orkestrator utama Agentic Loop interaksi LLM dan eksekusi tool
     │   ├── liveActivity.js         # Komponen visual status tool interaktif (animasi in-place spinner)
+    │   ├── multimodal.js           # Penanganan multi-modal & media asset ingestion (gambar ke base64 data URI)
     │   ├── outputWriter.js         # Penulis keluaran terminal sadar kolom dengan hanging-indent
     │   ├── planMode.js             # Penegakan read-only permissionMode "plan" dan widget todo list
     │   ├── presenter.js            # Rotasi penyampai jawaban Punakawan (work-type + round-robin, badge & piket harian)
@@ -178,8 +179,8 @@ Berdasarkan tinjauan arsitektur dan status fase Alpha saat ini, berikut adalah d
 2. **Visual Diff Review & Staging Berwarna** (Sudah Diimplementasikan / Shipped):
    - Modul `src/tools/diffView.js` menghasilkan *unified diff* berwarna (ANSI) dan ringkasan statistik (`+X -Y`) saat berkas ditulis atau diedit via `write_file`, `edit_file`, atau `patch_file`, ditampilkan secara langsung pada timeline aktivitas terminal.
 
-3. **Multi-Modal / Media Asset Ingestion**:
-   - Belum ada kemampuan membaca dan menganalisis berkas biner/gambar (seperti screenshot UI, diagram arsitektur, atau aset visual) langsung dari prompt masukan terminal ke model vision-capable.
+3. **Multi-Modal / Media Asset Ingestion** (Sudah Diimplementasikan / Shipped):
+   - Modul `src/chat/multimodal.js` menangani deteksi lampiran berkas gambar (`@gambar.png` atau sintaks `/image <path>`), membaca dan mengonversi berkas biner/gambar (PNG, JPG, WebP, GIF, SVG maks 10MB) menjadi base64 data URI, serta menyusun payload konten multi-modal vision untuk model AI.
 
 4. **Pembaruan & Verifikasi Rilis**:
    - `/update` dan `baiwor update` sudah tersedia untuk instalasi berbasis Git (verifikasi origin, konfirmasi, `--ff-only`, `--ignore-scripts`). Pembaruan untuk instalasi npm masih mengandalkan `npm update -g baiworcode`; verifikasi signature/checksum rilis belum diimplementasikan.
