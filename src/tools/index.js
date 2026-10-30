@@ -17,6 +17,7 @@ import { handleTodoList } from './todoTool.js';
 import { handleWebFetch, handleWebSearch, handleWebAutomate } from './webTool.js';
 import { handleDiagnostics } from './diagnosticsTool.js';
 import { handleDelegateTask, SUBAGENT_ROLES } from './subagentTool.js';
+import { handleTypeSafeAsk } from './typesafeTool.js';
 import {
   handleAskUser,
   setQuestionnaireHandler,
@@ -73,6 +74,7 @@ const handlersMap = {
   websearch: { handler: handleWebSearch, toolset: 'web', emoji: '🔍' },
   webautomate: { handler: handleWebAutomate, toolset: 'web', emoji: '🧭' },
   diagnostics: { handler: handleDiagnostics, toolset: 'quality', emoji: '🩺' },
+  typesafe_ask: { handler: handleTypeSafeAsk, toolset: 'ai', emoji: '🧠' },
   delegate_task: { handler: handleDelegateTask, toolset: 'agent', emoji: '🎭' },
   ask_user: { handler: handleAskUser, toolset: 'interactive', emoji: '❓' },
   instabox_exec: { handler: handleInstaboxExec, toolset: 'sandbox', emoji: '☁️' },

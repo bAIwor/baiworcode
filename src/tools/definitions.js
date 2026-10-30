@@ -424,6 +424,42 @@ export const TOOL_DEFINITIONS = [
   {
     type: 'function',
     function: {
+      name: 'typesafe_ask',
+      description: 'Ajukan pertanyaan terstruktur ke TypeSafe Jev (System One) tentang sebuah state. Gunakan untuk klasifikasi, routing, deteksi risiko, atau skoring yang kode akan pakai — bukan untuk menulis teks. Kirim state ringkas (snippet/diff/ringkasan), bukan seluruh berkas. Satu request bisa memuat beberapa pertanyaan sekaligus; setiap pertanyaan dievaluasi paralel terhadap state yang sama. Hasil berisi jawaban + probabilitas + confidence.',
+      parameters: {
+        type: 'object',
+        properties: {
+          state: {
+            type: 'string',
+            description: 'Teks atau JSON ringkas yang dievaluasi: potongan kode, diff, perintah shell, tiket, atau ringkasan. Maksimum 30.000 karakter.',
+          },
+          questions: {
+            type: 'object',
+            description: 'Map id pertanyaan → definisi. Setiap definisi: { "type": "choice" | "score" | "noul", "instructions": "...", "criteria": ... }. choice: criteria object { label: "penjelasan" } minimal 2 opsi. score: criteria array/object minimal 2 level. noul: tanpa criteria, mengembalikan probabilitas 0–1. Maksimum 20 pertanyaan.',
+            additionalProperties: {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['choice', 'score', 'noul'] },
+                instructions: { type: 'string', description: 'Satu pertanyaan atomik yang spesifik.' },
+                criteria: {
+                  description: 'Untuk choice: object label→penjelasan. Untuk score: array level berurutan atau object level→penjelasan. Untuk noul: tidak dipakai.',
+                },
+              },
+              required: ['type', 'instructions'],
+            },
+          },
+          model: {
+            type: 'string',
+            description: 'Override model Jev (opsional, default dari konfigurasi: jev-latest).',
+          },
+        },
+        required: ['state', 'questions'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'instabox_exec',
       description: 'Mengeksekusi perintah shell Linux di dalam cloud sandbox InstaBox (MicroVM 4 vCPU, 8 GiB RAM, OS Linux). Gunakan untuk tugas komputasi berat, kompilasi kode, benchmark, pengujian unit berskala besar, atau skrip yang berisiko bila dijalankan di mesin lokal pengguna.',
       parameters: {

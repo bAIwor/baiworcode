@@ -40,6 +40,11 @@ export const DEFAULT_CONFIG = {
   destructiveAllow: [],
   // TinyFish Web Intelligence: API Key untuk Search, Fetch (anti-bot & JS), dan Web Automate
   tinyfishApiKey: '',
+  // TypeSafe AI (Jev, System One): API key + model default untuk keputusan terstruktur
+  typesafeApiKey: '',
+  typesafeModel: 'jev-latest',
+  // Guardrail opsional: minta Jev menilai risiko perintah shell sebelum dijalankan
+  typesafeGuardrail: false,
   // Tavily (riset & pencarian web untuk agen): API Key tvly-... untuk MCP server resminya.
   tavilyApiKey: '',
   // Firecrawl (scrape/crawl/map situs jadi konten bersih): API Key fc-... untuk MCP server resminya.
@@ -461,6 +466,75 @@ export function saveTinyFishApiKey(key) {
   const clean = String(key || '').trim();
   saveConfigStrict({ tinyfishApiKey: clean });
   return clean;
+}
+
+/**
+ * Mendapatkan API Key TypeSafe: env TYPESAFE_API_KEY menang atas konfigurasi.
+ * @returns {string}
+ */
+export function getTypeSafeApiKey() {
+  if (process.env.TYPESAFE_API_KEY && process.env.TYPESAFE_API_KEY.trim()) {
+    return process.env.TYPESAFE_API_KEY.trim();
+  }
+  const config = getConfig();
+  if (typeof config.typesafeApiKey === 'string' && config.typesafeApiKey.trim()) {
+    return config.typesafeApiKey.trim();
+  }
+  return '';
+}
+
+/**
+ * Menyimpan API Key TypeSafe ke ~/.baiwor/config.json.
+ * @param {string} key
+ * @returns {string}
+ */
+export function saveTypeSafeApiKey(key) {
+  const clean = String(key || '').trim();
+  saveConfigStrict({ typesafeApiKey: clean });
+  return clean;
+}
+
+/**
+ * Model Jev default: env TYPESAFE_MODEL menang atas konfigurasi.
+ * @returns {string}
+ */
+export function getTypeSafeModel() {
+  if (process.env.TYPESAFE_MODEL && process.env.TYPESAFE_MODEL.trim()) {
+    return process.env.TYPESAFE_MODEL.trim();
+  }
+  const config = getConfig();
+  if (typeof config.typesafeModel === 'string' && config.typesafeModel.trim()) {
+    return config.typesafeModel.trim();
+  }
+  return 'jev-latest';
+}
+
+/**
+ * Menyimpan model Jev default.
+ * @param {string} model
+ * @returns {string}
+ */
+export function saveTypeSafeModel(model) {
+  const clean = String(model || '').trim();
+  if (!clean) return getTypeSafeModel();
+  saveConfigStrict({ typesafeModel: clean });
+  return clean;
+}
+
+/** @returns {boolean} apakah guardrail TypeSafe diaktifkan. */
+export function getTypeSafeGuardrail() {
+  return Boolean(getConfig().typesafeGuardrail);
+}
+
+/**
+ * Mengaktifkan / mematikan guardrail TypeSafe.
+ * @param {boolean} enabled
+ * @returns {boolean}
+ */
+export function setTypeSafeGuardrail(enabled) {
+  const value = Boolean(enabled);
+  saveConfigStrict({ typesafeGuardrail: value });
+  return value;
 }
 
 /**

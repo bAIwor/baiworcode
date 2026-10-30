@@ -18,10 +18,11 @@ import {
   requestCommandApproval,
   requestFileChangeApproval,
 } from './approval.js';
-import { getPermissionMode, getConfig } from '../config.js';
+import { getPermissionMode, getConfig, getTypeSafeGuardrail, getTypeSafeApiKey } from '../config.js';
 import { applyEdit, applyEditList, applyUnifiedDiff } from './editUtil.js';
 import { recordFileBeforeChange } from './snapshot.js';
 import { generateVisualDiff } from './diffView.js';
+import { assessCommandRisk } from './typesafeTool.js';
 
 // Helper path tetap diekspor dari modul ini agar kontrak lama tidak berubah.
 export { isSubPath, isSensitivePath };
@@ -772,14 +773,33 @@ export async function handleRunCommand({
   );
   }
 
-  if (classification.decision === 'confirm') {
+  // Guardrail TypeSafe (opt-in): Jev menilai perintah sebelum dijalankan.
+  // Fail-open: bila API mati / tidak ada key, alur klasik tetap berjalan.
+  let typeSafeRisk = null;
+  if (classification.decision !== 'deny' && getTypeSafeGuardrail() && getTypeSafeApiKey()) {
+    typeSafeRisk = await assessCommandRisk(command, { cwd: executionCwd });
+  }
+  const typeSafeHigh = typeSafeRisk?.level === 'high';
+
+  if (classification.decision === 'confirm' || typeSafeHigh) {
     // Mode YOLO di TTY: kelas confirm dilewati tanpa bertanya (HITL).
     // Kelas deny TETAP ditolak — YOLO tidak pernah membuka pintu bom.
+    // Guardrail TypeSafe berisiko tinggi tetap meminta konfirmasi meski YOLO.
     // `options.tty` dipakai sebagai injeksi dalam pengujian; default ke stdin.
     const tty = options?.tty ?? Boolean(process.stdin.isTTY);
-    const yoloTty = getPermissionMode() === 'yolo' && Boolean(tty);
+    const yoloTty = getPermissionMode() === 'yolo' && Boolean(tty) && !typeSafeHigh;
     if (!yoloTty) {
-      const approval = await requestCommandApproval(command, classification.reason);
+      const reasons = [];
+      if (classification.decision === 'confirm') reasons.push(classification.reason);
+      if (typeSafeHigh) {
+        const s = typeSafeRisk.scores;
+        const pct = (v) => `${Math.round(Number(v) * 100)}%`;
+        reasons.push(
+          `TypeSafe Jev menilai risiko tinggi (destruktif ${pct(s.destructive)}, ` +
+          `luar workspace ${pct(s.outside_workspace)}, exfiltrasi ${pct(s.data_exfiltration)}).`
+        );
+      }
+      const approval = await requestCommandApproval(command, reasons.join(' '));
       if (!approval.approved) {
         return {
           success: false,

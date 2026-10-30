@@ -212,6 +212,7 @@ export const COMMANDS = [
   { name: '/update', desc: 'Periksa & perbarui bAIwor Code ke versi terbaru dari GitHub' },
   { name: '/sandbox', desc: 'Kelola Cloud Sandbox InstaBox (MicroVM 4 vCPU / 8 GiB RAM)' },
   { name: '/tinyfish', desc: 'Kelola integrasi TinyFish (status, wallet, key, search, fetch)' },
+  { name: '/typesafe', desc: 'TypeSafe Jev: keputusan terstruktur, API key, guardrail perintah' },
   { name: '/mcp', desc: 'Kelola MCP server eksternal (Tavily, Firecrawl, dll.)' },
   { name: '/model', desc: 'Pilih model: /model (menu) · /model <alias|provider/model>' },
   { name: '/provider', desc: 'Alias untuk perintah /model' },
@@ -259,6 +260,13 @@ export const SUBCOMMANDS = {
     { name: 'key', desc: 'Simpan API Key TinyFish: /tinyfish key <sk-tinyfish-...>' },
     { name: 'search', desc: 'Tes pencarian web: /tinyfish search <query>' },
     { name: 'fetch', desc: 'Tes ekstraksi URL: /tinyfish fetch <url>' },
+  ],
+  '/typesafe': [
+    { name: 'status', desc: 'Cek koneksi, model Jev, & status guardrail' },
+    { name: 'key', desc: 'Simpan API key TypeSafe: /typesafe key <api-key>' },
+    { name: 'model', desc: 'Ganti model Jev: /typesafe model <jev-latest>' },
+    { name: 'test', desc: 'Tes satu request choice/noul dengan state contoh' },
+    { name: 'guardrail', desc: 'Aktif/nonaktifkan pemeriksaan risiko run_command: on|off' },
   ],
   '/mcp': [
     { name: 'list', desc: 'Tampilkan daftar & status seluruh MCP server terkonfigurasi' },

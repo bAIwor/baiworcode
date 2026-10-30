@@ -21,6 +21,12 @@ import {
   setPermissionMode,
   getTinyFishApiKey,
   saveTinyFishApiKey,
+  getTypeSafeApiKey,
+  saveTypeSafeApiKey,
+  getTypeSafeModel,
+  saveTypeSafeModel,
+  getTypeSafeGuardrail,
+  setTypeSafeGuardrail,
   getTavilyApiKey,
   saveTavilyApiKey,
   getFirecrawlApiKey,
@@ -37,6 +43,7 @@ import {
   openInstaboxDesktop,
   captureInstaboxScreenshot,
 } from '../src/tools/instaboxTool.js';
+import { handleTypeSafeAsk, checkTypeSafeStatus } from '../src/tools/typesafeTool.js';
 import {
   initAllMcpServers,
   listActiveMcpSessions,
@@ -533,6 +540,7 @@ const HELP_USAGE = {
   '/update': '/update [sandbox]',
   '/mcp': '/mcp [list|tools|add|remove|key|refresh]',
   '/scan': '/scan [secrets|deps|all] [path]',
+  '/typesafe': '/typesafe [status|key|model|test|guardrail]',
 };
 
 function showHelp() {
@@ -547,6 +555,7 @@ function showHelp() {
   const ADVANCED_COMMANDS = new Set([
     '/sandbox',
     '/tinyfish',
+    '/typesafe',
     '/mcp',
     '/skill',
     '/rules',
@@ -924,6 +933,95 @@ async function handleTinyFishCommand(arg = '') {
   console.log(chalk.gray('    /tinyfish search <query>  → uji pencarian web'));
   console.log(chalk.gray('    /tinyfish fetch <url>     → uji ekstraksi URL bersih'));
   console.log(chalk.gray('    /tinyfish key <apiKey>    → ganti API key\n'));
+}
+
+async function handleTypeSafeCommand(arg = '') {
+  const parts = String(arg || '').trim().split(/\s+/);
+  const sub = parts[0]?.toLowerCase();
+  const rest = parts.slice(1).join(' ').trim();
+
+  if (sub === 'key') {
+    if (!rest) {
+      console.log(chalk.yellow('\n  Penggunaan: /typesafe key <api-key>'));
+      return;
+    }
+    saveTypeSafeApiKey(rest);
+    console.log(chalk.green(`\n  ✅ TypeSafe API Key tersimpan: ${maskSecret(rest)}`));
+    const status = await checkTypeSafeStatus();
+    console.log(chalk.gray(`     ${status.output}\n`));
+    return;
+  }
+
+  if (sub === 'model') {
+    if (!rest) {
+      console.log(chalk.gray(`\n  Model TypeSafe saat ini: ${getTypeSafeModel()}`));
+      console.log(chalk.gray('  Ganti: /typesafe model <jev-latest|jev-1.14.0>\n'));
+      return;
+    }
+    const saved = saveTypeSafeModel(rest);
+    console.log(chalk.green(`\n  ✅ Model TypeSafe diset ke: ${saved}\n`));
+    return;
+  }
+
+  if (sub === 'guardrail') {
+    const value = String(rest || '').toLowerCase();
+    const on = ['on', 'aktif', 'true', '1', 'yes'].includes(value);
+    const off = ['off', 'nonaktif', 'false', '0', 'no'].includes(value);
+    if (!on && !off) {
+      console.log(chalk.yellow('\n  Penggunaan: /typesafe guardrail on|off'));
+      return;
+    }
+    setTypeSafeGuardrail(on);
+    if (on && !getTypeSafeApiKey()) {
+      console.log(chalk.yellow('\n  ⚠️  Guardrail aktif, tetapi API key TypeSafe belum diset.'));
+      console.log(chalk.gray('     Set dulu: /typesafe key <api-key>\n'));
+    } else {
+      console.log(chalk.green(`\n  ✅ Guardrail TypeSafe: ${on ? 'AKTIF' : 'NONAKTIF'}`));
+      console.log(chalk.gray('     Setiap perintah shell dinilai Jev sebelum dieksekusi (risiko tinggi → minta konfirmasi).\n'));
+    }
+    return;
+  }
+
+  if (sub === 'test') {
+    console.log(chalk.cyan('\n  🧠 Mengetes TypeSafe Jev...'));
+    const res = await handleTypeSafeAsk({
+      state: 'Perintah shell: rm -rf ./build\nWorkspace: /home/user/project',
+      questions: {
+        destructive: {
+          type: 'noul',
+          instructions: 'Perintah ini berpotensi menghapus data secara permanen?',
+        },
+        intent: {
+          type: 'choice',
+          instructions: 'Apa niat utama perintah ini?',
+          criteria: {
+            build: 'Membangun proyek',
+            cleanup: 'Membersihkan artefak build',
+            unknown: 'Tidak jelas',
+          },
+        },
+      },
+    });
+    console.log('\n' + sanitizeTerminalText(res.output) + '\n');
+    return;
+  }
+
+  const key = getTypeSafeApiKey();
+  console.log(chalk.whiteBright.bold('\n  🧠 Status TypeSafe Jev (System One):'));
+  console.log(`    ${key ? chalk.green('●') : chalk.gray('○')} API key  : ${key ? chalk.green('Aktif') + ` [${maskSecret(key)}]` : chalk.yellow('Belum diset')}`);
+  console.log(`    ${chalk.cyan('✦')} Model    : ${getTypeSafeModel()}`);
+  console.log(`    ${chalk.cyan('✦')} Guardrail: ${getTypeSafeGuardrail() ? chalk.green('aktif') : chalk.gray('nonaktif')}`);
+  if (key) {
+    const status = await checkTypeSafeStatus();
+    console.log(`    ${status.ok ? chalk.green('●') : chalk.red('○')} Koneksi  : ${status.output}`);
+  } else {
+    console.log(chalk.gray('      Aktifkan: /typesafe key <api-key>'));
+  }
+  console.log(chalk.gray('\n  Sub-perintah:'));
+  console.log(chalk.gray('    /typesafe test                 → tes request choice/noul'));
+  console.log(chalk.gray('    /typesafe guardrail on|off     → guardrail risiko perintah'));
+  console.log(chalk.gray('    /typesafe model <nama>         → ganti model Jev'));
+  console.log(chalk.gray('    /typesafe key <api-key>        → ganti API key\n'));
 }
 
 async function handleSandboxCommand(arg = '') {
@@ -2276,6 +2374,9 @@ async function startInteractive(opts = {}) {
         break;
       case '/tinyfish':
         await handleTinyFishCommand(arg);
+        break;
+      case '/typesafe':
+        await handleTypeSafeCommand(arg);
         break;
       case '/mcp':
         await handleMcpCommand(arg);
