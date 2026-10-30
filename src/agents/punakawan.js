@@ -100,6 +100,7 @@ export const TOOL_ACTORS = {
   todo_list: 'semAIr',
   delegate_task: 'semAIr',
   ask_user: 'semAIr',
+  typesafe_ask: 'semAIr',
   instabox_exec: 'bAIwor',
 };
 

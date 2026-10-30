@@ -11,6 +11,7 @@ import {
   renderTodoChecklist,
   toolColorHex,
   toolLabel,
+  toolIcon,
   TOOL_LABELS,
   PUNAKAWAN_ROLES,
   PUNAKAWAN_COLORS,
@@ -523,6 +524,7 @@ describe('Timeline: Nama Tampilan Tool (Indonesia ramah)', () => {
     assert.equal(toolLabel('webfetch'), 'Ambil halaman');
     assert.equal(toolLabel('websearch'), 'Cari di web');
     assert.equal(toolLabel('diagnostics'), 'Periksa mutu');
+    assert.equal(toolLabel('typesafe_ask'), 'Tanya TypeSafe');
   });
 
   it('harus jatuh ke nama teknis untuk tool yang tak dikenal', () => {
@@ -537,6 +539,25 @@ describe('Timeline: Nama Tampilan Tool (Indonesia ramah)', () => {
     );
     assert.ok(out.includes('Baca berkas'));
     assert.ok(!out.includes('read_file'));
+  });
+});
+
+describe('Timeline: Ikon Semantik Tool', () => {
+  it('harus memetakan ikon tool bawaan, MCP, dan fallback', () => {
+    assert.equal(toolIcon('read_file'), '📖');
+    assert.equal(toolIcon('typesafe_ask'), '🧠');
+    assert.equal(toolIcon('mcp_tinyfish_search'), '🐟');
+    assert.equal(toolIcon('tool_ajaib'), '🔧');
+    assert.equal(toolIcon(null), '🔧');
+  });
+
+  it('harus menampilkan ikon + label TypeSafe di timeline', () => {
+    const out = renderTimeline(
+      [{ name: 'typesafe_ask', args: {}, durationMs: 5, success: true, output: '{}' }],
+      { useColor: false }
+    );
+    assert.ok(out.includes('🧠 Tanya TypeSafe'));
+    assert.ok(!out.includes('typesafe_ask'));
   });
 });
 
