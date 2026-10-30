@@ -74,6 +74,46 @@ export const TOOL_LABELS = {
 };
 
 /**
+ * Ikon semantik untuk masing-masing tool agar alur kerja terbaca sekilas
+ * dan tampil lebih modern di terminal (sejalan dengan standar TUI mcode).
+ */
+export const TOOL_ICONS = {
+  read_file: '📖',
+  list_directory: '📂',
+  search_files: '🔍',
+  write_file: '📝',
+  edit_file: '✏️',
+  patch_file: '🩹',
+  run_command: '⚡',
+  todo_list: '📋',
+  webfetch: '🌐',
+  websearch: '🌐',
+  webautomate: '🤖',
+  diagnostics: '🩺',
+  delegate_task: '🎭',
+  ask_user: '💬',
+  instabox_exec: '☁️',
+};
+
+/**
+ * Mengembalikan ikon semantik sebuah tool.
+ * Mendukung tool bawaan bAIwor Code serta prefix tool MCP terdaftar
+ * (TinyFish, Tavily, Firecrawl, Flovia).
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+export function toolIcon(name) {
+  if (!name || typeof name !== 'string') return '🔧';
+  if (TOOL_ICONS[name]) return TOOL_ICONS[name];
+  if (name.startsWith('mcp_tinyfish_')) return '🐟';
+  if (name.startsWith('mcp_tavily_')) return '🔍';
+  if (name.startsWith('mcp_firecrawl_')) return '🕷️';
+  if (name.startsWith('mcp_flovia_')) return '📊';
+  return '🔧';
+}
+
+/**
  * Mengembalikan nama tampilan sebuah tool. Tool yang tak dikenal jatuh ke nama
  * teknisnya supaya tetap informatif.
  *
@@ -364,8 +404,11 @@ export function renderTimeline(
 
     // Nama tool memakai warna kategorinya; saat gagal ditonjolkan merah agar
     // mudah dipindai — nama Punakawan tetap emas, hanya aksinya yang menyala.
+    // Ditambahkan ikon semantik tool agar aksi terbaca intuitif sekilas.
     const failed = !isRunning && ev.success === false;
-    const toolName = (failed ? c.hex(palette.error) : tint)(c.bold(toolLabel(ev.name)));
+    const iconTool = toolIcon(ev.name);
+    const displayLabel = iconTool ? `${iconTool} ${toolLabel(ev.name)}` : toolLabel(ev.name);
+    const toolName = (failed ? c.hex(palette.error) : tint)(c.bold(displayLabel));
     const label = `${actorPrefix}${toolName}`;
 
     const head = `  ${branch} ${icon} ${label} ${dot} ${meta.join(` ${dot} `)}`;
@@ -433,12 +476,14 @@ export function renderTimeline(
             : summarizeResult(rawOut, maxSummary);
         if (resultText) out.push(`  ${stem}${childIndent}${c.dim(resultText)}`);
       } else {
-        const MAX_OPEN_LINES = 10;
+        const isNumberedCode = allLines.some((l) => /^\s*\d+:\s/.test(l));
+        const MAX_OPEN_LINES = isNumberedCode ? 3 : 10;
         const displayLines = allLines.slice(0, MAX_OPEN_LINES);
         for (const line of displayLines) {
           const trimmed = line.trimEnd();
           if (trimmed.length > 0) {
-            out.push(`  ${stem}${childIndent}${c.dim(summarize(trimmed, maxSummary))}`);
+            const prefix = isNumberedCode ? '📄 ' : '';
+            out.push(`  ${stem}${childIndent}${c.dim(`${prefix}${summarize(trimmed, maxSummary)}`)}`);
           }
         }
         if (allLines.length > MAX_OPEN_LINES) {
@@ -518,7 +563,9 @@ export function renderTimelineCompact(
       const dot = c.gray('·');
 
       const tint = c.hex(toolColorHex(ev.name));
-      const toolName = (failed ? c.hex(palette.error) : tint)(c.bold(toolLabel(ev.name)));
+      const iconTool = toolIcon(ev.name);
+      const displayLabel = iconTool ? `${iconTool} ${toolLabel(ev.name)}` : toolLabel(ev.name);
+      const toolName = (failed ? c.hex(palette.error) : tint)(c.bold(displayLabel));
 
       // Aktor Punakawan tetap tampil (kuning emas) agar "siapa yang bertindak" tetap jelas.
       const punakawan = ev.actor || TOOL_ACTORS[ev.name];

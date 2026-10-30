@@ -475,10 +475,10 @@ describe('Timeline: Tim Punakawan AI (Aktor & Penamaan)', () => {
       { name: 'todo_list', args: {}, durationMs: 5, success: true },
     ];
     const out = renderTimeline(sample, { useColor: false });
-    assert.ok(out.includes('pAItruk · Baca berkas'));
-    assert.ok(out.includes('bAIwor · Tulis berkas'));
-    assert.ok(out.includes('gAIreng · Jalankan perintah'));
-    assert.ok(out.includes('semAIr · Daftar tugas'));
+    assert.ok(out.includes('pAItruk · 📖 Baca berkas'));
+    assert.ok(out.includes('bAIwor · 📝 Tulis berkas'));
+    assert.ok(out.includes('gAIreng · ⚡ Jalankan perintah'));
+    assert.ok(out.includes('semAIr · 📋 Daftar tugas'));
   });
 
   it('harus menghormati ev.actor kustom (misal bAIwor sebagai tokoh utama loop utama)', () => {
@@ -487,8 +487,8 @@ describe('Timeline: Tim Punakawan AI (Aktor & Penamaan)', () => {
       { name: 'run_command', actor: 'bAIwor', args: { command: 'git status' }, durationMs: 20, success: true },
     ];
     const out = renderTimeline(sample, { useColor: false });
-    assert.ok(out.includes('bAIwor · Baca berkas'));
-    assert.ok(out.includes('bAIwor · Jalankan perintah'));
+    assert.ok(out.includes('bAIwor · 📖 Baca berkas'));
+    assert.ok(out.includes('bAIwor · ⚡ Jalankan perintah'));
   });
 
   it('harus tetap menyertakan nama karakter Punakawan saat tool gagal', () => {
@@ -496,7 +496,7 @@ describe('Timeline: Tim Punakawan AI (Aktor & Penamaan)', () => {
       [{ name: 'run_command', args: {}, durationMs: 5, output: 'gagal', success: false }],
       { useColor: false }
     );
-    assert.ok(out.includes('gAIreng · Jalankan perintah'));
+    assert.ok(out.includes('gAIreng · ⚡ Jalankan perintah'));
     assert.ok(out.includes('✗'));
   });
 
@@ -505,7 +505,7 @@ describe('Timeline: Tim Punakawan AI (Aktor & Penamaan)', () => {
       [{ name: 'search_files', args: { pattern: 'test' }, running: true }],
       { useColor: false }
     );
-    assert.ok(out.includes('pAItruk · Cari berkas'));
+    assert.ok(out.includes('pAItruk · 🔍 Cari berkas'));
     assert.ok(out.includes('…'));
   });
 });
