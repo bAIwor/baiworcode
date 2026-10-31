@@ -213,7 +213,6 @@ describe('MCP Server: Tools & Definitions', () => {
     assert.ok(mcpTools.some((t) => t.name === 'websearch'));
     assert.ok(mcpTools.some((t) => t.name === 'webautomate'));
     assert.ok(mcpTools.some((t) => t.name === 'typesafe_ask'));
-    assert.ok(!mcpTools.some((t) => t.name === 'instabox_exec'), 'cloud sandbox tool harus dihapus');
   });
 });
 

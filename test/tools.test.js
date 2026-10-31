@@ -48,7 +48,6 @@ describe('Tahap 3B: Tool Definitions & Schemas', () => {
     assert.ok(names.includes('delegate_task'));
     assert.ok(names.includes('ask_user'));
     assert.ok(names.includes('typesafe_ask'));
-    assert.ok(!names.includes('instabox_exec'), 'tool cloud sandbox harus dihapus');
   });
 });
 

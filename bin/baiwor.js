@@ -2179,15 +2179,11 @@ async function startInteractive(opts = {}) {
         break;
       }
       case '/sandbox':
-      case '/instabox':
-      case '/agentbox':
-      case '/gmi':
         console.log(
-          chalk.yellow('\n  ☁️  Fitur cloud sandbox (/sandbox) telah dihapus dari bAIwor Code.')
+          chalk.yellow('\n  ☁️  Perintah /sandbox tidak ada lagi di bAIwor Code.')
         );
-        console.log(chalk.gray('     BAIwor Code kini berjalan murni di komputer lokal. Untuk beban'));
-        console.log(chalk.gray('     berat, jalankan di lingkungan Linux terisolasi milikmu sendiri'));
-        console.log(chalk.gray('     (container atau VM), bukan lewat perintah di dalam CLI ini.\n'));
+        console.log(chalk.gray('     BAIwor Code berjalan murni di komputer lokal. Untuk beban berat,'));
+        console.log(chalk.gray('     jalankan di lingkungan Linux terisolasi milikmu sendiri (container/VM).\n'));
         break;
       case '/tinyfish':
         await handleTinyFishCommand(arg);
