@@ -22,7 +22,7 @@ import { APP_NAME, VERSION } from './branding.js';
  */
 export async function runDoctor() {
   console.log(theme.cliTitle(`\n  🩺 ${APP_NAME} Doctor v${VERSION}`));
-  console.log(theme.muted('     Memeriksa seluruh komponen sistem, runtime, AI provider, dan sandbox cloud...\n'));
+  console.log(theme.muted('     Memeriksa seluruh komponen sistem, runtime, AI provider, dan integrasi cloud...\n'));
 
   let passed = 0;
   let warnings = 0;

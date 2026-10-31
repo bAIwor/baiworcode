@@ -278,8 +278,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `baiworcode session [list|resume|delete|clear]` — Kelola riwayat sesi proyek (lihat, lanjutkan, hapus satu, atau hapus semua)
 - `baiworcode skill [action] [target]` — Kelola modul keahlian & plugin (`.baiwor/skills`)
 - `baiworcode rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
-- `baiworcode doctor` — Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox cloud
-- `baiworcode update [sandbox] [--yes]` — Perbarui bAIwor Code ke versi terbaru dari GitHub (verifikasi origin + konfirmasi; `--yes` untuk skrip)
+- `baiworcode doctor` — Inspeksi kesehatan komprehensif sistem, AI provider, dan integrasi cloud
+- `baiworcode update [--yes]` — Perbarui bAIwor Code ke versi terbaru dari GitHub (verifikasi origin + konfirmasi; `--yes` untuk skrip)
 - `baiworcode status` — Status konfigurasi dan provider aktif
 - `baiworcode mcp` — Jalankan bAIwor Code sebagai MCP Server (stdio). Default read-only; `--allow-dangerous` (atau `BAIWOR_MCP_ALLOW_DANGEROUS=1`) membuka tool tulis/perintah
 - `baiworcode model [target]` — Tanpa argumen: menu kelola model/provider. Dengan argumen: switch langsung (`baiworcode model step`, `baiworcode model stepfun/step-5-preview`, `baiworcode model alias add ...`)
