@@ -38,7 +38,6 @@ const TOOL_TINTS = {
   delegate_task: palette.primary, // oranye aksen — mendelegasikan subagent
   ask_user: palette.warning, // oranye tua — menanyakan keputusan ke pengguna
   typesafe_ask: palette.primary, // oranye aksen — keputusan terstruktur via Jev
-  instabox_exec: palette.primary, // oranye aksen — cloud sandbox MicroVM
 };
 
 // Warna & ikon peran berasal dari sumber tunggal di agents/punakawan.js.
@@ -72,7 +71,6 @@ export const TOOL_LABELS = {
   delegate_task: 'Delegasi tugas',
   ask_user: 'Tanya pengguna',
   typesafe_ask: 'Tanya TypeSafe',
-  instabox_exec: 'Eksekusi cloud (InstaBox)',
 };
 
 /**
@@ -95,7 +93,6 @@ export const TOOL_ICONS = {
   delegate_task: '🎭',
   ask_user: '💬',
   typesafe_ask: '🧠',
-  instabox_exec: '☁️',
 };
 
 /**

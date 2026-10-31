@@ -1,5 +1,5 @@
 // Audit skrip: alur provider custom OpenAI-compatible + error handling.
-// Dijalankan di dalam sandbox InstaBox.
+// Dijalankan di lingkungan terisolasi (CI / container kerja).
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

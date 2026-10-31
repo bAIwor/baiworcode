@@ -207,10 +207,9 @@ export const COMMANDS = [
   { name: '/skill', desc: 'Kelola modul keahlian & plugin (.baiwor/skills)' },
   { name: '/rules', desc: 'Lihat aturan koding aktif (BAIWORS.md / .baiwor/rules)' },
   { name: '/status', desc: 'Status konfigurasi & model AI aktif' },
-  { name: '/doctor', desc: 'Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox' },
+  { name: '/doctor', desc: 'Inspeksi kesehatan komprehensif sistem, AI provider, dan ekstensi' },
   { name: '/scan', desc: 'Guardian security scan: /scan secrets | /scan deps | /scan all' },
   { name: '/update', desc: 'Periksa & perbarui bAIwor Code ke versi terbaru dari GitHub' },
-  { name: '/sandbox', desc: 'Kelola Cloud Sandbox InstaBox (MicroVM 4 vCPU / 8 GiB RAM)' },
   { name: '/tinyfish', desc: 'Kelola integrasi TinyFish (status, wallet, key, search, fetch)' },
   { name: '/typesafe', desc: 'TypeSafe Jev: keputusan terstruktur, API key, guardrail perintah' },
   { name: '/mcp', desc: 'Kelola MCP server eksternal (Tavily, Firecrawl, dll.)' },
@@ -245,16 +244,6 @@ export const SUBCOMMANDS = {
     { name: 'list', desc: 'Tampilkan daftar modul keahlian & plugin yang terpasang' },
     { name: 'info', desc: 'Tampilkan detail instruksi modul keahlian' },
   ],
-  '/sandbox': [
-    { name: 'status', desc: 'Cek status mesin & spesifikasi cloud sandbox' },
-    { name: 'exec', desc: 'Jalankan perintah shell di cloud: /sandbox exec <cmd>' },
-    { name: 'sync', desc: 'Tarik kode terbaru dari GitHub ke InstaBox: git pull' },
-    { name: 'open', desc: 'Buka URL di browser layar GUI cloud: /sandbox open <url>' },
-    { name: 'screenshot', desc: 'Ambil dan simpan tangkapan layar GUI ke komputer lokal' },
-    { name: 'pause', desc: 'Bekukan mesin cloud sandbox untuk hemat daya' },
-    { name: 'resume', desc: 'Bangunkan mesin cloud sandbox' },
-    { name: 'key', desc: 'Atur API key InstaBox: /sandbox key <ibk_...>' },
-  ],
   '/tinyfish': [
     { name: 'status', desc: 'Lihat status koneksi TinyFish & saldo wallet' },
     { name: 'key', desc: 'Simpan API Key TinyFish: /tinyfish key <sk-tinyfish-...>' },
@@ -280,9 +269,6 @@ export const SUBCOMMANDS = {
     { name: 'secrets', desc: 'Pindai hardcoded secret: API key, token, private key, password' },
     { name: 'deps', desc: 'Audit dependency rentan (npm/yarn/pnpm/pip)' },
     { name: 'all', desc: 'Jalankan pemindaian secret + audit dependency' },
-  ],
-  '/update': [
-    { name: 'sandbox', desc: 'Perbarui instalasi bAIwor Code di Cloud Sandbox InstaBox' },
   ],
 };
 

@@ -31,18 +31,7 @@ import {
   saveTavilyApiKey,
   getFirecrawlApiKey,
   saveFirecrawlApiKey,
-  getInstaboxApiKey,
-  saveInstaboxApiKey,
-  getInstaboxMachineId,
-  saveInstaboxMachineId,
 } from '../src/config.js';
-import {
-  handleInstaboxExec,
-  getInstaboxStatus,
-  controlInstabox,
-  openInstaboxDesktop,
-  captureInstaboxScreenshot,
-} from '../src/tools/instaboxTool.js';
 import { handleTypeSafeAsk, checkTypeSafeStatus } from '../src/tools/typesafeTool.js';
 import {
   initAllMcpServers,
@@ -535,9 +524,8 @@ const HELP_USAGE = {
   '/permission': '/permission [safe|auto|plan|yolo]',
   '/cd': '/cd <folder>',
   '/workspace': '/workspace [folder]',
-  '/sandbox': '/sandbox [status|exec|sync|open|screenshot|pause|resume|key]',
   '/doctor': '/doctor',
-  '/update': '/update [sandbox]',
+  '/update': '/update',
   '/mcp': '/mcp [list|tools|add|remove|key|refresh]',
   '/scan': '/scan [secrets|deps|all] [path]',
   '/typesafe': '/typesafe [status|key|model|test|guardrail]',
@@ -553,7 +541,6 @@ function showHelp() {
   // Perintah lanjutan dipisah agar pemula tidak kewalahan melihat semua
   // perintah sekaligus — fitur tambahan tetap ada, tapi tidak mendominasi.
   const ADVANCED_COMMANDS = new Set([
-    '/sandbox',
     '/tinyfish',
     '/typesafe',
     '/mcp',
@@ -730,17 +717,6 @@ async function printStatus() {
     console.log(`      Layanan : ${chalk.cyan('Search')}, ${chalk.cyan('Fetch (Anti-bot + JS)')}, ${chalk.cyan('Web Automate (Mako/Browser)')}`);
   } else {
     console.log(`    ${chalk.gray('○')} Status  : ${chalk.yellow('Belum dikonfigurasi')} (fallback: DuckDuckGo & native fetch)`);
-  }
-
-  console.log();
-  console.log(chalk.whiteBright.bold('  ☁️  InstaBox Cloud Sandbox (MicroVM Linux):'));
-  const ibKey = getInstaboxApiKey();
-  const ibMachine = getInstaboxMachineId();
-  if (ibKey) {
-    console.log(`    ${chalk.green('●')} Status  : ${chalk.green('Aktif')} [Key: ${maskSecret(ibKey)}]`);
-    console.log(`      Mesin   : ${chalk.cyan(ibMachine)} · 4 vCPU, 8 GiB RAM, 20 GiB Storage (/data)`);
-  } else {
-    console.log(`    ${chalk.gray('○')} Status  : ${chalk.yellow('Belum dikonfigurasi')} (atur via /sandbox key <ibk_...>)`);
   }
 
   console.log();
@@ -1022,171 +998,6 @@ async function handleTypeSafeCommand(arg = '') {
   console.log(chalk.gray('    /typesafe guardrail on|off     → guardrail risiko perintah'));
   console.log(chalk.gray('    /typesafe model <nama>         → ganti model Jev'));
   console.log(chalk.gray('    /typesafe key <api-key>        → ganti API key\n'));
-}
-
-async function handleSandboxCommand(arg = '') {
-  const parts = String(arg || '').trim().split(/\s+/);
-  const sub = parts[0]?.toLowerCase();
-  const rest = parts.slice(1).join(' ');
-
-  if (sub === 'key') {
-    if (!rest) {
-      console.log(chalk.yellow('\n  Format: /sandbox key <api_key>\n'));
-      return;
-    }
-    saveInstaboxApiKey(rest);
-    console.log(chalk.green(`\n  ✓ API Key InstaBox berhasil disimpan ke konfigurasi: ${maskSecret(rest)}\n`));
-    return;
-  }
-
-  if (sub === 'machine') {
-    if (!rest) {
-      console.log(chalk.yellow('\n  Format: /sandbox machine <machine_id>\n'));
-      return;
-    }
-    saveInstaboxMachineId(rest);
-    console.log(chalk.green(`\n  ✓ Machine target InstaBox berhasil disimpan: ${chalk.bold(rest)}\n`));
-    return;
-  }
-
-  if (sub === 'exec') {
-    if (!rest) {
-      console.log(chalk.yellow('\n  Format: /sandbox exec <perintah shell Linux>\n'));
-      return;
-    }
-    console.log(chalk.cyan(`\n  ☁️  Mengeksekusi di InstaBox Sandbox: ${chalk.bold(rest)}...`));
-    const started = Date.now();
-    const res = await handleInstaboxExec({ command: rest });
-    const dur = ((Date.now() - started) / 1000).toFixed(2);
-    const safeOutput = sanitizeTerminalText(res.output);
-    if (res.success) {
-      console.log(chalk.green(`\n  ✓ Selesai dalam ${dur}s:\n`));
-      console.log(chalk.white(safeOutput) + '\n');
-    } else {
-      console.log(chalk.red(`\n  ✗ Gagal (${dur}s):\n`));
-      console.log(chalk.yellow(safeOutput) + '\n');
-    }
-    return;
-  }
-
-  if (sub === 'sync') {
-    console.log(chalk.cyan('\n  🔄 Menyinkronkan repositori baiworcode ke InstaBox Cloud...'));
-    try {
-      const { execSync } = await import('node:child_process');
-      const st = execSync('git status -s', { encoding: 'utf8' }).trim();
-      if (st) {
-        console.log(chalk.yellow('  ⚠️  Ada perubahan lokal yang belum di-commit/push ke GitHub:'));
-        for (const line of st.split('\n').slice(0, 5)) {
-          console.log(chalk.gray(`     ${line}`));
-        }
-        console.log(chalk.dim('     (Disarankan commit & push dulu agar InstaBox menerima versi terbaru)\n'));
-      }
-    } catch {}
-
-    console.log(chalk.gray('  Menyinkronkan branch main di InstaBox (/data/workspace/baiworcode)...'));
-    const pullRes = await handleInstaboxExec({
-      command: 'cd /data/workspace/baiworcode && git fetch origin main && git reset --hard origin/main && npm install --prefer-offline',
-      timeout_ms: 45000,
-    });
-
-    if (pullRes.success) {
-      console.log(chalk.green('  ✓ Kode di InstaBox berhasil disinkronkan ke commit terbaru!'));
-      console.log(chalk.dim(sanitizeTerminalText(pullRes.output)) + '\n');
-    } else {
-      console.log(chalk.red('  ✗ Gagal menyinkronkan kode di InstaBox:'));
-      console.log(chalk.yellow(sanitizeTerminalText(pullRes.output)) + '\n');
-    }
-    return;
-  }
-
-  if (sub === 'pause') {
-    console.log(chalk.cyan('\n  Memproses jeda (pause) mesin InstaBox...'));
-    const res = await controlInstabox('pause');
-    if (res.success) {
-      console.log(chalk.green(`  ✓ ${res.message}\n`));
-    } else {
-      console.log(chalk.red(`  ✗ ${res.message}\n`));
-    }
-    return;
-  }
-
-  if (sub === 'resume') {
-    console.log(chalk.cyan('\n  Membangunkan (resume) mesin InstaBox...'));
-    const res = await controlInstabox('resume');
-    if (res.success) {
-      console.log(chalk.green(`  ✓ ${res.message}\n`));
-    } else {
-      console.log(chalk.red(`  ✗ ${res.message}\n`));
-    }
-    return;
-  }
-
-  if (sub === 'open') {
-    if (!rest) {
-      console.log(chalk.yellow('\n  Format: /sandbox open <url>\n'));
-      return;
-    }
-    console.log(chalk.cyan(`\n  🌐 Membuka URL di layar GUI desktop InstaBox: ${chalk.bold(rest)}...`));
-    const res = await openInstaboxDesktop(rest);
-    if (res.success) {
-      console.log(chalk.green(`  ✓ ${res.message}\n`));
-    } else {
-      console.log(chalk.red(`  ✗ ${res.message}\n`));
-    }
-    return;
-  }
-
-  if (sub === 'screenshot' || sub === 'shot') {
-    const filename = rest || `instabox-${Date.now()}.png`;
-    console.log(chalk.cyan(`\n  📸 Mengambil tangkapan layar GUI desktop InstaBox...`));
-    const res = await captureInstaboxScreenshot();
-    if (res.success && res.buffer) {
-      try {
-        fs.writeFileSync(filename, Buffer.from(res.buffer));
-        console.log(chalk.green(`  ✓ Screenshot tersimpan di: ${chalk.bold(path.resolve(filename))}\n`));
-      } catch (err) {
-        console.log(chalk.red(`  ✗ Gagal menulis berkas screenshot: ${err.message}\n`));
-      }
-    } else {
-      console.log(chalk.red(`  ✗ ${res.message || 'Gagal mengambil screenshot'}\n`));
-    }
-    return;
-  }
-
-  // Default: status
-  const key = getInstaboxApiKey();
-  const machine = getInstaboxMachineId();
-
-  console.log(chalk.hex('#FBBF24').bold('\n  ☁️  InstaBox Cloud Sandbox (MicroVM Linux 4 vCPU / 8 GiB RAM):'));
-  if (!key) {
-    console.log(chalk.yellow('    ● Status   : Belum Terkonfigurasi'));
-    console.log(chalk.gray('      Gunakan: /sandbox key <ibk_...> untuk mengaktifkan.'));
-    console.log(chalk.gray('      Dapatkan API Key di https://instabox.sh\n'));
-    return;
-  }
-
-  console.log(`    ${chalk.green('●')} Status   : ${chalk.green('Terkonfigurasi')} [Key: ${maskSecret(key)}]`);
-  console.log(`    ${chalk.cyan('✦')} Mesin    : ${chalk.bold.white(machine)}`);
-  console.log(`    ${chalk.hex('#10B981')('⚡')} Kapasitas: ${chalk.bold('4 vCPU, 8 GiB RAM, 20 GiB Storage (/data)')}`);
-
-  try {
-    const st = await getInstaboxStatus(machine);
-    if (st.ok && st.machine) {
-      const state = st.machine.status || st.machine.state || 'running';
-      const color = state === 'running' ? chalk.green : chalk.yellow;
-      console.log(`    ${color('●')} Kondisi  : ${color.bold(state.toUpperCase())}`);
-    }
-  } catch {}
-
-  console.log(chalk.gray('\n  Sub-perintah:'));
-  console.log(chalk.gray('    /sandbox exec <perintah>   → jalankan perintah shell di MicroVM Linux'));
-  console.log(chalk.gray('    /sandbox sync              → tarik update kode terbaru dari GitHub ke InstaBox'));
-  console.log(chalk.gray('    /sandbox open <url>        → buka website di layar browser GUI cloud'));
-  console.log(chalk.gray('    /sandbox screenshot        → unduh tangkapan layar GUI ke komputer lokal'));
-  console.log(chalk.gray('    /sandbox pause            → bekukan mesin untuk hemat kuota'));
-  console.log(chalk.gray('    /sandbox resume           → bangunkan mesin kembali'));
-  console.log(chalk.gray('    /sandbox machine <id>     → ganti ID / nama mesin'));
-  console.log(chalk.gray('    /sandbox key <apiKey>     → perbarui API Key\n'));
 }
 
 /**
@@ -2364,13 +2175,19 @@ async function startInteractive(opts = {}) {
         await runDoctor();
         break;
       case '/update': {
-        const sub = (arg || '').trim().toLowerCase();
-        await runUpdate({ syncSandbox: sub === 'sandbox' || sub === 'all' });
+        await runUpdate({});
         break;
       }
       case '/sandbox':
       case '/instabox':
-        await handleSandboxCommand(arg);
+      case '/agentbox':
+      case '/gmi':
+        console.log(
+          chalk.yellow('\n  ☁️  Fitur cloud sandbox (/sandbox) telah dihapus dari bAIwor Code.')
+        );
+        console.log(chalk.gray('     BAIwor Code kini berjalan murni di komputer lokal. Untuk beban'));
+        console.log(chalk.gray('     berat, jalankan di lingkungan Linux terisolasi milikmu sendiri'));
+        console.log(chalk.gray('     (container atau VM), bukan lewat perintah di dalam CLI ini.\n'));
         break;
       case '/tinyfish':
         await handleTinyFishCommand(arg);
@@ -2777,19 +2594,18 @@ program
 
 program
   .command('doctor')
-  .description('Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox cloud')
+  .description('Inspeksi kesehatan komprehensif sistem, AI provider, dan ekstensi')
   .action(async () => {
     await runDoctor();
     process.exit(0);
   });
 
 program
-  .command('update [target]')
-  .description('Perbarui bAIwor Code ke versi terbaru dari GitHub (opsional: update sandbox)')
+  .command('update')
+  .description('Perbarui bAIwor Code ke versi terbaru dari GitHub')
   .option('-y, --yes', 'Terapkan pembaruan tanpa konfirmasi (untuk skrip/CI)')
-  .action(async (target, options = {}) => {
+  .action(async (options = {}) => {
     const result = await runUpdate({
-      syncSandbox: target === 'sandbox' || target === 'all',
       yes: Boolean(options.yes),
     });
     const isError = /not a git|Untrusted|Diverged|failed|Gagal/i.test(result.message || '');

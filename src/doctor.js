@@ -8,11 +8,8 @@ import {
   CONFIG_FILE,
   maskSecret,
   getTinyFishApiKey,
-  getInstaboxApiKey,
-  getInstaboxMachineId,
 } from './config.js';
 import { listActiveMcpSessions, loadMcpConfig } from './mcp/index.js';
-import { getInstaboxStatus } from './tools/instaboxTool.js';
 import { isHomeDirectory } from './tools/searchTool.js';
 import { modelsEndpoint } from './modelUrl.js';
 import { expandEnvSecret, findMissingEnvRefs } from './auth/resolve.js';
@@ -127,26 +124,7 @@ export async function runDoctor() {
   }
 
   // 4. Layanan Cloud & Ekstensi
-  console.log(theme.info.bold('\n  4. Integrasi Cloud & Sandbox:'));
-
-  // InstaBox
-  const ibKey = getInstaboxApiKey();
-  const ibMachine = getInstaboxMachineId();
-  if (ibKey) {
-    try {
-      const st = await getInstaboxStatus(ibMachine);
-      if (st.ok && st.machine) {
-        const state = (st.machine.status || st.machine.state || 'running').toUpperCase();
-        check(true, 'InstaBox Cloud Sandbox', `Mesin [${ibMachine}] Aktif (${state})`);
-      } else {
-        check(true, 'InstaBox Cloud Sandbox', `Terkonfigurasi [Key: ${maskSecret(ibKey)}], Mesin: ${ibMachine}`);
-      }
-    } catch {
-      check(true, 'InstaBox Cloud Sandbox', `Terkonfigurasi [Key: ${maskSecret(ibKey)}]`);
-    }
-  } else {
-    check(false, 'InstaBox Cloud Sandbox', 'Belum dikonfigurasi (/sandbox key <ibk_...>)', true);
-  }
+  console.log(theme.info.bold('\n  4. Integrasi Cloud & Ekstensi:'));
 
   // TinyFish
   const tfKey = getTinyFishApiKey();

@@ -26,10 +26,10 @@ describe('Doctor & Update Commands', () => {
     const updateCmd = COMMANDS.find((c) => c.name === '/update');
     assert.ok(doctorCmd, '/doctor harus terdaftar di COMMANDS');
     assert.ok(updateCmd, '/update harus terdaftar di COMMANDS');
-    assert.ok(SUBCOMMANDS['/update'], '/update harus memiliki entri di SUBCOMMANDS');
+    // Setelah cloud sandbox dihapus, /update tidak lagi punya subperintah.
     assert.ok(
-      SUBCOMMANDS['/update'].some((s) => s.name === 'sandbox'),
-      '/update harus memiliki opsi subperintah sandbox'
+      !SUBCOMMANDS['/update'],
+      '/update tidak lagi punya subperintah (sinkronisasi sandbox dihapus)'
     );
   });
 
@@ -46,7 +46,7 @@ describe('Doctor & Update Commands', () => {
     assert.match(out, /Node\.js Version/);
     assert.match(out, /Folder Kerja & Workspace/);
     assert.match(out, /Konfigurasi AI & Kredensial/);
-    assert.match(out, /Integrasi Cloud & Sandbox/);
+    assert.match(out, /Integrasi Cloud & Ekstensi/);
     assert.match(out, /Status Sehat|Ditemukan/);
   });
 

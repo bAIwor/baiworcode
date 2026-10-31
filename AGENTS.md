@@ -2,43 +2,23 @@
 
 ## Lingkungan kerja
 
-Komputer lokal dipakai untuk mengedit, git, dan perintah ringan. Pekerjaan berat
-dijalankan di InstaBox Cloud Sandbox (MicroVM Linux 4 vCPU / 8 GiB):
-
-- Akses: `ssh instabox` (alias di `~/.ssh/config`, key `~/.ssh/id_ed25519_instabox`)
-- Repo di sandbox: `/data/workspace/baiworcode`
-- Machine ID + API key: `~/.baiwor/config.json` (`instaboxMachineId`, `instaboxApiKey`)
-- Certificate SSH berlaku 8 jam. Bila ditolak: `node scripts/instabox-ssh.mjs`
+bAIwor Code berjalan sepenuhnya di komputer lokal: edit kode, git, dan perintah.
+Untuk pekerjaan berat, pengguna dapat memilih sendiri menjalankannya di
+lingkungan Linux terisolasi (container atau VM pribadi) di luar bAIwor Code —
+CLI ini tidak mengelola mesin remote.
 
 ## Pembagian beban
 
-Jalankan di InstaBox:
-
-- `npm test` / test suite penuh
-- `npm install`, `npm ci`
+- edit kode, git, baca/tulis file
+- test suite penuh, `npm install`, `npm ci`
 - build, benchmark, perintah >60 detik
 - pekerjaan berisiko atau menghasilkan banyak file
 
-Jalankan di lokal:
-
-- edit kode, git, baca/tulis file
-- perintah ringan dan cepat (satu file test, cek versi)
-
-## Sinkronisasi kode ke sandbox
-
-Perubahan yang sudah di-commit dan di-push:
-
-```sh
-ssh instabox 'cd /data/workspace/baiworcode && git pull --ff-only'
-```
-
-Perubahan yang belum di-commit:
-
-```sh
-node scripts/instabox-sync.mjs src/foo.js --run "npm test"
-```
-
 ## Catatan
 
-- SDK `box.commands.run` dibatasi 600 detik; untuk proses lebih lama pakai SSH.
-- Sandbox auto-pause setelah 30 menit idle, memori tetap; perintah berikutnya membangunkan.
+- Penjaga sandbox bawaan (`src/tools/sandbox.js`) menolak perintah yang menyentuh
+  berkas sensitif (mis. `~/.ssh`, `~/.baiwor`) atau keluar dari workspace.
+- Untuk pencarian & pembacaan berkas, utamakan `search_files` dan `read_file`
+  daripada perintah shell — keduanya aman dari penyaringan string.
+- `diagnostics` dipakai untuk memastikan tak ada galat tipe atau pelanggaran lint
+  sebelum menyatakan tugas selesai.

@@ -24,7 +24,6 @@ export const PUNAKAWAN_ROLES = {
       'read_file',
       'list_directory',
       'search_files',
-      'instabox_exec',
     ],
   },
   semAIr: {
@@ -101,7 +100,6 @@ export const TOOL_ACTORS = {
   delegate_task: 'semAIr',
   ask_user: 'semAIr',
   typesafe_ask: 'semAIr',
-  instabox_exec: 'bAIwor',
 };
 
 /**

@@ -28,9 +28,9 @@ import { detectRiskyRegex } from '../src/tools/searchTool.js';
 import { setApprovalHandler, resetApprovalHandler } from '../src/tools/approval.js';
 
 describe('Tahap 3B: Tool Definitions & Schemas', () => {
-  it('harus memuat 16 tools utama dengan format OpenAI Function Calling', () => {
+  it('harus memuat 15 tools utama dengan format OpenAI Function Calling', () => {
     assert.equal(Array.isArray(TOOL_DEFINITIONS), true);
-    assert.equal(TOOL_DEFINITIONS.length, 16);
+    assert.equal(TOOL_DEFINITIONS.length, 15);
 
     const names = TOOL_DEFINITIONS.map((t) => t.function.name);
     assert.ok(names.includes('read_file'));
@@ -47,8 +47,8 @@ describe('Tahap 3B: Tool Definitions & Schemas', () => {
     assert.ok(names.includes('diagnostics'));
     assert.ok(names.includes('delegate_task'));
     assert.ok(names.includes('ask_user'));
-    assert.ok(names.includes('instabox_exec'));
     assert.ok(names.includes('typesafe_ask'));
+    assert.ok(!names.includes('instabox_exec'), 'tool cloud sandbox harus dihapus');
   });
 });
 

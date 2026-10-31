@@ -45,10 +45,7 @@ baiworcode/
     ├── rules/
     │   └── ruleManager.js          # Pemuat aturan proyek custom (BAIWORS.md dan .baiwor/rules/*.md)
     ├── skills/
-    │   ├── bundled/                # Modul skill bawaan yang dikirim bersama paket (scope 'builtin')
-    │   │   └── instabox/
-    │   │       └── SKILL.md        # Panduan InstaBox Cloud Sandbox bawaan
-    │   └── skillManager.js         # Pemuat skill modular (.baiwor/skills/*.md + bundled/)
+    │   └── skillManager.js         # Pemuat skill modular (.baiwor/skills/*.md)
     ├── tools/
     │   ├── approval.js             # Dialog interaktif konfirmasi pengguna untuk perintah berisiko
     │   ├── definitions.js          # Skema JSON Schema OpenAI function-calling untuk seluruh tools
@@ -56,7 +53,6 @@ baiworcode/
     │   ├── editUtil.js             # Engine manipulasi teks: EOL normalizer, search-replace, multi-edit, diff patcher
     │   ├── handlers.js             # Handler eksekusi berkas & terminal (read, write, edit, patch, list, run)
     │   ├── index.js                # Indeks tools, registrasi bawaan, dan dispatching
-    │   ├── instaboxTool.js         # Handler tool instabox_exec & kontrol MicroVM cloud InstaBox
     │   ├── questionnaireTool.js    # Handler tool ask_user untuk pertanyaan interaktif pilihan ganda
     │   ├── registry.js             # Registri tool internal, pembatasan output (capToolOutput), dan pengelompokan toolset
     │   ├── sandbox.js              # Analisis keamanan perintah shell, path containment, dan pencegah perintah berbahaya
@@ -99,10 +95,9 @@ bAIwor Code memiliki **15 tools bawaan** yang didaftarkan ke OpenAI Function Cal
 | 12 | `diagnostics` | `src/tools/diagnosticsTool.js` | `quality` | Menjalankan pemeriksaan otomatis mutu proyek (skrip `check`, `typecheck`, `lint` di package.json, `tsc`, atau `eslint`). |
 | 13 | `delegate_task` | `src/tools/subagentTool.js` | `agent` | Mendelegasikan satu tugas atau 2-6 tugas paralel (konkurensi 3) ke peran Punakawan (`semAIr` perencanaan read-only, `pAItruk` eksplorasi read-only, `gAIreng` audit/test, `bAIwor` coding). Tiap subagent terisolasi; batas 5 menit/40 tool call per subagent. |
 | 14 | `ask_user` | `src/tools/questionnaireTool.js` | `interactive` | Mengajukan pertanyaan interaktif dengan pilihan jawaban (*single-select* atau *multi-select*) ke pengguna di terminal. |
-| 15 | `instabox_exec` | `src/tools/instaboxTool.js` | `sandbox` | Menjalankan perintah di MicroVM Linux InstaBox (aktif bila API key sandbox dikonfigurasi). |
 
 *Catatan Tambahan:*  
-Selain 15 tool bawaan di atas, sistem mendukung integrasi protokol **MCP (Model Context Protocol)** melalui `src/mcp/client.js` (klien) dan `src/mcp/server.js` (server stdio). Tool MCP dinamis didaftarkan dengan prefix nama server. Server MCP dari konfigurasi proyek (`.mcp.json` / `.baiwor/mcp.json`) memerlukan persetujuan pengguna per folder + hash konfigurasi sebelum dijalankan.
+Selain 14 tool bawaan di atas, sistem mendukung integrasi protokol **MCP (Model Context Protocol)** melalui `src/mcp/client.js` (klien) dan `src/mcp/server.js` (server stdio). Tool MCP dinamis didaftarkan dengan prefix nama server. Server MCP dari konfigurasi proyek (`.mcp.json` / `.baiwor/mcp.json`) memerlukan persetujuan pengguna per folder + hash konfigurasi sebelum dijalankan.
 
 ---
 

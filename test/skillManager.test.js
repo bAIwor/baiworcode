@@ -128,29 +128,26 @@ Global old instruction`,
       assert.ok(docker.instructions.includes('multi-stage build'));
     });
 
-    it('harus menemukan skill bawaan (builtin) dengan scope "builtin"', () => {
+    it('tidak lagi mengirim skill bawaan (builtin) apa pun', () => {
       const skills = discoverSkills({
         cwd: path.join(tmpDir, 'project'),
         homeDir: path.join(tmpDir, 'global'),
       });
-      assert.equal(skills.has('instabox'), true, 'skill builtin instabox harus tersedia');
-      const ib = skills.get('instabox');
-      assert.equal(ib.scope, 'builtin');
-      assert.ok(ib.description.length > 0);
+      const builtin = [...skills.values()].filter((s) => s.scope === 'builtin');
+      assert.equal(builtin.length, 0, 'skill bawaan cloud sandbox sudah dihapus');
     });
 
-    it('skill proyek menimpa builtin jika nama sama', () => {
-      // Buat skill proyek dengan nama 'instabox' (override builtin)
-      const overridePath = path.join(projectSkillsDir, 'instabox');
-      fs.mkdirSync(overridePath, { recursive: true });
+    it('skill proyek ditemukan dengan scope "project"', () => {
+      const projectPath = path.join(projectSkillsDir, 'cloud-sandbox');
+      fs.mkdirSync(projectPath, { recursive: true });
       fs.writeFileSync(
-        path.join(overridePath, 'SKILL.md'),
+        path.join(projectPath, 'SKILL.md'),
         `---
-name: instabox
-description: Override proyek
+name: cloud-sandbox
+description: Skill proyek uji
 version: 9.9.9
 ---
-Override instructions`,
+Instruksi uji`,
         'utf8'
       );
 
@@ -158,12 +155,13 @@ Override instructions`,
         cwd: path.join(tmpDir, 'project'),
         homeDir: path.join(tmpDir, 'global'),
       });
-      const ib = skills.get('instabox');
-      assert.equal(ib.scope, 'project');
-      assert.equal(ib.version, '9.9.9');
+      const s = skills.get('cloud-sandbox');
+      assert.equal(s.scope, 'project');
+      assert.equal(s.version, '9.9.9');
+      assert.ok(s.instructions.includes('Instruksi uji'));
 
       // bersihkan
-      fs.rmSync(overridePath, { recursive: true, force: true });
+      fs.rmSync(projectPath, { recursive: true, force: true });
     });
   });
 

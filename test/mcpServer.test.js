@@ -27,7 +27,6 @@ describe('MCP Server: mode aman read-only', () => {
       'delegate_task',
       'ask_user',
       'webautomate',
-      'instabox_exec',
     ]) {
       assert.equal(isMcpToolAllowed(name), false, name);
     }

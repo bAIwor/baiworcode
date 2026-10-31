@@ -256,9 +256,8 @@ Atau masuk ke mode interaktif lalu ketik langsung tanpa keluar aplikasi.
 - `/session [list|resume|delete|clear]` — Kelola sesi percakapan proyek (daftar sesi, lanjutkan, hapus satu, atau hapus semua)
 - `/cd <folder>` — Pindah folder kerja (workspace) aktif secara langsung di dalam sesi
 - `/workspace [folder]` — Lihat status ruang kerja aktif atau ganti folder kerja
-- `/sandbox [status|exec|sync|open|screenshot|pause|resume|key]` — Kelola MicroVM Cloud Sandbox Linux InstaBox
-- `/update [sandbox]` — Perbarui bAIwor Code ke versi terbaru dari GitHub (opsional: sinkronkan ke InstaBox)
-- `/doctor` — Inspeksi kesehatan komprehensif sistem, AI provider, dan sandbox cloud
+- `/update` — Perbarui bAIwor Code ke versi terbaru dari GitHub
+- `/doctor` — Inspeksi kesehatan komprehensif sistem, AI provider, dan ekstensi
 - `/skill [list|info]` — Kelola modul keahlian & plugin (`.baiwor/skills` dan bawaan)
 - `/rules` — Tampilkan aturan koding aktif proyek & global (`BAIWORS.md` / `.baiwor/rules`)
 - `/status` — Status konfigurasi, provider aktif, dan **latency**
@@ -343,7 +342,6 @@ Di dalam mode interaktif, cara pakainya sama — cukup `/model step`, `/model al
 | `todo_list` | Menyusun dan memperbarui daftar tugas multi-langkah, ditampilkan sebagai checklist |
 | `delegate_task` | Mendelegasikan satu tugas, atau 2-6 tugas **paralel** (maks 3 sekaligus), ke subagent Punakawan terisolasi (semAIr/pAItruk/gAIreng/bAIwor) |
 | `ask_user` | Mengajukan pertanyaan atau mengonfirmasi pilihan interaktif kepada pengguna |
-| `instabox_exec` | Menjalankan perintah di MicroVM Linux InstaBox (aktif bila API key sandbox dikonfigurasi) |
 
 ### 🐟 Integrasi TinyFish Web Intelligence
 
@@ -445,7 +443,7 @@ bAIwor Code dapat membaca, menulis, dan menjalankan perintah di komputermu. Kare
 
 > **Catatan:** pengaman perintah bekerja dengan mengenali pola, jadi sifatnya berlapis — bukan isolasi tingkat sistem operasi. Untuk pekerjaan yang sangat sensitif, tetap periksa perintah yang diminta bAIwor sebelum menyetujuinya.
 >
-> **Repo tidak tepercaya:** saat agen diminta menjalankan test/lint/diagnostics, script dari `package.json` proyek ikut dieksekusi. Buka hanya proyek yang kamu percaya, atau jalankan dulu di InstaBox/container terpisah.
+> **Repo tidak tepercaya:** saat agen diminta menjalankan test/lint/diagnostics, script dari `package.json` proyek ikut dieksekusi. Buka hanya proyek yang kamu percaya, atau jalankan dulu di container terpisah.
 
 ---
 

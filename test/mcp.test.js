@@ -197,9 +197,9 @@ describe('MCP Client: Hardening', () => {
 });
 
 describe('MCP Server: Tools & Definitions', () => {
-  it('menyediakan seluruh 16 tools bawaan bAIwor Code dalam format MCP', () => {
+  it('menyediakan seluruh 15 tools bawaan bAIwor Code dalam format MCP', () => {
     const defs = getDefinitions();
-    assert.equal(defs.length, 16);
+    assert.equal(defs.length, 15);
 
     const mcpTools = defs.map((d) => ({
       name: d.function.name,
@@ -207,12 +207,13 @@ describe('MCP Server: Tools & Definitions', () => {
       inputSchema: d.function.parameters,
     }));
 
-    assert.equal(mcpTools.length, 16);
+    assert.equal(mcpTools.length, 15);
     assert.ok(mcpTools.some((t) => t.name === 'read_file'));
     assert.ok(mcpTools.some((t) => t.name === 'write_file'));
     assert.ok(mcpTools.some((t) => t.name === 'websearch'));
     assert.ok(mcpTools.some((t) => t.name === 'webautomate'));
-    assert.ok(mcpTools.some((t) => t.name === 'instabox_exec'));
+    assert.ok(mcpTools.some((t) => t.name === 'typesafe_ask'));
+    assert.ok(!mcpTools.some((t) => t.name === 'instabox_exec'), 'cloud sandbox tool harus dihapus');
   });
 });
 

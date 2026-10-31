@@ -4,7 +4,6 @@ import { execSync, execFileSync } from 'node:child_process';
 import * as p from '@clack/prompts';
 import chalk from 'chalk';
 import { theme } from './theme.js';
-import { handleInstaboxExec } from './tools/instaboxTool.js';
 import { APP_NAME, VERSION, WEBSITE, CLI_USER_AGENT } from './branding.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,7 +31,6 @@ async function fetchLatestNpmVersion() {
  * Memperbarui instalasi bAIwor Code ke versi terbaru dari GitHub.
  *
  * @param {Object} [options]
- * @param {boolean} [options.syncSandbox=false] - Sinkronkan juga instalasi di InstaBox
  * @param {boolean} [options.yes=false] - Terapkan tanpa konfirmasi (untuk skrip/CI)
  * @returns {Promise<{ updated: boolean, message: string }>}
  */
@@ -70,9 +68,6 @@ export async function runUpdate(options = {}) {
       console.log(`    ${chalk.cyan(`npm install -g ${NPM_PACKAGE}@latest`)}\n`);
     }
 
-    if (options.syncSandbox) {
-      await updateSandboxRemote(assumeYes);
-    }
     return {
       updated: false,
       message: latest ? `Npm installation (latest ${latest})` : 'Npm installation',
@@ -140,9 +135,6 @@ export async function runUpdate(options = {}) {
     }
     console.log('');
 
-    if (options.syncSandbox) {
-      await updateSandboxRemote(assumeYes);
-    }
     return { updated: false, message: 'Already up to date' };
   }
 
@@ -210,10 +202,6 @@ export async function runUpdate(options = {}) {
     console.log(theme.muted('    Semua fitur dan perbaikan terbaru kini aktif.\n'));
   }
 
-  if (options.syncSandbox) {
-    await updateSandboxRemote(assumeYes);
-  }
-
   return {
     updated: true,
     message: depsOk
@@ -222,30 +210,3 @@ export async function runUpdate(options = {}) {
   };
 }
 
-async function updateSandboxRemote(assumeYes = false) {
-  if (!assumeYes) {
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      console.log(theme.warning('  ⚠️  Sinkronisasi sandbox memerlukan konfirmasi interaktif; dilewati. Gunakan --yes pada skrip.'));
-      return;
-    }
-    const answer = await p.confirm({
-      message: 'Sinkronkan InstaBox dengan `git reset --hard origin/main`? Perubahan lokal di sandbox akan dibuang.',
-      initialValue: false,
-    });
-    if (p.isCancel(answer) || answer !== true) {
-      console.log(theme.muted('  Sinkronisasi sandbox dibatalkan.\n'));
-      return;
-    }
-  }
-  console.log(theme.info('  4. Menyinkronkan pembaruan ke Cloud Sandbox InstaBox...'));
-  const res = await handleInstaboxExec({
-    command: 'cd /data/workspace/baiworcode && git fetch origin main && git reset --hard origin/main && npm install --prefer-offline',
-    timeout_ms: 45000,
-  });
-
-  if (res.success) {
-    console.log(chalk.green('  ✓ Cloud Sandbox InstaBox juga berhasil diperbarui ke versi terbaru!\n'));
-  } else {
-    console.log(chalk.yellow(`  ⚠️  InstaBox belum berhasil diperbarui: ${res.output}\n`));
-  }
-}

@@ -54,8 +54,7 @@ export function getSystemPrompt(options = {}) {
       `  • DILARANG memakai perintah Linux: grep, tail, head, cat, ls, touch, rm -rf (tidak ada di Windows cmd).\n` +
       `  • Perintah bawaan Windows cmd yang didukung: dir, type, findstr, mkdir, del, rmdir, serta pemisah && dan ||.\n` +
       `  • Untuk filter output: gunakan findstr, misal: npm test 2>&1 | findstr /i "fail pass"\n` +
-      `  • Jika benar-benar membutuhkan sintaks PowerShell: panggil eksplisit: powershell -NoProfile -Command "..."\n` +
-      `  • Untuk operasi berat (build besar, pengujian komprehensif, eksekusi Linux): gunakan instabox_exec (Cloud Sandbox Linux MicroVM).`
+      `  • Jika benar-benar membutuhkan sintaks PowerShell: panggil eksplisit: powershell -NoProfile -Command "..."\n`
     : '';
 
   // Daftar tool diturunkan dari registry (bukan hardcode) supaya tidak pernah
@@ -140,7 +139,6 @@ Aturan pemakaian tool:
 - Gunakan \`edit_file\` untuk perubahan presisi: bila potongan muncul berkali-kali set \`replace_all: true\`, atau kirim daftar \`edits\` untuk banyak perubahan sekaligus. Gunakan \`patch_file\` untuk menerapkan unified diff (format \`git diff\`), dan \`write_file\` untuk membuat berkas baru.
 - Gunakan \`webfetch\`/\`websearch\` untuk membaca dokumentasi, catatan rilis, atau mencari solusi galat di web — tak perlu lagi \`curl\`.
 - Gunakan \`run_command\` untuk menjalankan pengujian lokal singkat (seperti git, syntax check) guna memverifikasi pekerjaanmu.
-- Gunakan \`instabox_exec\` untuk tugas komputasi berat (seperti rangkaian \`npm test\` menyeluruh, benchmarking, kompilasi/build besar, atau eksekusi perintah berisiko) di dalam Cloud Sandbox Linux MicroVM InstaBox (4 vCPU / 8 GiB RAM) agar mesin lokal pengguna tidak terbebani atau mengalami freeze/BSOD.
 - Sebelum menyatakan tugas selesai, jalankan \`diagnostics\` untuk memastikan tak ada galat tipe atau pelanggaran lint.
 - Gunakan \`delegate_task\` untuk investigasi mendalam (pAItruk), perancangan rencana/analisis kebutuhan (semAIr), atau verifikasi/pengujian (gAIreng) di loop terpisah agar riwayat konteks utama tetap bersih dan hemat token.
 - Gunakan \`ask_user\` ketika menghadapi percabangan arsitektur, pemilihan library/framework, preferensi desain teknis, atau instruksi yang memiliki ambiguitas penting. JANGAN berasumsi sendiri jika ada trade-off signifikan — ajukan pertanyaan interaktif dengan opsi pilihan jawaban kepada pengguna sebelum melangkah.

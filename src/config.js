@@ -51,9 +51,6 @@ export const DEFAULT_CONFIG = {
   firecrawlApiKey: '',
   // Flovia (X API + riset web + data on-chain lewat MCP resmi): API Key flv-... untuk MCP server resminya.
   floviaApiKey: '',
-  // InstaBox Cloud Sandbox: API Key dan default machine ID/name
-  instaboxApiKey: '',
-  instaboxMachineId: 'baiwor',
   // Model Context Protocol (MCP): daftar server terdaftar { <name>: { type, url?, command?, args?, headers? } }
   mcpServers: {},
   // Folder proyek yang MCP-nya sudah disetujui pengguna. Entri baru berbentuk
@@ -619,59 +616,4 @@ export function saveFloviaApiKey(key) {
   saveConfigStrict({ floviaApiKey: clean });
   return clean;
 }
-
-/**
- * Mendapatkan API Key InstaBox dengan urutan prioritas:
- * 1. Environment variable INSTABOX_API_KEY
- * 2. Konfigurasi bAIwor Code (~/.baiwor/config.json -> instaboxApiKey)
- *
- * @returns {string}
- */
-export function getInstaboxApiKey() {
-  if (process.env.INSTABOX_API_KEY && process.env.INSTABOX_API_KEY.trim()) {
-    return process.env.INSTABOX_API_KEY.trim();
-  }
-  const config = getConfig();
-  if (config.instaboxApiKey && typeof config.instaboxApiKey === 'string' && config.instaboxApiKey.trim()) {
-    return config.instaboxApiKey.trim();
-  }
-  return '';
-}
-
-/**
- * Menyimpan API Key InstaBox ke dalam konfigurasi ~/.baiwor/config.json.
- * @param {string} key
- * @returns {string}
- */
-export function saveInstaboxApiKey(key) {
-  const clean = String(key || '').trim();
-  saveConfig({ instaboxApiKey: clean });
-  return clean;
-}
-
-/**
- * Mendapatkan ID / Nama mesin InstaBox aktif.
- * @returns {string}
- */
-export function getInstaboxMachineId() {
-  if (process.env.INSTABOX_MACHINE_ID && process.env.INSTABOX_MACHINE_ID.trim()) {
-    return process.env.INSTABOX_MACHINE_ID.trim();
-  }
-  const config = getConfig();
-  return config.instaboxMachineId || 'baiwor';
-}
-
-/**
- * Menyimpan default machine ID InstaBox.
- * @param {string} id
- * @returns {string}
- */
-export function saveInstaboxMachineId(id) {
-  const clean = String(id || '').trim();
-  saveConfig({ instaboxMachineId: clean });
-  return clean;
-}
-
-export const setInstaboxApiKey = saveInstaboxApiKey;
-export const setInstaboxMachineId = saveInstaboxMachineId;
 

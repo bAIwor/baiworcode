@@ -31,11 +31,6 @@ import {
   resetApprovalHandler,
   resetFileApprovalHandler,
 } from './approval.js';
-import {
-  handleInstaboxExec,
-  getInstaboxStatus,
-  controlInstabox,
-} from './instaboxTool.js';
 import { generateVisualDiff } from './diffView.js';
 import {
   beginTurnSnapshot,
@@ -77,7 +72,6 @@ const handlersMap = {
   typesafe_ask: { handler: handleTypeSafeAsk, toolset: 'ai', emoji: '🧠' },
   delegate_task: { handler: handleDelegateTask, toolset: 'agent', emoji: '🎭' },
   ask_user: { handler: handleAskUser, toolset: 'interactive', emoji: '❓' },
-  instabox_exec: { handler: handleInstaboxExec, toolset: 'sandbox', emoji: '☁️' },
 };
 
 for (const def of TOOL_DEFINITIONS) {
@@ -136,9 +130,6 @@ export {
   stopBackgroundTask,
   listBackgroundTasks,
   clearBackgroundTasks,
-  handleInstaboxExec,
-  getInstaboxStatus,
-  controlInstabox,
   generateVisualDiff,
   beginTurnSnapshot,
   commitTurnSnapshot,
