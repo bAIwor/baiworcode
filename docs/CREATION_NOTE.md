@@ -18,7 +18,7 @@ jenis pekerjaan, approval gate untuk perintah berisiko, dan revert `/undo`.
 | | |
 |---|---|
 | Repo | https://github.com/bAIwor/baiworcode |
-| Paket npm | `@baiworcode/baiworcode` (v1.0.0-beta.6) |
+| Paket npm | `@baiworcode/baiworcode` (v1.0.0-beta.7) |
 | Website | https://baiwor.my.id |
 | Lisensi | MIT |
 
